@@ -1,0 +1,172 @@
+:host {
+    --hub-dark: #2d3e50;
+    --hub-accent: #ff7a59;
+    --hub-blue: #0091ae;
+    --hub-blue-dk: #007a94;
+    --hub-white: #ffffff;
+    --hub-gray-1: #f5f8fa;
+    --hub-gray-2: #dfe3eb;
+    --hub-text: #33475b;
+    --hub-text-lt: #7c98b6;
+    --hub-error: #f2545b;
+    --hub-success: #00bda5;
+    --radius: 8px;
+    font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--hub-text);
+    box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: inherit; }
+
+.widget-shell {
+    max-width: 600px;
+    margin: 2rem auto;
+    background: var(--hub-white);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.1);
+}
+
+.appt-header {
+    background: var(--hub-dark);
+    color: #fff;
+    padding: 2rem 1.5rem;
+    text-align: center;
+}
+.brand-logo-placeholder {
+    width: 48px; height: 48px; border-radius: 50%;
+    margin: 0 auto .75rem;
+    border: 2px solid rgba(255,255,255,.2);
+    background: var(--hub-accent); color: #fff;
+    font-size: 1.3rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+.appt-title {
+    font-size: 1.1rem; font-weight: 600; margin: 0;
+}
+
+.appt-details {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--hub-gray-2);
+}
+.detail-row {
+    display: flex; align-items: flex-start; gap: .75rem;
+    margin-bottom: 1rem;
+}
+.detail-row:last-child { margin-bottom: 0; }
+.detail-icon { font-size: 1.2rem; margin-top: .1rem; }
+.detail-label {
+    font-size: .75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--hub-text-lt); margin: 0 0 .15rem;
+}
+.detail-value { font-size: .95rem; margin: 0; font-weight: 500; }
+
+.action-buttons {
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: .75rem;
+}
+.action-btn {
+    display: block; width: 100%; padding: .85rem 1rem;
+    border-radius: var(--radius); font-weight: 700;
+    font-size: .92rem; cursor: pointer; text-align: center;
+    text-decoration: none; font-family: inherit;
+    transition: all .15s;
+}
+.reschedule-btn {
+    background: var(--hub-blue); color: #fff; border: none;
+}
+.reschedule-btn:hover { background: var(--hub-blue-dk); }
+.cancel-btn {
+    background: transparent; color: var(--hub-error);
+    border: 1px solid var(--hub-error);
+}
+.cancel-btn:hover { background: #fef0ef; }
+
+.cancel-form { padding: 1.5rem; }
+.cancel-title { font-size: 1.15rem; font-weight: 700; margin: 0 0 .5rem; }
+.cancel-subtitle { font-size: .9rem; color: var(--hub-text-lt); margin: 0 0 1.25rem; }
+
+.field-group { margin-bottom: 1rem; }
+.field-lbl {
+    display: block; font-size: .78rem; font-weight: 600;
+    color: var(--hub-text); margin-bottom: .3rem;
+}
+.field-inp {
+    width: 100%; padding: .6rem .75rem;
+    border: 1px solid var(--hub-gray-2); border-radius: 4px;
+    font-size: .88rem; font-family: inherit;
+    transition: border-color .15s; background: var(--hub-white);
+}
+.field-inp:focus {
+    outline: none; border-color: var(--hub-blue);
+    box-shadow: 0 0 0 2px rgba(0,145,174,.12);
+}
+
+.policy-banner {
+    background: #fff3f2; border-left: 3px solid var(--hub-accent);
+    padding: .75rem 1rem; font-size: .8rem; color: #5a2e2e;
+    line-height: 1.55; border-radius: 0 4px 4px 0; margin-bottom: 1rem;
+}
+
+.val-error {
+    background: #fef0ef; border: 1px solid #f5c6c6;
+    color: var(--hub-error); padding: .6rem .9rem;
+    border-radius: 4px; font-size: .82rem; font-weight: 500;
+    margin-bottom: .75rem;
+}
+
+.form-footer {
+    display: flex; justify-content: space-between;
+    align-items: center; padding-top: 1rem;
+    border-top: 1px solid var(--hub-gray-2); margin-top: .5rem;
+}
+.back-btn {
+    background: none; border: none; color: var(--hub-text-lt);
+    font-size: .88rem; font-weight: 600; cursor: pointer;
+    font-family: inherit; padding: .6rem .5rem;
+}
+.back-btn:hover { color: var(--hub-text); }
+.confirm-cancel-btn {
+    padding: .7rem 2rem; background: var(--hub-error); color: #fff;
+    border: none; border-radius: var(--radius); font-weight: 700;
+    font-size: .92rem; cursor: pointer; transition: background .15s;
+    font-family: inherit;
+}
+.confirm-cancel-btn:hover:not(:disabled) { background: #d93d44; }
+.confirm-cancel-btn:disabled { opacity: .6; cursor: wait; }
+
+.success-panel { text-align: center; padding: 3rem 2rem; }
+.success-icon {
+    width: 56px; height: 56px; line-height: 56px;
+    border-radius: 50%; background: #e6faf7;
+    color: var(--hub-success); font-size: 1.5rem;
+    font-weight: 700; margin: 0 auto 1rem;
+}
+.success-title { font-size: 1.3rem; margin: 0 0 .5rem; }
+.success-text { font-size: .92rem; color: var(--hub-text-lt); margin: .25rem 0; }
+.rebook-btn {
+    display: inline-block; margin-top: 1rem;
+    padding: .75rem 2rem; background: var(--hub-blue);
+    color: #fff; text-decoration: none; border-radius: var(--radius);
+    font-weight: 700; font-size: .92rem;
+    transition: background .15s;
+}
+.rebook-btn:hover { background: var(--hub-blue-dk); }
+
+.loader-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 300px; gap: .75rem;
+}
+.loader-label { font-size: .88rem; color: var(--hub-text-lt); }
+
+.error-wrap { text-align: center; padding: 3rem 2rem; }
+.error-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+.error-heading { font-size: 1.1rem; font-weight: 700; margin: 0 0 .5rem; }
+.error-body { font-size: .9rem; color: var(--hub-text-lt); margin: 0 0 1rem; }
+.error-contact { font-size: .82rem; color: var(--hub-text-lt); }
+.error-contact a { color: var(--hub-blue); }
+
+@media (max-width: 640px) {
+    .widget-shell { margin: 1rem; }
+    .cancel-form { padding: 1rem; }
+    .action-buttons { padding: 1rem; }
+}

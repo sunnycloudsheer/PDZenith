@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -c \"\\\\.cls$\")",
+      "Bash(sf data:*)"
+    ]
+  }
+}

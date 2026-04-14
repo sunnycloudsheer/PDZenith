@@ -1,0 +1,253 @@
+<template>
+    <template lwc:if={isLoading}>
+        <div class="widget-shell">
+            <div class="loader-wrap">
+                <lightning-spinner alternative-text="Loading..." size="medium"></lightning-spinner>
+                <p class="loader-label">Loading available times...</p>
+            </div>
+        </div>
+    </template>
+
+    <template lwc:elseif={hasFatalError}>
+        <div class="widget-shell">
+            <div class="error-wrap">
+                <p class="error-heading">Booking Unavailable</p>
+                <p class="error-body">We're having trouble loading the booking form. Please refresh the page or call us directly.</p>
+            </div>
+        </div>
+    </template>
+
+    <template lwc:elseif={isReady}>
+        <div class="widget-shell">
+
+            <div class="step-track">
+                <div class={step1NodeClass}>
+                    <span class="step-dot">1</span>
+                    <span class="step-text">CHOOSE TIME</span>
+                </div>
+                <div class="step-line"></div>
+                <div class={step2NodeClass}>
+                    <span class="step-dot">2</span>
+                    <span class="step-text">YOUR INFO</span>
+                </div>
+            </div>
+
+            <template lwc:if={isStep1}>
+                <div class="split-panel">
+                    <div class="panel-left">
+                        <div class="brand-header">
+                            <div class="brand-logo-placeholder">Z</div>
+                            <p class="brand-title">Initial Consultation with Zenith Prep Academy</p>
+                        </div>
+
+                        <div class="cal-month-nav">
+                            <button class="cal-nav-btn" onclick={prevMonth} disabled={prevMonthDisabled}>&#8249;</button>
+                            <span class="cal-month-label">{currentMonthLabel}</span>
+                            <button class="cal-nav-btn" onclick={nextMonth} disabled={nextMonthDisabled}>&#8250;</button>
+                        </div>
+
+                        <div class="cal-grid cal-header-row">
+                            <span class="cal-hdr">SUN</span><span class="cal-hdr">MON</span>
+                            <span class="cal-hdr">TUE</span><span class="cal-hdr">WED</span>
+                            <span class="cal-hdr">THU</span><span class="cal-hdr">FRI</span>
+                            <span class="cal-hdr">SAT</span>
+                        </div>
+
+                        <div class="cal-grid">
+                            <template for:each={calendarDays} for:item="day">
+                                <template lwc:if={day.isEmpty}>
+                                    <span key={day.key} class="cal-cell empty"></span>
+                                </template>
+                                <template lwc:elseif={day.isDisabled}>
+                                    <span key={day.key} class="cal-cell disabled">{day.num}</span>
+                                </template>
+                                <template lwc:else>
+                                    <button key={day.key} class={day.cssClass}
+                                            data-date={day.dateStr}
+                                            onclick={handleDateClick}>{day.num}</button>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="panel-right">
+                        <div class="info-block">
+                            <p class="info-label">Meeting location</p>
+                            <p class="info-value">&#x1F4CD; Zoom</p>
+                        </div>
+                        <div class="info-block">
+                            <p class="info-label">Meeting duration</p>
+                            <div class="duration-badge">{durationLabel}</div>
+                        </div>
+
+                        <template lwc:if={selectedDate}>
+                            <div class="info-block">
+                                <p class="info-label">What time works best?</p>
+                                <p class="info-sublabel">Showing times for <strong>{selectedDateLong}</strong></p>
+                            </div>
+
+                            <div class="tz-display">
+                                <span class="tz-icon">&#x1F310;</span>
+                                <span class="tz-text">{timezoneDisplay}</span>
+                            </div>
+
+                            <template lwc:if={isSlotsLoading}>
+                                <div class="slots-loading">
+                                    <lightning-spinner alternative-text="Loading..." size="small"></lightning-spinner>
+                                </div>
+                            </template>
+
+                            <template lwc:elseif={hasSlots}>
+                                <div class="slots-list">
+                                    <template for:each={timeSlots} for:item="slot">
+                                        <button key={slot.startUtc}
+                                                class="slot-btn"
+                                                data-start={slot.startUtc}
+                                                data-end={slot.endUtc}
+                                                onclick={handleSlotClick}>{slot.displayTime}</button>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <template lwc:elseif={noSlotsForDate}>
+                                <div class="no-slots-msg">
+                                    <p>No available times on this date.</p>
+                                    <p>Please select another day.</p>
+                                </div>
+                            </template>
+                        </template>
+
+                        <template lwc:if={noDateSelected}>
+                            <div class="pick-date-prompt">
+                                <p>&#8592; Select a date to see available times</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <template lwc:if={isStep2}>
+                <div class="form-panel">
+                    <div class="form-header">
+                        <h2 class="form-title">Your information</h2>
+                        <p class="form-appt-summary">
+                            <strong>{selectedDateLong} {selectedTimeDisplay}</strong>
+                            <button class="link-btn" onclick={handleEditTime}>Edit</button>
+                        </p>
+                        <p class="form-location">&#x1F4CD; Zoom</p>
+                    </div>
+
+                    <div class="field-row-2">
+                        <div class="field-group">
+                            <label class="field-lbl">First name <span class="req">*</span></label>
+                            <input type="text" class="field-inp" value={firstName}
+                                   data-field="firstName" onchange={handleInput} />
+                        </div>
+                        <div class="field-group">
+                            <label class="field-lbl">Last name <span class="req">*</span></label>
+                            <input type="text" class="field-inp" value={lastName}
+                                   data-field="lastName" onchange={handleInput} />
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">Your email address <span class="req">*</span></label>
+                        <input type="email" class="field-inp" value={email}
+                               data-field="email" onchange={handleInput} />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">Valid Phone Number <span class="req">*</span></label>
+                        <input type="tel" class="field-inp" value={phone}
+                               data-field="phone" onchange={handleInput} />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">Student Grade <span class="req">*</span></label>
+                        <select class="field-inp" value={studentGrade}
+                                data-field="studentGrade" onchange={handleInput}>
+                            <option value="">-- Select Grade --</option>
+                            <option value="5th">5th</option>
+                            <option value="6th">6th</option>
+                            <option value="7th">7th</option>
+                            <option value="8th">8th</option>
+                            <option value="9th">9th</option>
+                            <option value="10th">10th</option>
+                            <option value="11th">11th</option>
+                            <option value="12th">12th</option>
+                        </select>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">
+                            I will 100% make it to my consultation. Type 'I confirm' <span class="req">*</span>
+                        </label>
+                        <input type="text" class="field-inp" value={confirm1}
+                               data-field="confirm1" onchange={handleInput} />
+                    </div>
+
+                    <div class="policy-banner">
+                        Due to limited availability/high demand – If you miss your consultation,
+                        we reserve the right to not provide a free consultation, or any at all
+                        in the future. Reschedules must be made 3+ days in advance.
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">
+                            Type 'I confirm' to acknowledge the rescheduling policy <span class="req">*</span>
+                        </label>
+                        <input type="text" class="field-inp" value={confirm2}
+                               data-field="confirm2" onchange={handleInput} />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">Add guest email addresses (optional, comma-separated)</label>
+                        <input type="text" class="field-inp" value={guestEmails}
+                               data-field="guestEmails" onchange={handleInput} />
+                    </div>
+
+                    <div class="privacy-box">
+                        <p class="privacy-title">Data privacy</p>
+                        <p class="privacy-body">
+                            Zenith Prep Academy is committed to protecting and respecting your privacy,
+                            and we'll only use your personal information to administer your account and
+                            to provide the products and services you requested from us. From time to time,
+                            we would like to contact you about our products and services, as well as other
+                            content that may be of interest to you. If you consent to us contacting you
+                            for this purpose, please tick below to say how you would like us to contact you:
+                        </p>
+                        <label class="check-row">
+                            <input type="checkbox" checked={consentChecked}
+                                   onchange={handleConsent} />
+                            <span>I agree to receive other communications from Zenith Prep Academy.</span>
+                        </label>
+                    </div>
+
+                    <template lwc:if={validationError}>
+                        <div class="val-error">{validationError}</div>
+                    </template>
+
+                    <div class="form-footer">
+                        <button class="back-btn" onclick={handleBack}>&#8249; Back</button>
+                        <button class="confirm-btn" onclick={handleSubmit} disabled={isSubmitting}>
+                            <template lwc:if={isSubmitting}>Booking...</template>
+                            <template lwc:else>Confirm</template>
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            <template lwc:if={isStep3}>
+                <div class="confirmed-panel">
+                    <div class="confirmed-check">&#x2713;</div>
+                    <h2 class="confirmed-title">You are all set!</h2>
+                    <p class="confirmed-text">Your Initial Consultation with Zenith Prep Academy is confirmed.</p>
+                    <p class="confirmed-detail">&#x1F4C5; {selectedDateLong} at {selectedTimeDisplay}</p>
+                    <p class="confirmed-text">Check your email for a calendar invite and Zoom link.</p>
+                    <p class="confirmed-redirect">Redirecting you in a moment...</p>
+                </div>
+            </template>
+
+        </div>
+    </template>
+</template>

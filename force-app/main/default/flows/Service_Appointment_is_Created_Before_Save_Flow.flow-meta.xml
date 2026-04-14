@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
+    <assignments>
+        <name>Update_Contact_Lookup_Field</name>
+        <label>Update Contact Lookup Field</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.ContactId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Student__c</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Meeting_Type</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <name>Update_Meeting_Type</name>
+        <label>Update Meeting Type</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Meeting_Type__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>First Meeting - 60 min.</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <name>Update_Meeting_Type_For_30_Minutes</name>
+        <label>Update Meeting Type For 30 Minutes</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Meeting_Type__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Regular Meeting - 30 min.</stringValue>
+            </value>
+        </assignmentItems>
+    </assignments>
+    <assignments>
+        <name>Update_Student_Lookup_Field</name>
+        <label>Update Student Lookup Field</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Record.Student__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ContactId</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Meeting_Type</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <name>Check_For_Student_Contact</name>
+        <label>Check For Student/Contact</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Meeting_Type</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>Student_Needs_To_Be_Updated</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Student__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.ContactId</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Student_Lookup_Field</targetReference>
+            </connector>
+            <label>Student Needs To Be Updated</label>
+        </rules>
+        <rules>
+            <name>Contact_Needs_To_Be_Updated</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.ContactId</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Student__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Contact_Lookup_Field</targetReference>
+            </connector>
+            <label>Contact Needs To Be Updated</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Meeting_Type</name>
+        <label>Meeting Type?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>First_Meeting_60_Min</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.WorkType.EstimatedDuration</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <numberValue>60.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Meeting_Type</targetReference>
+            </connector>
+            <label>First Meeting - 60 Min</label>
+        </rules>
+        <rules>
+            <name>Regular_Meeting_30_min</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.WorkType.EstimatedDuration</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <numberValue>30.0</numberValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Meeting_Type_For_30_Minutes</targetReference>
+            </connector>
+            <label>Regular Meeting - 30 min.</label>
+        </rules>
+    </decisions>
+    <description>Updates ContactId or Student Lookup
+Flow that updates the meeting type based on duration and Updates the Student Contact field (which is key to meeting record visibility).</description>
+    <environments>Default</environments>
+    <interviewLabel>Service Appointment is Created (Before Save) Flow {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Service Appointment is Created (Before Save) Flow</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Check_For_Student_Contact</targetReference>
+        </connector>
+        <object>ServiceAppointment</object>
+        <recordTriggerType>Create</recordTriggerType>
+        <triggerType>RecordBeforeSave</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>62.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightningCommunity__Page</target>
+        <target>lightningCommunity__Default</target>
+    </targets>
+    <masterLabel>Guest Reschedule Cancel</masterLabel>
+    <description>External-facing component for families to cancel or reschedule IC appointments via secure token link. Deployed on Salesforce Site public page.</description>
+</LightningComponentBundle>
