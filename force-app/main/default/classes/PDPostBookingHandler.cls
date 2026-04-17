@@ -103,8 +103,8 @@ public with sharing class PDPostBookingHandler {
                 sa.Meeting_Type__c = meetingType;
                 sa.Subject         = meetingType + ' - Zenith Prep Academy';
                 sa.OwnerId         = pd.RelatedRecordId;
-                tryPut(sa, 'Opportunity__c', opp.Id);
-                tryPut(sa, 'Program_Director__c', pd.RelatedRecordId);
+                sa.Opportunity__c = opp.Id;
+                sa.Program_Director__c = pd.RelatedRecordId;
                 update sa;
 
                 AssignedResource ar = new AssignedResource();
