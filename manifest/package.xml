@@ -26,7 +26,6 @@
         <members>Lead.Assigned_PD__c</members>
         <members>Lead.IC_No_Show_Count__c</members>
         <members>Opportunity.Assigned_FSS__c</members>
-        <members>Opportunity.Assigned_PD__c</members>
         <members>Opportunity.Billing_Setup_Complete__c</members>
         <members>Opportunity.First_Payment_Received__c</members>
         <members>Opportunity.LeadId__c</members>

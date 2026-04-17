@@ -101,7 +101,7 @@ private class PDSchedulerHandlersTest {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
         ServiceResource pd2 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test2' LIMIT 1];
 
-        opp.Assigned_PD__c = pd2.Id;
+        opp.Program_Director__c = pd2.RelatedRecordId;
         update opp;
 
         PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
@@ -213,8 +213,8 @@ private class PDSchedulerHandlersTest {
         ServiceResource pd3 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test3' LIMIT 1];
         System.assertEquals(pd3.Id, results[0].serviceResourceId, 'Should select PD with lowest load');
 
-        Opportunity updOpp = [SELECT Assigned_PD__c, Program_Director__c, StageName FROM Opportunity WHERE Id=:opp.Id];
-        System.assertEquals(pd3.Id, updOpp.Assigned_PD__c, 'PD ServiceResource should be stamped on Opportunity');
+        Opportunity updOpp = [SELECT Program_Director__c, StageName FROM Opportunity WHERE Id=:opp.Id];
+        System.assertEquals(pd3.RelatedRecordId, updOpp.Program_Director__c, 'PD User should be stamped on Opportunity');
         System.assertEquals('SOM Scheduled', updOpp.StageName, 'Stage should update');
 
         ServiceResource updPD = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id=:pd3.Id];
@@ -234,7 +234,7 @@ private class PDSchedulerHandlersTest {
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 2' LIMIT 1];
         WorkType wt = [SELECT Id FROM WorkType WHERE Name='PD Follow-up - 30min' LIMIT 1];
 
-        opp.Assigned_PD__c = pd2.Id;
+        opp.Program_Director__c = pd2.RelatedRecordId;
         opp.StageName = 'SOM Scheduled';
         update opp;
 
@@ -273,7 +273,7 @@ private class PDSchedulerHandlersTest {
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 1' LIMIT 1];
         WorkType wt = [SELECT Id FROM WorkType WHERE Name='PD SOM Meeting - 1hr' LIMIT 1];
 
-        opp.Assigned_PD__c = pd1.Id;
+        opp.Program_Director__c = pd1.RelatedRecordId;
         update opp;
 
         Contact cont = [SELECT Id FROM Contact LIMIT 1];

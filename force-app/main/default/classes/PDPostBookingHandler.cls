@@ -44,7 +44,7 @@ public with sharing class PDPostBookingHandler {
         ]);
 
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Assigned_PD__c, Program_Director__c, StageName, AccountId
+            SELECT Id, Program_Director__c, StageName, AccountId
             FROM Opportunity
             WHERE Id IN :oppIds
         ]);
@@ -92,10 +92,10 @@ public with sharing class PDPostBookingHandler {
                     }
                 }
 
-                if (stickyResourceId == null && opp.Assigned_PD__c != null) {
+                if (stickyResourceId == null && opp.Program_Director__c != null) {
                     List<ServiceResource> oppSR = [
                         SELECT Id FROM ServiceResource
-                        WHERE Id = :opp.Assigned_PD__c AND IsActive = true LIMIT 1
+                        WHERE RelatedRecordId = :opp.Program_Director__c AND IsActive = true LIMIT 1
                     ];
                     if (!oppSR.isEmpty()) {
                         stickyResourceId = oppSR[0].Id;
@@ -153,10 +153,6 @@ public with sharing class PDPostBookingHandler {
 
                 Boolean oppChanged = false;
 
-                if (opp.Assigned_PD__c == null) {
-                    opp.Assigned_PD__c = pd.Id;
-                    oppChanged = true;
-                }
                 if (opp.Program_Director__c == null) {
                     opp.Program_Director__c = pd.RelatedRecordId;
                     oppChanged = true;

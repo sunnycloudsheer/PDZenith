@@ -258,13 +258,13 @@ public without sharing class PDSchedulingConfigHandler {
 
         if (stickyResourceId == null) {
             List<Opportunity> opps = [
-                SELECT Assigned_PD__c FROM Opportunity
+                SELECT Program_Director__c FROM Opportunity
                 WHERE Id = :opportunityId LIMIT 1
             ];
-            if (!opps.isEmpty() && opps[0].Assigned_PD__c != null) {
+            if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
                 List<ServiceResource> oppSR = [
                     SELECT Id FROM ServiceResource
-                    WHERE Id = :opps[0].Assigned_PD__c AND IsActive = true LIMIT 1
+                    WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1
                 ];
                 if (!oppSR.isEmpty()) {
                     stickyResourceId = oppSR[0].Id;

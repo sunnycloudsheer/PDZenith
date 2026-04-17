@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
     <types>
-        <members>PDPoolDiscoveryHandler</members>
-        <members>PDSlotAssignmentHandler</members>
+        <members>pdTimeslotPicker</members>
+        <name>LightningComponentBundle</name>
+    </types>
+    <types>
+        <members>PDAvailabilityController</members>
         <name>ApexClass</name>
     </types>
-    <version>65.0</version>
+    <types>
+        <members>Opportunity.Assigned_PD__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>66.0</version>
 </Package>
