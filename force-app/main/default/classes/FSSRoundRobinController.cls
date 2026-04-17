@@ -1,6 +1,6 @@
 public without sharing class FSSRoundRobinController {
 
-    private static final String FSS_ROLE = 'Family Success Specialist';
+    private static final String FSS_PROFILE_NAME = 'FSS Onboarding';
 
     public class FSSResult {
         @InvocableVariable(label='FSS User Id')
@@ -21,7 +21,7 @@ public without sharing class FSSRoundRobinController {
 
     @InvocableMethod(
         label='Get Next FSS (Round Robin)'
-        description='Selects the next Family Success Specialist via weighted round-robin based on Appointment_Count__c / Weight__c.'
+        description='Selects the next Family Success Specialist via weighted round-robin. Finds users with FSS Onboarding profile, their active ServiceResources with active territory memberships.'
         category='Scheduling'
     )
     public static List<FSSResult> getNextFSS(List<List<String>> dummyInput) {
@@ -29,29 +29,42 @@ public without sharing class FSSRoundRobinController {
         FSSResult res = new FSSResult();
 
         try {
+            Set<Id> fssUserIds = new Set<Id>();
+            for (User u : [
+                SELECT Id FROM User
+                WHERE Profile.Name = :FSS_PROFILE_NAME AND IsActive = true
+            ]) {
+                fssUserIds.add(u.Id);
+            }
+            if (fssUserIds.isEmpty()) {
+                throw new AuraHandledException('No active users found with the FSS Onboarding profile.');
+            }
+
             List<ServiceResource> fssResources = [
                 SELECT Id, Name, RelatedRecordId, Appointment_Count__c, Weight__c
                 FROM ServiceResource
-                WHERE Role__c = :FSS_ROLE
-                AND IsActive = true
-                AND RelatedRecordId != null
+                WHERE RelatedRecordId IN :fssUserIds AND IsActive = true
                 ORDER BY CreatedDate ASC
             ];
             if (fssResources.isEmpty()) {
-                throw new AuraHandledException('No active Family Success Specialist Service Resources found.');
+                throw new AuraHandledException('No active Service Resources found for FSS Onboarding users.');
             }
 
-            Set<Id> fssUserIds = new Set<Id>();
+            Set<Id> allSrIds = new Set<Id>();
             for (ServiceResource sr : fssResources) {
-                fssUserIds.add(sr.RelatedRecordId);
+                allSrIds.add(sr.Id);
             }
 
-            Set<Id> activeUserIds = new Set<Id>();
-            for (User u : [
-                SELECT Id FROM User
-                WHERE Id IN :fssUserIds AND IsActive = true
+            Date today = Date.today();
+            Set<Id> resourcesWithTerritory = new Set<Id>();
+            for (ServiceTerritoryMember stm : [
+                SELECT ServiceResourceId FROM ServiceTerritoryMember
+                WHERE ServiceResourceId IN :allSrIds
+                AND EffectiveStartDate <= :today
+                AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+                AND ServiceTerritory.IsActive = true
             ]) {
-                activeUserIds.add(u.Id);
+                resourcesWithTerritory.add(stm.ServiceResourceId);
             }
 
             Id bestId = null;
@@ -59,7 +72,7 @@ public without sharing class FSSRoundRobinController {
             ServiceResource bestSR = null;
 
             for (ServiceResource sr : fssResources) {
-                if (!activeUserIds.contains(sr.RelatedRecordId)) continue;
+                if (!resourcesWithTerritory.contains(sr.Id)) continue;
                 Decimal count  = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
                 Decimal weight = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
                 Decimal load   = count / weight;
@@ -71,7 +84,9 @@ public without sharing class FSSRoundRobinController {
             }
 
             if (bestSR == null) {
-                throw new AuraHandledException('No eligible FSS found with active User.');
+                throw new AuraHandledException(
+                    'No fully configured FSS found. Each FSS needs: active User with FSS Onboarding profile, active Service Resource, and active Service Territory membership.'
+                );
             }
 
             bestSR.Appointment_Count__c = (bestSR.Appointment_Count__c != null)
