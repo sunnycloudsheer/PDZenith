@@ -17,28 +17,6 @@
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
     <decisions>
-        <name>Check_Already_Has_FSS</name>
-        <label>Already Has FSS?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Get_Next_FSS</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No FSS — Run Round Robin</defaultConnectorLabel>
-        <rules>
-            <name>FSS_Already_Set</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Family_Success_Specialist__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <label>FSS Already Assigned — Skip</label>
-        </rules>
-    </decisions>
-    <decisions>
         <name>Check_FSS_Found</name>
         <label>FSS Found?</label>
         <locationX>0</locationX>
@@ -55,7 +33,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Update_Opportunity_FSS</targetReference>
+                <targetReference>Get_Primary_Contact</targetReference>
             </connector>
             <label>Yes</label>
         </rules>
@@ -77,12 +55,34 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Update_Contact_FSS</targetReference>
+                <targetReference>Check_Contact_Already_Has_FSS</targetReference>
             </connector>
             <label>Yes</label>
         </rules>
     </decisions>
-    <description>When Opportunity Stage moves to Contract Signed, auto-assigns FSS via weighted round-robin. Stamps Family_Success_Specialist__c on Opportunity and primary Contact. Updates Contact Stage__c.</description>
+    <decisions>
+        <name>Check_Contact_Already_Has_FSS</name>
+        <label>Contact Already Has FSS?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Update_Contact_FSS</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No FSS — Assign</defaultConnectorLabel>
+        <rules>
+            <name>Contact_FSS_Already_Set</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Primary_Contact.Contact.Family_Success_Specialist__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <label>FSS Already Assigned — Skip</label>
+        </rules>
+    </decisions>
+    <description>When Opportunity Stage moves to Contract Signed, auto-assigns FSS via weighted round-robin. Stamps Family_Success_Specialist__c and Stage__c on primary Contact.</description>
     <environments>Default</environments>
     <interviewLabel>FSS Auto Assignment On Contract Signed {!$Flow.CurrentDateTime}</interviewLabel>
     <label>FSS Auto Assignment On Contract Signed</label>
@@ -128,22 +128,6 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordUpdates>
-        <name>Update_Opportunity_FSS</name>
-        <label>Stamp FSS on Opportunity</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <connector>
-            <targetReference>Get_Primary_Contact</targetReference>
-        </connector>
-        <inputAssignments>
-            <field>Family_Success_Specialist__c</field>
-            <value>
-                <elementReference>Get_Next_FSS.fssUserId</elementReference>
-            </value>
-        </inputAssignments>
-        <inputReference>$Record</inputReference>
-    </recordUpdates>
-    <recordUpdates>
         <name>Update_Contact_FSS</name>
         <label>Stamp FSS and Stage on Contact</label>
         <locationX>0</locationX>
@@ -174,7 +158,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Check_Already_Has_FSS</targetReference>
+            <targetReference>Get_Next_FSS</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
