@@ -237,13 +237,29 @@ public without sharing class PDSchedulingConfigHandler {
     private static Id getStickyResource(Id opportunityId) {
         if (opportunityId == null) return null;
 
-        List<Opportunity> opps = [
-            SELECT Program_Director__c FROM Opportunity
-            WHERE Id = :opportunityId LIMIT 1
-        ];
-        if (opps.isEmpty() || opps[0].Program_Director__c == null) return null;
+        Id stickyUserId = null;
 
-        Id stickyUserId = opps[0].Program_Director__c;
+        List<OpportunityContactRole> ocrs = [
+            SELECT Contact.Program_Director__c
+            FROM OpportunityContactRole
+            WHERE OpportunityId = :opportunityId AND IsPrimary = true
+            LIMIT 1
+        ];
+        if (!ocrs.isEmpty() && ocrs[0].Contact.Program_Director__c != null) {
+            stickyUserId = ocrs[0].Contact.Program_Director__c;
+        }
+
+        if (stickyUserId == null) {
+            List<Opportunity> opps = [
+                SELECT Program_Director__c FROM Opportunity
+                WHERE Id = :opportunityId LIMIT 1
+            ];
+            if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
+                stickyUserId = opps[0].Program_Director__c;
+            }
+        }
+
+        if (stickyUserId == null) return null;
 
         List<User> uList = [
             SELECT Id FROM User

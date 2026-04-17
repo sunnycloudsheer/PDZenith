@@ -23,7 +23,7 @@ public with sharing class PDPostBookingHandler {
 
     @InvocableMethod(
         label='PD Post-Booking Handler'
-        description='Runs after SA creation. Assigns PD via sticky/round-robin, creates AssignedResource and Event, stamps Opportunity and Contact, increments count.'
+        description='Runs after SA creation. Assigns PD via sticky/round-robin, creates AssignedResource and Event, stamps Opportunity, Contact and SA.'
         category='Scheduling'
     )
     public static List<PostBookingResult> handlePostBooking(List<PostBookingRequest> requests) {
@@ -67,7 +67,26 @@ public with sharing class PDPostBookingHandler {
                     throw new HandlerException('Opportunity not found: ' + req.opportunityId);
                 }
 
-                Id selectedResourceId = selectPD(opp, sa.SchedStartTime, sa.SchedEndTime);
+                Id contactId = null;
+                Id stickyUserId = null;
+                List<OpportunityContactRole> ocrs = [
+                    SELECT ContactId, Contact.Program_Director__c
+                    FROM OpportunityContactRole
+                    WHERE OpportunityId = :opp.Id AND IsPrimary = true
+                    LIMIT 1
+                ];
+                if (!ocrs.isEmpty()) {
+                    contactId = ocrs[0].ContactId;
+                    if (ocrs[0].Contact.Program_Director__c != null) {
+                        stickyUserId = ocrs[0].Contact.Program_Director__c;
+                    }
+                }
+
+                if (stickyUserId == null && opp.Program_Director__c != null) {
+                    stickyUserId = opp.Program_Director__c;
+                }
+
+                Id selectedResourceId = selectPD(stickyUserId, sa.SchedStartTime, sa.SchedEndTime);
                 if (selectedResourceId == null) {
                     throw new HandlerException(
                         'No available Program Director found for the selected time slot. Please try a different time.'
@@ -93,17 +112,6 @@ public with sharing class PDPostBookingHandler {
                 ar.ServiceResourceId    = pd.Id;
                 insert ar;
 
-                Id contactId = null;
-                List<OpportunityContactRole> ocrs = [
-                    SELECT ContactId FROM OpportunityContactRole
-                    WHERE OpportunityId = :opp.Id
-                    AND IsPrimary = true
-                    LIMIT 1
-                ];
-                if (!ocrs.isEmpty()) {
-                    contactId = ocrs[0].ContactId;
-                }
-
                 try {
                     Event evt         = new Event();
                     evt.Subject       = meetingType + ' - Zenith Prep Academy';
@@ -127,7 +135,7 @@ public with sharing class PDPostBookingHandler {
                     System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
                 }
 
-                Boolean isFirstAssignment = (opp.Program_Director__c == null);
+                Boolean isFirstAssignment = (stickyUserId == null);
                 Boolean oppChanged = false;
 
                 if (isFirstAssignment) {
@@ -171,24 +179,23 @@ public with sharing class PDPostBookingHandler {
         return results;
     }
 
-    private static Id selectPD(Opportunity opp, DateTime startDT, DateTime endDT) {
-        if (opp.Program_Director__c != null) {
-            List<ServiceResource> stickyCheck = [
-                SELECT Id, RelatedRecordId FROM ServiceResource
-                WHERE RelatedRecordId = :opp.Program_Director__c
+    private static Id selectPD(Id stickyUserId, DateTime startDT, DateTime endDT) {
+        if (stickyUserId != null) {
+            List<User> pdUser = [
+                SELECT Id FROM User
+                WHERE Id = :stickyUserId
+                AND Profile.Name = :PD_PROFILE_NAME
                 AND IsActive = true
                 LIMIT 1
             ];
-            if (!stickyCheck.isEmpty()) {
-                List<User> pdUser = [
-                    SELECT Id FROM User
-                    WHERE Id = :stickyCheck[0].RelatedRecordId
-                    AND Profile.Name = :PD_PROFILE_NAME
-                    AND IsActive = true
+            if (!pdUser.isEmpty()) {
+                List<ServiceResource> stickyCheck = [
+                    SELECT Id FROM ServiceResource
+                    WHERE RelatedRecordId = :stickyUserId AND IsActive = true
                     LIMIT 1
                 ];
-                if (!pdUser.isEmpty()) {
-                    if (isResourceAvailable(stickyCheck[0].Id, stickyCheck[0].RelatedRecordId, startDT, endDT)) {
+                if (!stickyCheck.isEmpty()) {
+                    if (isResourceAvailable(stickyCheck[0].Id, stickyUserId, startDT, endDT)) {
                         return stickyCheck[0].Id;
                     }
                 }
