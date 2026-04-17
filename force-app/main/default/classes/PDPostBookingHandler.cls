@@ -44,7 +44,7 @@ public with sharing class PDPostBookingHandler {
         ]);
 
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Program_Director__c, StageName, AccountId
+            SELECT Id, Assigned_PD__c, Program_Director__c, StageName, AccountId
             FROM Opportunity
             WHERE Id IN :oppIds
         ]);
@@ -68,7 +68,7 @@ public with sharing class PDPostBookingHandler {
                 }
 
                 Id contactId = null;
-                Id stickyUserId = null;
+                Id stickyResourceId = null;
                 Boolean contactNeedsPD = false;
                 List<OpportunityContactRole> ocrs = [
                     SELECT ContactId, Contact.Program_Director__c
@@ -79,17 +79,30 @@ public with sharing class PDPostBookingHandler {
                 if (!ocrs.isEmpty()) {
                     contactId = ocrs[0].ContactId;
                     if (ocrs[0].Contact.Program_Director__c != null) {
-                        stickyUserId = ocrs[0].Contact.Program_Director__c;
+                        List<ServiceResource> conSR = [
+                            SELECT Id FROM ServiceResource
+                            WHERE RelatedRecordId = :ocrs[0].Contact.Program_Director__c
+                            AND IsActive = true LIMIT 1
+                        ];
+                        if (!conSR.isEmpty()) {
+                            stickyResourceId = conSR[0].Id;
+                        }
                     } else {
                         contactNeedsPD = true;
                     }
                 }
 
-                if (stickyUserId == null && opp.Program_Director__c != null) {
-                    stickyUserId = opp.Program_Director__c;
+                if (stickyResourceId == null && opp.Assigned_PD__c != null) {
+                    List<ServiceResource> oppSR = [
+                        SELECT Id FROM ServiceResource
+                        WHERE Id = :opp.Assigned_PD__c AND IsActive = true LIMIT 1
+                    ];
+                    if (!oppSR.isEmpty()) {
+                        stickyResourceId = oppSR[0].Id;
+                    }
                 }
 
-                Id selectedResourceId = selectPD(stickyUserId, sa.SchedStartTime, sa.SchedEndTime);
+                Id selectedResourceId = selectPD(stickyResourceId, sa.SchedStartTime, sa.SchedEndTime);
                 if (selectedResourceId == null) {
                     throw new HandlerException(
                         'No available Program Director found for the selected time slot. Please try a different time.'
@@ -140,6 +153,10 @@ public with sharing class PDPostBookingHandler {
 
                 Boolean oppChanged = false;
 
+                if (opp.Assigned_PD__c == null) {
+                    opp.Assigned_PD__c = pd.Id;
+                    oppChanged = true;
+                }
                 if (opp.Program_Director__c == null) {
                     opp.Program_Director__c = pd.RelatedRecordId;
                     oppChanged = true;
@@ -181,24 +198,23 @@ public with sharing class PDPostBookingHandler {
         return results;
     }
 
-    private static Id selectPD(Id stickyUserId, DateTime startDT, DateTime endDT) {
-        if (stickyUserId != null) {
-            List<User> pdUser = [
-                SELECT Id FROM User
-                WHERE Id = :stickyUserId
-                AND Profile.Name = :PD_PROFILE_NAME
-                AND IsActive = true
+    private static Id selectPD(Id stickyResourceId, DateTime startDT, DateTime endDT) {
+        if (stickyResourceId != null) {
+            List<ServiceResource> stickyCheck = [
+                SELECT Id, RelatedRecordId FROM ServiceResource
+                WHERE Id = :stickyResourceId AND IsActive = true
                 LIMIT 1
             ];
-            if (!pdUser.isEmpty()) {
-                List<ServiceResource> stickyCheck = [
-                    SELECT Id FROM ServiceResource
-                    WHERE RelatedRecordId = :stickyUserId AND IsActive = true
-                    LIMIT 1
+            if (!stickyCheck.isEmpty() && stickyCheck[0].RelatedRecordId != null) {
+                List<User> pdUser = [
+                    SELECT Id FROM User
+                    WHERE Id = :stickyCheck[0].RelatedRecordId
+                    AND Profile.Name = :PD_PROFILE_NAME
+                    AND IsActive = true LIMIT 1
                 ];
-                if (!stickyCheck.isEmpty()) {
-                    if (isResourceAvailable(stickyCheck[0].Id, stickyUserId, startDT, endDT)) {
-                        return stickyCheck[0].Id;
+                if (!pdUser.isEmpty()) {
+                    if (isResourceAvailable(stickyResourceId, stickyCheck[0].RelatedRecordId, startDT, endDT)) {
+                        return stickyResourceId;
                     }
                 }
             }
