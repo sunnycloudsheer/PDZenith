@@ -10,9 +10,6 @@
         <connector>
             <targetReference>Check_FSS_Found</targetReference>
         </connector>
-        <faultConnector>
-            <targetReference>FSS_Assignment_Error</targetReference>
-        </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
         <nameSegment>FSSRoundRobinController</nameSegment>
         <storeOutputAutomatically>true</storeOutputAutomatically>
@@ -46,9 +43,6 @@
         <label>FSS Found?</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>FSS_Assignment_Error</targetReference>
-        </defaultConnector>
         <defaultConnectorLabel>No FSS Found</defaultConnectorLabel>
         <rules>
             <name>Yes_FSS_Found</name>
@@ -62,6 +56,28 @@
             </conditions>
             <connector>
                 <targetReference>Update_Opportunity_FSS</targetReference>
+            </connector>
+            <label>Yes</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Contact_Found</name>
+        <label>Contact Found?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>No Contact Found</defaultConnectorLabel>
+        <rules>
+            <name>Contact_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Primary_Contact</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Contact_FSS</targetReference>
             </connector>
             <label>Yes</label>
         </rules>
@@ -111,28 +127,6 @@
         <object>OpportunityContactRole</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
-    <decisions>
-        <name>Check_Contact_Found</name>
-        <label>Contact Found?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnectorLabel>No Contact Found</defaultConnectorLabel>
-        <rules>
-            <name>Contact_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Primary_Contact</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Update_Contact_FSS</targetReference>
-            </connector>
-            <label>Yes</label>
-        </rules>
-    </decisions>
     <recordUpdates>
         <name>Update_Opportunity_FSS</name>
         <label>Stamp FSS on Opportunity</label>
@@ -176,30 +170,6 @@
         </inputAssignments>
         <object>Contact</object>
     </recordUpdates>
-    <screens>
-        <name>FSS_Assignment_Error</name>
-        <label>FSS Assignment Error</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>FSSErrorMsg</name>
-            <fieldText>&lt;p&gt;&lt;strong&gt;Could not assign a Family Success Specialist. Please contact the administrator.&lt;/strong&gt;&lt;/p&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
     <start>
         <locationX>0</locationX>
         <locationY>0</locationY>
