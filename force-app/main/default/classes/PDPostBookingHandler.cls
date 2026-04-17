@@ -69,6 +69,7 @@ public with sharing class PDPostBookingHandler {
 
                 Id contactId = null;
                 Id stickyUserId = null;
+                Boolean contactNeedsPD = false;
                 List<OpportunityContactRole> ocrs = [
                     SELECT ContactId, Contact.Program_Director__c
                     FROM OpportunityContactRole
@@ -79,6 +80,8 @@ public with sharing class PDPostBookingHandler {
                     contactId = ocrs[0].ContactId;
                     if (ocrs[0].Contact.Program_Director__c != null) {
                         stickyUserId = ocrs[0].Contact.Program_Director__c;
+                    } else {
+                        contactNeedsPD = true;
                     }
                 }
 
@@ -135,10 +138,9 @@ public with sharing class PDPostBookingHandler {
                     System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
                 }
 
-                Boolean isFirstAssignment = (stickyUserId == null);
                 Boolean oppChanged = false;
 
-                if (isFirstAssignment) {
+                if (opp.Program_Director__c == null) {
                     opp.Program_Director__c = pd.RelatedRecordId;
                     oppChanged = true;
                 }
@@ -150,7 +152,7 @@ public with sharing class PDPostBookingHandler {
                     update opp;
                 }
 
-                if (isFirstAssignment && contactId != null) {
+                if (contactNeedsPD && contactId != null) {
                     try {
                         Contact con = new Contact(Id = contactId);
                         con.Program_Director__c = pd.RelatedRecordId;
