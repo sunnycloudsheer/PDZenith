@@ -1,4 +1,4 @@
-public with sharing class PDPostBookingHandler {
+public without sharing class PDPostBookingHandler {
 
     private static final String PD_PROFILE_NAME = 'Program Director';
 
