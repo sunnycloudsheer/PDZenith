@@ -23,7 +23,7 @@ public without sharing class PDPostBookingHandler {
 
     @InvocableMethod(
         label='PD Post-Booking Handler'
-        description='Runs after SA creation. Assigns PD via sticky/round-robin, stamps Opp+Contact+SA, creates AssignedResource and Event.'
+        description='Runs after SA creation. Assigns PD via sticky/round-robin, creates AssignedResource and Event, stamps Opportunity, Contact and SA.'
         category='Scheduling'
     )
     public static List<PostBookingResult> handlePostBooking(List<PostBookingRequest> requests) {
@@ -39,34 +39,44 @@ public without sharing class PDPostBookingHandler {
         Map<Id, ServiceAppointment> saMap = new Map<Id, ServiceAppointment>([
             SELECT Id, SchedStartTime, SchedEndTime, ServiceTerritoryId,
                    ParentRecordId, ContactId, AccountId, WorkTypeId
-            FROM ServiceAppointment WHERE Id IN :saIds
+            FROM ServiceAppointment
+            WHERE Id IN :saIds
         ]);
 
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
             SELECT Id, Program_Director__c, StageName, AccountId
-            FROM Opportunity WHERE Id IN :oppIds
+            FROM Opportunity
+            WHERE Id IN :oppIds
         ]);
 
         for (PostBookingRequest req : requests) {
             PostBookingResult res = new PostBookingResult();
             try {
-                Boolean followUp = (req.isFollowUp != null && req.isFollowUp);
-                String meetingType = followUp
+                Boolean followUp    = (req.isFollowUp != null && req.isFollowUp);
+                String  meetingType = followUp
                     ? 'Program Director Follow Up'
                     : 'Program Director - 60 Minutes';
 
                 ServiceAppointment sa = saMap.get(req.serviceAppointmentId);
-                if (sa == null) throw new HandlerException('ServiceAppointment not found: ' + req.serviceAppointmentId);
+                if (sa == null) {
+                    throw new HandlerException('ServiceAppointment not found: ' + req.serviceAppointmentId);
+                }
 
                 Opportunity opp = oppMap.get(req.opportunityId);
-                if (opp == null) throw new HandlerException('Opportunity not found: ' + req.opportunityId);
+                if (opp == null) {
+                    throw new HandlerException('Opportunity not found: ' + req.opportunityId);
+                }
 
                 Id contactId = null;
                 List<OpportunityContactRole> ocrs = [
-                    SELECT ContactId FROM OpportunityContactRole
-                    WHERE OpportunityId = :opp.Id AND IsPrimary = true LIMIT 1
+                    SELECT ContactId
+                    FROM OpportunityContactRole
+                    WHERE OpportunityId = :opp.Id AND IsPrimary = true
+                    LIMIT 1
                 ];
-                if (!ocrs.isEmpty()) contactId = ocrs[0].ContactId;
+                if (!ocrs.isEmpty()) {
+                    contactId = ocrs[0].ContactId;
+                }
 
                 Id stickyResourceId = null;
                 if (opp.Program_Director__c != null) {
@@ -74,133 +84,139 @@ public without sharing class PDPostBookingHandler {
                         SELECT Id FROM ServiceResource
                         WHERE RelatedRecordId = :opp.Program_Director__c AND IsActive = true LIMIT 1
                     ];
-                    if (!oppSR.isEmpty()) stickyResourceId = oppSR[0].Id;
+                    if (!oppSR.isEmpty()) {
+                        stickyResourceId = oppSR[0].Id;
+                    }
                 }
 
                 Id selectedResourceId = selectPD(stickyResourceId, sa.SchedStartTime, sa.SchedEndTime);
                 if (selectedResourceId == null) {
-                    throw new HandlerException('No available Program Director found for the selected time slot.');
+                    throw new HandlerException(
+                        'No available Program Director found for the selected time slot. Please try a different time.'
+                    );
                 }
 
                 ServiceResource pd = [
                     SELECT Id, Name, RelatedRecordId, Appointment_Count__c
-                    FROM ServiceResource WHERE Id = :selectedResourceId LIMIT 1
+                    FROM ServiceResource
+                    WHERE Id = :selectedResourceId
+                    LIMIT 1
                 ];
-                Id pdUserId = pd.RelatedRecordId;
 
-                // ── STEP 1: Stamp Opportunity + Contact FIRST (before any triggered automation) ──
-                Opportunity oppUpd = new Opportunity(Id = opp.Id);
-                oppUpd.Program_Director__c = pdUserId;
-                oppUpd.StageName = 'SOM Scheduled';
-                update oppUpd;
-
-                if (contactId != null) {
-                    Contact conUpd = new Contact(Id = contactId);
-                    conUpd.Program_Director__c = pdUserId;
-                    update conUpd;
-                }
-
-                // ── STEP 2: Update ServiceAppointment ──
                 sa.Meeting_Type__c = meetingType;
-                sa.Subject = meetingType + ' - Zenith Prep Academy';
-                sa.OwnerId = pdUserId;
+                sa.Subject         = meetingType + ' - Zenith Prep Academy';
+                sa.OwnerId         = pd.RelatedRecordId;
                 sa.Opportunity__c = opp.Id;
-                sa.Program_Director__c = pdUserId;
+                sa.Program_Director__c = pd.RelatedRecordId;
 
+                Id pdTerritoryId = null;
                 String durationTag = followUp ? '30' : '60';
-                Id pdTerritoryId = findPDTerritory(pd.Id, pdUserId, durationTag);
-                if (pdTerritoryId != null) sa.ServiceTerritoryId = pdTerritoryId;
+                for (ServiceTerritoryMember stm : [
+                    SELECT ServiceTerritoryId, ServiceTerritory.Name FROM ServiceTerritoryMember
+                    WHERE ServiceResourceId = :pd.Id
+                    AND ServiceTerritory.IsActive = true
+                    AND ServiceTerritory.Name LIKE :('%' + durationTag + ' Min%')
+                    AND ServiceTerritory.Assigned_Service_Resource__c = :pd.RelatedRecordId
+                    AND EffectiveStartDate <= :Date.today()
+                    AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+                    LIMIT 1
+                ]) {
+                    pdTerritoryId = stm.ServiceTerritoryId;
+                }
+                if (pdTerritoryId == null) {
+                    for (ServiceTerritoryMember stm : [
+                        SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                        WHERE ServiceResourceId = :pd.Id
+                        AND ServiceTerritory.IsActive = true
+                        AND TerritoryType = 'P'
+                        AND EffectiveStartDate <= :Date.today()
+                        AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+                        ORDER BY CreatedDate ASC LIMIT 1
+                    ]) {
+                        pdTerritoryId = stm.ServiceTerritoryId;
+                    }
+                }
+                if (pdTerritoryId != null) {
+                    sa.ServiceTerritoryId = pdTerritoryId;
+                }
 
                 update sa;
 
-                // ── STEP 3: Create AssignedResource ──
-                insert new AssignedResource(
-                    ServiceAppointmentId = sa.Id,
-                    ServiceResourceId = pd.Id
-                );
+                AssignedResource ar = new AssignedResource();
+                ar.ServiceAppointmentId = sa.Id;
+                ar.ServiceResourceId    = pd.Id;
+                insert ar;
 
-                // ── STEP 4: Increment Appointment Count ──
+                try {
+                    Event evt         = new Event();
+                    evt.Subject       = meetingType + ' - Zenith Prep Academy';
+                    evt.StartDateTime = sa.SchedStartTime;
+                    evt.EndDateTime   = sa.SchedEndTime;
+                    evt.OwnerId       = pd.RelatedRecordId;
+                    evt.WhatId        = opp.Id;
+                    if (contactId != null) {
+                        evt.WhoId = contactId;
+                    }
+                    evt.ShowAs      = 'Busy';
+                    evt.Location    = 'Zoom';
+                    evt.Description = 'Strategy Overview Meeting scheduled.\n\n'
+                        + 'Program Director: ' + pd.Name + '\n'
+                        + 'Location: Zoom\n\n'
+                        + 'Appointment ID: ' + sa.Id + '\n'
+                        + 'Opportunity: '    + opp.Id;
+                    tryPut(evt, 'Service_Appointment__c', sa.Id);
+                    insert evt;
+                } catch (Exception eventEx) {
+                    System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
+                }
+
                 pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
                     ? pd.Appointment_Count__c + 1 : 1;
                 update pd;
 
-                // ── STEP 5: Create Event (non-critical) ──
-                try {
-                    Event evt = new Event();
-                    evt.Subject = meetingType + ' - Zenith Prep Academy';
-                    evt.StartDateTime = sa.SchedStartTime;
-                    evt.EndDateTime = sa.SchedEndTime;
-                    evt.OwnerId = pdUserId;
-                    evt.WhatId = opp.Id;
-                    if (contactId != null) evt.WhoId = contactId;
-                    evt.ShowAs = 'Busy';
-                    evt.Location = 'Zoom';
-                    evt.Description = 'Program Director: ' + pd.Name + '\nAppointment: ' + sa.Id;
-                    tryPut(evt, 'Service_Appointment__c', sa.Id);
-                    insert evt;
-                } catch (Exception evtEx) {
-                    System.debug(LoggingLevel.WARN, 'Event creation failed: ' + evtEx.getMessage());
+                Id pdUserIdForStamp = pd.RelatedRecordId;
+
+                Opportunity oppForPD = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id FOR UPDATE];
+                oppForPD.Program_Director__c = pdUserIdForStamp;
+                if (oppForPD.StageName != 'SOM Scheduled') {
+                    oppForPD.StageName = 'SOM Scheduled';
+                }
+                update oppForPD;
+
+                if (contactId != null) {
+                    Contact conForPD = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId FOR UPDATE];
+                    conForPD.Program_Director__c = pdUserIdForStamp;
+                    update conForPD;
                 }
 
-                // ── STEP 6: Verify Opp PD persisted (re-stamp if cleared by automation) ──
-                Opportunity oppVerify = [SELECT Id, Program_Director__c FROM Opportunity WHERE Id = :opp.Id LIMIT 1];
-                if (oppVerify.Program_Director__c != pdUserId) {
-                    oppVerify.Program_Director__c = pdUserId;
-                    update oppVerify;
-                }
-
-                res.success = true;
-                res.pdName = pd.Name;
-                res.pdUserId = pdUserId;
+                res.success           = true;
+                res.pdName            = pd.Name;
+                res.pdUserId          = pd.RelatedRecordId;
                 res.serviceResourceId = pd.Id;
 
             } catch (Exception e) {
-                res.success = false;
+                res.success      = false;
                 res.errorMessage = e.getMessage();
             }
             results.add(res);
         }
-        return results;
-    }
 
-    private static Id findPDTerritory(Id resourceId, Id userId, String durationTag) {
-        for (ServiceTerritoryMember stm : [
-            SELECT ServiceTerritoryId FROM ServiceTerritoryMember
-            WHERE ServiceResourceId = :resourceId
-            AND ServiceTerritory.IsActive = true
-            AND ServiceTerritory.Name LIKE :('%' + durationTag + ' Min%')
-            AND ServiceTerritory.Assigned_Service_Resource__c = :userId
-            AND EffectiveStartDate <= :Date.today()
-            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
-            LIMIT 1
-        ]) {
-            return stm.ServiceTerritoryId;
-        }
-        for (ServiceTerritoryMember stm : [
-            SELECT ServiceTerritoryId FROM ServiceTerritoryMember
-            WHERE ServiceResourceId = :resourceId
-            AND ServiceTerritory.IsActive = true
-            AND TerritoryType = 'P'
-            AND EffectiveStartDate <= :Date.today()
-            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
-            ORDER BY CreatedDate ASC LIMIT 1
-        ]) {
-            return stm.ServiceTerritoryId;
-        }
-        return null;
+        return results;
     }
 
     private static Id selectPD(Id stickyResourceId, DateTime startDT, DateTime endDT) {
         if (stickyResourceId != null) {
             List<ServiceResource> stickyCheck = [
                 SELECT Id, RelatedRecordId FROM ServiceResource
-                WHERE Id = :stickyResourceId AND IsActive = true LIMIT 1
+                WHERE Id = :stickyResourceId AND IsActive = true
+                LIMIT 1
             ];
             if (!stickyCheck.isEmpty() && stickyCheck[0].RelatedRecordId != null) {
                 List<User> pdUser = [
                     SELECT Id FROM User
                     WHERE Id = :stickyCheck[0].RelatedRecordId
-                    AND Profile.Name = :PD_PROFILE_NAME AND IsActive = true LIMIT 1
+                    AND Profile.Name = :PD_PROFILE_NAME
+                    AND IsActive = true LIMIT 1
                 ];
                 if (!pdUser.isEmpty()) {
                     if (isResourceAvailable(stickyResourceId, stickyCheck[0].RelatedRecordId, startDT, endDT)) {
@@ -213,37 +229,51 @@ public without sharing class PDPostBookingHandler {
     }
 
     private static Boolean isResourceAvailable(Id resourceId, Id userId, DateTime startDT, DateTime endDT) {
-        if ([SELECT COUNT() FROM AssignedResource
-             WHERE ServiceResourceId = :resourceId
-             AND ServiceAppointment.SchedStartTime < :endDT
-             AND ServiceAppointment.SchedEndTime > :startDT
-             AND ServiceAppointment.Status NOT IN ('Canceled', 'Cannot Complete')] > 0)
-            return false;
+        Integer saConflicts = [
+            SELECT COUNT() FROM AssignedResource
+            WHERE ServiceResourceId = :resourceId
+            AND ServiceAppointment.SchedStartTime < :endDT
+            AND ServiceAppointment.SchedEndTime   > :startDT
+            AND ServiceAppointment.Status NOT IN ('Canceled', 'Cannot Complete')
+        ];
+        if (saConflicts > 0) return false;
 
-        if (userId != null && [SELECT COUNT() FROM Event
-             WHERE OwnerId = :userId
-             AND StartDateTime < :endDT AND EndDateTime > :startDT
-             AND (ShowAs = NULL OR ShowAs != 'Free')] > 0)
-            return false;
+        if (userId != null) {
+            Integer evtConflicts = [
+                SELECT COUNT() FROM Event
+                WHERE OwnerId = :userId
+                AND StartDateTime < :endDT
+                AND EndDateTime   > :startDT
+                AND (ShowAs = NULL OR ShowAs != 'Free')
+            ];
+            if (evtConflicts > 0) return false;
+        }
 
-        if ([SELECT COUNT() FROM ResourceAbsence
-             WHERE ResourceId = :resourceId
-             AND Start < :endDT AND End > :startDT] > 0)
-            return false;
+        Integer absConflicts = [
+            SELECT COUNT() FROM ResourceAbsence
+            WHERE ResourceId = :resourceId
+            AND Start < :endDT
+            AND End   > :startDT
+        ];
+        if (absConflicts > 0) return false;
 
         return true;
     }
 
     private static Id selectByWeightedRoundRobin(DateTime startDT, DateTime endDT) {
         Set<Id> pdUserIds = new Set<Id>();
-        for (User u : [SELECT Id FROM User WHERE Profile.Name = :PD_PROFILE_NAME AND IsActive = true]) {
+        for (User u : [
+            SELECT Id FROM User
+            WHERE Profile.Name = :PD_PROFILE_NAME AND IsActive = true
+        ]) {
             pdUserIds.add(u.Id);
         }
         if (pdUserIds.isEmpty()) return null;
 
         List<ServiceResource> pdResources = [
             SELECT Id, Appointment_Count__c, Weight__c, RelatedRecordId
-            FROM ServiceResource WHERE RelatedRecordId IN :pdUserIds AND IsActive = true
+            FROM ServiceResource
+            WHERE RelatedRecordId IN :pdUserIds AND IsActive = true
             ORDER BY CreatedDate ASC
         ];
         if (pdResources.isEmpty()) return null;
@@ -256,7 +286,7 @@ public without sharing class PDPostBookingHandler {
         }
 
         Date today = Date.today();
-        Set<Id> withTerritory = new Set<Id>();
+        Set<Id> resourcesWithTerritory = new Set<Id>();
         for (ServiceTerritoryMember stm : [
             SELECT ServiceResourceId FROM ServiceTerritoryMember
             WHERE ServiceResourceId IN :allSrIds
@@ -264,28 +294,29 @@ public without sharing class PDPostBookingHandler {
             AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
             AND ServiceTerritory.IsActive = true
         ]) {
-            withTerritory.add(stm.ServiceResourceId);
+            resourcesWithTerritory.add(stm.ServiceResourceId);
         }
 
-        List<ServiceResource> valid = new List<ServiceResource>();
+        List<ServiceResource> validResources = new List<ServiceResource>();
         Set<Id> validIds = new Set<Id>();
         for (ServiceResource sr : pdResources) {
-            if (withTerritory.contains(sr.Id)) {
-                valid.add(sr);
+            if (resourcesWithTerritory.contains(sr.Id)) {
+                validResources.add(sr);
                 validIds.add(sr.Id);
             }
         }
-        if (valid.isEmpty()) return null;
+        if (validResources.isEmpty()) return null;
 
-        Set<Id> busy = new Set<Id>();
+        Set<Id> busyResources = new Set<Id>();
+
         for (AssignedResource arec : [
             SELECT ServiceResourceId FROM AssignedResource
             WHERE ServiceResourceId IN :validIds
             AND ServiceAppointment.SchedStartTime < :endDT
-            AND ServiceAppointment.SchedEndTime > :startDT
+            AND ServiceAppointment.SchedEndTime   > :startDT
             AND ServiceAppointment.Status NOT IN ('Canceled', 'Cannot Complete')
         ]) {
-            busy.add(arec.ServiceResourceId);
+            busyResources.add(arec.ServiceResourceId);
         }
 
         Set<Id> validUserIds = new Set<Id>();
@@ -298,32 +329,40 @@ public without sharing class PDPostBookingHandler {
             for (Event ev : [
                 SELECT OwnerId FROM Event
                 WHERE OwnerId IN :validUserIds
-                AND StartDateTime < :endDT AND EndDateTime > :startDT
+                AND StartDateTime < :endDT
+                AND EndDateTime   > :startDT
                 AND (ShowAs = NULL OR ShowAs != 'Free')
             ]) {
                 busyUsers.add(ev.OwnerId);
             }
             for (Id resId : validIds) {
                 Id uid = resourceToUser.get(resId);
-                if (uid != null && busyUsers.contains(uid)) busy.add(resId);
+                if (uid != null && busyUsers.contains(uid)) {
+                    busyResources.add(resId);
+                }
             }
         }
 
         for (ResourceAbsence ra : [
             SELECT ResourceId FROM ResourceAbsence
-            WHERE ResourceId IN :validIds AND Start < :endDT AND End > :startDT
+            WHERE ResourceId IN :validIds
+            AND Start < :endDT
+            AND End   > :startDT
         ]) {
-            busy.add(ra.ResourceId);
+            busyResources.add(ra.ResourceId);
         }
 
-        Id bestId = null;
+        Id      bestId   = null;
         Decimal bestLoad = null;
-        for (ServiceResource sr : valid) {
-            if (busy.contains(sr.Id)) continue;
-            Decimal count = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
+        for (ServiceResource sr : validResources) {
+            if (busyResources.contains(sr.Id)) continue;
+            Decimal count  = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
             Decimal weight = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
-            Decimal load = count / weight;
-            if (bestLoad == null || load < bestLoad) { bestLoad = load; bestId = sr.Id; }
+            Decimal load   = count / weight;
+            if (bestLoad == null || load < bestLoad) {
+                bestLoad = load;
+                bestId   = sr.Id;
+            }
         }
         return bestId;
     }
