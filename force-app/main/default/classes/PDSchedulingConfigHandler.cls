@@ -153,6 +153,10 @@ public without sharing class PDSchedulingConfigHandler {
                     throw new AuraHandledException('No Service Territory found for the selected Program Director.');
                 }
 
+                if (!isSticky && cachedAllResourceIds != null) {
+                    ensureAllResourcesInTerritory(targetTerritoryId, getAllResourceIdSet());
+                }
+
                 if (targetWorkTypeId == null) {
                     try {
                         for (ServiceTerritoryWorkType stwt : [
@@ -389,6 +393,39 @@ public without sharing class PDSchedulingConfigHandler {
         }
         cachedAllResourceIds = String.join(allIds, ',');
         return bestId;
+    }
+
+    private static void ensureAllResourcesInTerritory(Id territoryId, Set<Id> resourceIds) {
+        try {
+            Date today = Date.today();
+            Set<Id> alreadyMembers = new Set<Id>();
+            for (ServiceTerritoryMember stm : [
+                SELECT ServiceResourceId FROM ServiceTerritoryMember
+                WHERE ServiceTerritoryId = :territoryId
+                AND ServiceResourceId IN :resourceIds
+                AND EffectiveStartDate <= :today
+                AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+            ]) {
+                alreadyMembers.add(stm.ServiceResourceId);
+            }
+
+            List<ServiceTerritoryMember> toInsert = new List<ServiceTerritoryMember>();
+            for (Id srId : resourceIds) {
+                if (!alreadyMembers.contains(srId)) {
+                    toInsert.add(new ServiceTerritoryMember(
+                        ServiceTerritoryId = territoryId,
+                        ServiceResourceId  = srId,
+                        EffectiveStartDate = today,
+                        TerritoryType      = 'S'
+                    ));
+                }
+            }
+            if (!toInsert.isEmpty()) {
+                insert toInsert;
+            }
+        } catch (Exception e) {
+            System.debug(LoggingLevel.WARN, 'ensureAllResourcesInTerritory failed: ' + e.getMessage());
+        }
     }
 
     private static Id findTerritoryWithMostSlots(Set<Id> territoryIds) {
