@@ -513,6 +513,11 @@
     </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
     <formulas>
+        <name>pdDisplayName</name>
+        <dataType>String</dataType>
+        <expression>IF(ISBLANK({!Get_Opportunity_Record.Program_Director__c}), &quot;Will be assigned after booking&quot;, {!Get_PD_Service_Resource.Name})</expression>
+    </formulas>
+    <formulas>
         <name>endTime</name>
         <dataType>DateTime</dataType>
         <expression>{!ServiceAppointment.SchedEndTime}</expression>
@@ -1047,7 +1052,7 @@
             <name>PDNameField</name>
             <dataType>String</dataType>
             <defaultValue>
-                <elementReference>Get_PD_Service_Resource.Name</elementReference>
+                <elementReference>pdDisplayName</elementReference>
             </defaultValue>
             <fieldText>Program Director Name</fieldText>
             <fieldType>InputField</fieldType>
