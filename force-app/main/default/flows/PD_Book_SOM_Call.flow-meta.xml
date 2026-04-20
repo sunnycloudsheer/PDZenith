@@ -382,12 +382,19 @@
         <defaultConnectorLabel>First SOM (default)</defaultConnectorLabel>
         <rules>
             <name>Is_Follow_Up</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>or</conditionLogic>
             <conditions>
                 <leftValueReference>varSelectedAction</leftValueReference>
                 <operator>EqualTo</operator>
                 <rightValue>
                     <stringValue>follow_up</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Follow-up Call (30 min)</stringValue>
                 </rightValue>
             </conditions>
             <connector>
@@ -397,12 +404,19 @@
         </rules>
         <rules>
             <name>Is_PD_Link</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>or</conditionLogic>
             <conditions>
                 <leftValueReference>varSelectedAction</leftValueReference>
                 <operator>EqualTo</operator>
                 <rightValue>
                     <stringValue>pd_link</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>PD Scheduling Link</stringValue>
                 </rightValue>
             </conditions>
             <connector>
@@ -412,12 +426,19 @@
         </rules>
         <rules>
             <name>Is_FSS_Link</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>or</conditionLogic>
             <conditions>
                 <leftValueReference>varSelectedAction</leftValueReference>
                 <operator>EqualTo</operator>
                 <rightValue>
                     <stringValue>fss_link</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>FSS Scheduling Link</stringValue>
                 </rightValue>
             </conditions>
             <connector>
