@@ -26,6 +26,9 @@ public without sharing class PDSchedulingConfigHandler {
         @InvocableVariable(label='WorkTypeGroup Id')
         public Id workTypeGroupId;
 
+        @InvocableVariable(label='PD Display Name')
+        public String pdDisplayName;
+
         @InvocableVariable(label='Success')
         public Boolean success;
 
@@ -247,6 +250,12 @@ public without sharing class PDSchedulingConfigHandler {
                 res.serviceTerritoryId = targetTerritoryId;
                 res.workTypeId         = targetWorkTypeId;
                 res.primaryResourceId  = anchorResourceId;
+                if (isSticky) {
+                    List<User> pdUser = [SELECT Name FROM User WHERE Id = :pdUserId LIMIT 1];
+                    res.pdDisplayName = pdUser.isEmpty() ? sr.Name : pdUser[0].Name;
+                } else {
+                    res.pdDisplayName = 'Will be assigned after booking';
+                }
                 res.success            = true;
 
             } catch (Exception e) {

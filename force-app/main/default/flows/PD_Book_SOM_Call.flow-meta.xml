@@ -89,6 +89,10 @@
             <assignToReference>varAllPDResourceIds</assignToReference>
             <name>allResourceIds</name>
         </outputParameters>
+        <outputParameters>
+            <assignToReference>varPDDisplayName</assignToReference>
+            <name>pdDisplayName</name>
+        </outputParameters>
     </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
@@ -512,11 +516,6 @@
         </rules>
     </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
-    <formulas>
-        <name>pdDisplayName</name>
-        <dataType>String</dataType>
-        <expression>IF(ISBLANK({!Get_Opportunity_Record.Program_Director__c}), &quot;Will be assigned after booking&quot;, {!Get_PD_Service_Resource.Name})</expression>
-    </formulas>
     <formulas>
         <name>endTime</name>
         <dataType>DateTime</dataType>
@@ -1052,9 +1051,9 @@
             <name>PDNameField</name>
             <dataType>String</dataType>
             <defaultValue>
-                <elementReference>pdDisplayName</elementReference>
+                <elementReference>varPDDisplayName</elementReference>
             </defaultValue>
-            <fieldText>Program Director Name</fieldText>
+            <fieldText>Program Director</fieldText>
             <fieldType>InputField</fieldType>
             <isReadOnly>
                 <booleanValue>true</booleanValue>
@@ -1433,6 +1432,13 @@
     </variables>
     <variables>
         <name>varPDWorkTypeId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+    <variables>
+        <name>varPDDisplayName</name>
         <dataType>String</dataType>
         <isCollection>false</isCollection>
         <isInput>false</isInput>
