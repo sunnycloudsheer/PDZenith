@@ -138,35 +138,35 @@ public without sharing class PDPostBookingHandler {
                     System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
                 }
 
-                Boolean oppChanged = false;
+                pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
+                    ? pd.Appointment_Count__c + 1 : 1;
+                update pd;
 
-                if (opp.Program_Director__c == null) {
-                    opp.Program_Director__c = pd.RelatedRecordId;
+                Opportunity freshOpp = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id LIMIT 1];
+                Boolean oppChanged = false;
+                if (freshOpp.Program_Director__c == null) {
+                    freshOpp.Program_Director__c = pd.RelatedRecordId;
                     oppChanged = true;
                 }
-                if (opp.StageName != 'SOM Scheduled') {
-                    opp.StageName = 'SOM Scheduled';
+                if (freshOpp.StageName != 'SOM Scheduled') {
+                    freshOpp.StageName = 'SOM Scheduled';
                     oppChanged = true;
                 }
                 if (oppChanged) {
-                    update opp;
+                    update freshOpp;
                 }
 
                 if (contactId != null) {
                     try {
-                        Contact con = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
-                        if (con.Program_Director__c == null) {
-                            con.Program_Director__c = pd.RelatedRecordId;
-                            update con;
+                        Contact freshCon = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
+                        if (freshCon.Program_Director__c == null) {
+                            freshCon.Program_Director__c = pd.RelatedRecordId;
+                            update freshCon;
                         }
                     } catch (Exception ex) {
                         System.debug(LoggingLevel.WARN, 'Contact Program_Director__c update failed: ' + ex.getMessage());
                     }
                 }
-
-                pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
-                    ? pd.Appointment_Count__c + 1 : 1;
-                update pd;
 
                 res.success           = true;
                 res.pdName            = pd.Name;
