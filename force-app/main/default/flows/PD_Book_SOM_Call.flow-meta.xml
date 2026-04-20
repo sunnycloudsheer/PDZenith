@@ -1563,6 +1563,7 @@
             <name>MeetingTypeSelection</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDLink</choiceReferences>
             <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
@@ -1594,6 +1595,7 @@
             <name>MeetingTypeSelectionNoFSS</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>first_som</stringValue>
@@ -1651,6 +1653,7 @@
         <fields>
             <name>MeetingTypeSelectionFollowupFSS</name>
             <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDLink</choiceReferences>
             <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
@@ -1681,6 +1684,7 @@
         <fields>
             <name>MeetingTypeSelectionFollowupOnly</name>
             <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>follow_up</stringValue>
