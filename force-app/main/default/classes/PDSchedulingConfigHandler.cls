@@ -105,13 +105,22 @@ public without sharing class PDSchedulingConfigHandler {
                         ORDER BY CreatedDate ASC
                     ];
 
+                    Set<Id> durationMatchTerritories = new Set<Id>();
                     for (ServiceTerritoryMember stm : stmList) {
                         if (stm.ServiceTerritory.Name.contains(durationLabel + ' Min')
                                 || stm.ServiceTerritory.Name.contains(durationLabel + '-Min')
                                 || stm.ServiceTerritory.Name.contains(durationLabel + 'min')) {
-                            targetTerritoryId = stm.ServiceTerritoryId;
+                            durationMatchTerritories.add(stm.ServiceTerritoryId);
+                        }
+                    }
+
+                    if (isSticky && !durationMatchTerritories.isEmpty()) {
+                        for (Id tId : durationMatchTerritories) {
+                            targetTerritoryId = tId;
                             break;
                         }
+                    } else if (!isSticky && !durationMatchTerritories.isEmpty()) {
+                        targetTerritoryId = findTerritoryWithMostSlots(durationMatchTerritories);
                     }
 
                     if (targetTerritoryId == null && !stmList.isEmpty()) {
@@ -380,6 +389,41 @@ public without sharing class PDSchedulingConfigHandler {
         }
         cachedAllResourceIds = String.join(allIds, ',');
         return bestId;
+    }
+
+    private static Id findTerritoryWithMostSlots(Set<Id> territoryIds) {
+        Map<Id, Id> territoryToOH = new Map<Id, Id>();
+        for (ServiceTerritory st : [
+            SELECT Id, OperatingHoursId FROM ServiceTerritory
+            WHERE Id IN :territoryIds AND OperatingHoursId != null
+        ]) {
+            territoryToOH.put(st.Id, st.OperatingHoursId);
+        }
+        if (territoryToOH.isEmpty()) return territoryIds.iterator().next();
+
+        Set<Id> ohIds = new Set<Id>(territoryToOH.values());
+        Map<Id, Integer> ohSlotCount = new Map<Id, Integer>();
+        for (TimeSlot ts : [
+            SELECT OperatingHoursId FROM TimeSlot
+            WHERE OperatingHoursId IN :ohIds
+        ]) {
+            Integer cnt = ohSlotCount.containsKey(ts.OperatingHoursId)
+                ? ohSlotCount.get(ts.OperatingHoursId) + 1 : 1;
+            ohSlotCount.put(ts.OperatingHoursId, cnt);
+        }
+
+        Id bestTerritoryId = null;
+        Integer bestCount = 0;
+        for (Id tId : territoryIds) {
+            Id ohId = territoryToOH.get(tId);
+            if (ohId == null) continue;
+            Integer cnt = ohSlotCount.containsKey(ohId) ? ohSlotCount.get(ohId) : 0;
+            if (cnt > bestCount) {
+                bestCount = cnt;
+                bestTerritoryId = tId;
+            }
+        }
+        return bestTerritoryId != null ? bestTerritoryId : territoryIds.iterator().next();
     }
 
     private static Set<Id> getAllResourceIdSet() {
