@@ -278,13 +278,46 @@ public without sharing class GuestSchedulerController {
         return cfg;
     }
 
+    private static Id findStickyResourceForContact(String contactId, String opportunityId) {
+        if (String.isNotBlank(opportunityId)) {
+            try {
+                List<Opportunity> opps = [SELECT Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+                if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
+                    List<ServiceResource> srs = [SELECT Id FROM ServiceResource
+                        WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1];
+                    if (!srs.isEmpty()) return srs[0].Id;
+                }
+            } catch (Exception e) { }
+        }
+        if (String.isNotBlank(contactId)) {
+            try {
+                List<Contact> cons = [SELECT Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
+                if (!cons.isEmpty() && cons[0].Program_Director__c != null) {
+                    List<ServiceResource> srs = [SELECT Id FROM ServiceResource
+                        WHERE RelatedRecordId = :cons[0].Program_Director__c AND IsActive = true LIMIT 1];
+                    if (!srs.isEmpty()) return srs[0].Id;
+                }
+            } catch (Exception e) { }
+        }
+        return null;
+    }
+
     @AuraEnabled
-    public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType) {
+    public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType,
+                                                        String contactId, String opportunityId) {
         Map<String, Object> out = new Map<String, Object>();
         try {
             DiscoveredConfig cfg = discover(bookingType);
             Integer targetDays = (openWindowDays != null && openWindowDays > 0)
                 ? openWindowDays : cfg.timeframeEndDays;
+
+            Boolean isSticky = false;
+            Id stickyResourceId = null;
+            if (cfg.bookingType == 'PD') {
+                stickyResourceId = findStickyResourceForContact(contactId, opportunityId);
+                isSticky = (stickyResourceId != null);
+            }
+
             out.put('bookingType', cfg.bookingType);
             out.put('workTypeId', cfg.workTypeId);
             out.put('workTypeName', cfg.workTypeName);
@@ -301,6 +334,8 @@ public without sharing class GuestSchedulerController {
             out.put('city', cfg.city);
             out.put('state', cfg.state);
             out.put('meetingType', MEETING_TYPE_MAP.get(cfg.bookingType));
+            out.put('isSticky', isSticky);
+            out.put('stickyResourceId', stickyResourceId);
             out.put('availableDates', computeAvailableDates(cfg, targetDays));
             out.put('success', true);
         } catch (Exception e) {
@@ -311,7 +346,8 @@ public without sharing class GuestSchedulerController {
     }
 
     @AuraEnabled
-    public static List<Map<String, String>> getAvailableSlots(String dateStr, String bookingType) {
+    public static List<Map<String, String>> getAvailableSlots(String dateStr, String bookingType,
+                                                               String contactId, String opportunityId) {
         List<Map<String, String>> result = new List<Map<String, String>>();
         try {
             DiscoveredConfig cfg = discover(bookingType);
@@ -324,6 +360,18 @@ public without sharing class GuestSchedulerController {
             Map<String, List<TimeSlot>> slotsByDay = loadOperatingHours(cfg.operatingHoursId);
             ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
             if (rb.resourceIds.isEmpty()) return result;
+
+            if (cfg.bookingType == 'PD') {
+                Id stickyId = findStickyResourceForContact(contactId, opportunityId);
+                if (stickyId != null && rb.resourceIds.contains(stickyId)) {
+                    ResourceBundle stickyRb = new ResourceBundle();
+                    stickyRb.resourceIds.add(stickyId);
+                    stickyRb.orderedResourceIds.add(stickyId);
+                    stickyRb.resourceToUserId.put(stickyId, rb.resourceToUserId.get(stickyId));
+                    stickyRb.resourceToTerritoryId.put(stickyId, rb.resourceToTerritoryId.get(stickyId));
+                    rb = stickyRb;
+                }
+            }
 
             DateTime dayStart = localToUtc(reqDate, 0, tz);
             DateTime dayEnd = localToUtc(reqDate.addDays(1), 0, tz);

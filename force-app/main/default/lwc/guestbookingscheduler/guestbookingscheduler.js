@@ -122,7 +122,10 @@ export default class GuestBookingScheduler extends LightningElement {
     async _init() {
         try {
             const windowDays = this.isICMode ? this.openWindowDays : 0;
-            const cfg = await getBookingConfig({ openWindowDays: windowDays, bookingType: this._resolvedType });
+            const cfg = await getBookingConfig({
+                openWindowDays: windowDays, bookingType: this._resolvedType,
+                contactId: this._contactId, opportunityId: this._opportunityId
+            });
             if (!cfg.success) {
                 this.fatalErrorDetail = cfg.error || 'Configuration error';
                 this.hasFatalError = true;
@@ -207,7 +210,10 @@ export default class GuestBookingScheduler extends LightningElement {
         this.isSlotsLoading = true;
         this.timeSlots = [];
         try {
-            const slots = await getAvailableSlots({ dateStr: this.selectedDate, bookingType: this._resolvedType });
+            const slots = await getAvailableSlots({
+                dateStr: this.selectedDate, bookingType: this._resolvedType,
+                contactId: this._contactId, opportunityId: this._opportunityId
+            });
             this.timeSlots = (slots || []).map(s => ({
                 startUtc: s.startUtc, endUtc: s.endUtc,
                 displayTime: this._fmtTime(s.startUtc)
