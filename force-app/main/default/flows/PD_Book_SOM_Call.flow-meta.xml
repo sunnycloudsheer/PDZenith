@@ -517,9 +517,34 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Select_Followup_Screen</targetReference>
+                <targetReference>Check_Stage_For_FSS</targetReference>
             </connector>
             <label>First SOM Exists</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Stage_For_FSS</name>
+        <label>Stage Contract Signed?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Force_Follow_Up</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Contract Signed - Auto Follow-up</defaultConnectorLabel>
+        <rules>
+            <name>Is_Contract_Signed_FSS</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Contract Signed</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Select_Followup_Screen</targetReference>
+            </connector>
+            <label>Contract Signed - Show FSS Link</label>
         </rules>
     </decisions>
     <decisions>
@@ -1674,7 +1699,6 @@
         <fields>
             <name>MeetingTypeSelectionFollowupFSS</name>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choicePDLink</choiceReferences>
             <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
@@ -1705,7 +1729,6 @@
         <fields>
             <name>MeetingTypeSelectionFollowupOnly</name>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choicePDLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>follow_up</stringValue>
