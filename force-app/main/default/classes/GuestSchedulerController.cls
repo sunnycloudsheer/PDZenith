@@ -217,11 +217,20 @@ public without sharing class GuestSchedulerController {
 
         cfg.workTypeId = wt.Id;
         cfg.workTypeName = wt.Name;
-        cfg.durationMinutes = Integer.valueOf(wt.DurationInMinutes);
         cfg.durationType = wt.DurationType;
         cfg.appointmentType = wt.DefaultAppointmentType;
-        cfg.slotIntervalMinutes = (wt.ApptStartTimeIntvlInMin != null && wt.ApptStartTimeIntvlInMin > 0)
-            ? wt.ApptStartTimeIntvlInMin : cfg.durationMinutes;
+
+        if (bType == 'PD') {
+            cfg.durationMinutes = 60;
+            cfg.slotIntervalMinutes = 45;
+        } else if (bType == 'FSS') {
+            cfg.durationMinutes = 30;
+            cfg.slotIntervalMinutes = 30;
+        } else {
+            cfg.durationMinutes = Integer.valueOf(wt.DurationInMinutes);
+            cfg.slotIntervalMinutes = (wt.ApptStartTimeIntvlInMin != null && wt.ApptStartTimeIntvlInMin > 0)
+                ? wt.ApptStartTimeIntvlInMin : cfg.durationMinutes;
+        }
         cfg.timeframeEndDays = DEFAULT_SCAN_DAYS;
         if (wt.TimeframeEnd != null && wt.TimeframeEnd > 0)
             cfg.timeframeEndDays = (wt.TimeFrameEndUnit == 'Days')
@@ -497,7 +506,9 @@ public without sharing class GuestSchedulerController {
         sa.City = cfg.city;
         sa.State = cfg.state;
         if (String.isNotBlank(clientTimezone)) sa.TimeZone = clientTimezone;
-        tryPut(sa, 'Program_Director__c', assignment.userId);
+        if (bType == 'PD') {
+            tryPut(sa, 'Program_Director__c', assignment.userId);
+        }
         if (String.isNotBlank(opportunityId)) tryPut(sa, 'Opportunity__c', (Id) opportunityId);
         insert sa;
 
