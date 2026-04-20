@@ -110,15 +110,31 @@ public without sharing class PDPostBookingHandler {
                 sa.Program_Director__c = pd.RelatedRecordId;
 
                 Id pdTerritoryId = null;
+                String durationTag = followUp ? '30' : '60';
                 for (ServiceTerritoryMember stm : [
-                    SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                    SELECT ServiceTerritoryId, ServiceTerritory.Name FROM ServiceTerritoryMember
                     WHERE ServiceResourceId = :pd.Id
                     AND ServiceTerritory.IsActive = true
+                    AND ServiceTerritory.Name LIKE :('%' + durationTag + ' Min%')
+                    AND ServiceTerritory.Assigned_Service_Resource__c = :pd.RelatedRecordId
                     AND EffectiveStartDate <= :Date.today()
                     AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
-                    ORDER BY CreatedDate DESC LIMIT 1
+                    LIMIT 1
                 ]) {
                     pdTerritoryId = stm.ServiceTerritoryId;
+                }
+                if (pdTerritoryId == null) {
+                    for (ServiceTerritoryMember stm : [
+                        SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                        WHERE ServiceResourceId = :pd.Id
+                        AND ServiceTerritory.IsActive = true
+                        AND TerritoryType = 'P'
+                        AND EffectiveStartDate <= :Date.today()
+                        AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+                        ORDER BY CreatedDate ASC LIMIT 1
+                    ]) {
+                        pdTerritoryId = stm.ServiceTerritoryId;
+                    }
                 }
                 if (pdTerritoryId != null) {
                     sa.ServiceTerritoryId = pdTerritoryId;
