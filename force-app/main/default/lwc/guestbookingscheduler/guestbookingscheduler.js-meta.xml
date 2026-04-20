@@ -21,8 +21,13 @@
                       default="https://www.zenithprepacademy.com/before-your-consultation-video"
                       label="Post-Booking Redirect URL"
                       description="URL to redirect after successful booking confirmation." />
+            <property name="bookingType"
+                      type="String"
+                      default=""
+                      label="Booking Type"
+                      description="PD, FSS, or IC (blank=IC). Leave blank to auto-detect from URL ?type= parameter." />
         </targetConfig>
     </targetConfigs>
     <masterLabel>Guest Booking Scheduler</masterLabel>
-    <description>Fully dynamic round-robin scheduler. All config from Admission Counsellor profile + WorkType fields. Change open window via WorkType Timeframe End — no code needed.</description>
+    <description>Dynamic round-robin scheduler for IC, PD, and FSS bookings. Reads ?type=PD/FSS/IC from URL. IC creates Lead + SA; PD/FSS creates SA only with round-robin assignment.</description>
 </LightningComponentBundle>

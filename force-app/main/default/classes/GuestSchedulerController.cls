@@ -2,9 +2,22 @@ public without sharing class GuestSchedulerController {
 
     private static final String ADMISSION_PROFILE_NAME     = 'Admission Counsellor';
     private static final String ADMISSION_PROFILE_NAME_ALT = 'Admission Counselor';
+    private static final String PD_PROFILE_NAME            = 'Program Director';
+    private static final String FSS_PROFILE_NAME           = 'FSS Onboarding';
     private static final Integer DEFAULT_SCAN_DAYS     = 30;
     private static final Integer DEFAULT_ADVANCE_HOURS = 2;
-    private static DiscoveredConfig cachedDiscovery;
+    private static Map<String, DiscoveredConfig> cachedDiscoveryMap = new Map<String, DiscoveredConfig>();
+
+    private static final Map<String, String> MEETING_TYPE_MAP = new Map<String, String>{
+        'IC'  => 'Initial Consultation',
+        'PD'  => 'Program Director - 60 Minutes',
+        'FSS' => 'FSS Onboarding Meeting'
+    };
+    private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
+        'IC'  => 'Initial Consultation - Zenith Prep Academy',
+        'PD'  => 'Program Director - 60 Minutes - Zenith Prep Academy',
+        'FSS' => 'FSS Onboarding Meeting - Zenith Prep Academy'
+    };
 
     private class DiscoveredConfig {
         Id workTypeId;
@@ -25,6 +38,7 @@ public without sharing class GuestSchedulerController {
         String street;
         String city;
         String state;
+        String bookingType;
     }
 
     private class ResourceBundle {
@@ -45,6 +59,17 @@ public without sharing class GuestSchedulerController {
         DateTime endUtc;
     }
 
+    private static String normalizeType(String bookingType) {
+        if (String.isBlank(bookingType) || bookingType == 'IC') return 'IC';
+        return bookingType.toUpperCase();
+    }
+
+    private static List<String> getProfileNames(String bType) {
+        if (bType == 'PD') return new List<String>{ PD_PROFILE_NAME };
+        if (bType == 'FSS') return new List<String>{ FSS_PROFILE_NAME };
+        return new List<String>{ ADMISSION_PROFILE_NAME, ADMISSION_PROFILE_NAME_ALT };
+    }
+
     private static Database.DMLOptions dmlAllowDupes() {
         Database.DMLOptions d = new Database.DMLOptions();
         d.DuplicateRuleHeader.allowSave = true;
@@ -53,10 +78,8 @@ public without sharing class GuestSchedulerController {
     }
 
     private static Integer countFreeResources(
-        ResourceBundle rb,
-        Map<Id, List<List<DateTime>>> rawBusy,
-        DateTime slotStart,
-        DateTime slotEnd
+        ResourceBundle rb, Map<Id, List<List<DateTime>>> rawBusy,
+        DateTime slotStart, DateTime slotEnd
     ) {
         Integer freeCount = 0;
         for (Id rId : rb.resourceIds) {
@@ -64,46 +87,48 @@ public without sharing class GuestSchedulerController {
             Boolean free = true;
             if (ivs != null) {
                 for (List<DateTime> iv : ivs) {
-                    if (slotStart < iv[1] && slotEnd > iv[0]) {
-                        free = false;
-                        break;
-                    }
+                    if (slotStart < iv[1] && slotEnd > iv[0]) { free = false; break; }
                 }
             }
-            if (free) {
-                freeCount++;
-            }
+            if (free) freeCount++;
         }
         return freeCount;
     }
 
-    private static DiscoveredConfig discover() {
-        if (cachedDiscovery != null) return cachedDiscovery;
+    private static DiscoveredConfig discover(String bookingType) {
+        String bType = normalizeType(bookingType);
+        if (cachedDiscoveryMap.containsKey(bType)) return cachedDiscoveryMap.get(bType);
         DiscoveredConfig cfg = new DiscoveredConfig();
+        cfg.bookingType = bType;
         Date today = Date.today();
         Date scanEnd = today.addDays(DEFAULT_SCAN_DAYS);
+        List<String> profileNames = getProfileNames(bType);
 
-        Set<Id> counselorUserIds = new Set<Id>();
-        for (User u : [
-            SELECT Id FROM User
-            WHERE (Profile.Name = :ADMISSION_PROFILE_NAME
-                   OR Profile.Name = :ADMISSION_PROFILE_NAME_ALT)
-            AND IsActive = true
-        ]) {
-            counselorUserIds.add(u.Id);
+        Set<Id> userIds = new Set<Id>();
+        String profileQuery = (profileNames.size() == 1) ? profileNames[0] : null;
+        if (profileQuery != null) {
+            for (User u : [SELECT Id FROM User WHERE Profile.Name = :profileQuery AND IsActive = true]) {
+                userIds.add(u.Id);
+            }
+        } else {
+            String p1 = profileNames[0];
+            String p2 = profileNames[1];
+            for (User u : [SELECT Id FROM User WHERE (Profile.Name = :p1 OR Profile.Name = :p2) AND IsActive = true]) {
+                userIds.add(u.Id);
+            }
         }
-        if (counselorUserIds.isEmpty())
-            throw new AuraHandledException('No active Admission Counsellor users found.');
+        if (userIds.isEmpty())
+            throw new AuraHandledException('No active users found for ' + bType + ' booking.');
 
         Set<Id> resourceIds = new Set<Id>();
         for (ServiceResource sr : [
             SELECT Id FROM ServiceResource
-            WHERE RelatedRecordId IN :counselorUserIds AND IsActive = true
+            WHERE RelatedRecordId IN :userIds AND IsActive = true
         ]) {
             resourceIds.add(sr.Id);
         }
         if (resourceIds.isEmpty())
-            throw new AuraHandledException('No Service Resources for counsellors.');
+            throw new AuraHandledException('No Service Resources found for ' + bType + ' users.');
 
         Set<Id> rawTerritoryIds = new Set<Id>();
         for (ServiceTerritoryMember stm : [
@@ -115,7 +140,7 @@ public without sharing class GuestSchedulerController {
             rawTerritoryIds.add(stm.ServiceTerritoryId);
         }
         if (rawTerritoryIds.isEmpty())
-            throw new AuraHandledException('No territories for counsellor resources.');
+            throw new AuraHandledException('No territories found for ' + bType + ' resources.');
 
         List<ServiceTerritory> territories = [
             SELECT Id, Name, IsActive, OperatingHoursId,
@@ -125,13 +150,10 @@ public without sharing class GuestSchedulerController {
         ];
         ServiceTerritory st = null;
         for (ServiceTerritory t : territories) {
-            if (t.OperatingHoursId != null) {
-                st = t;
-                break;
-            }
+            if (t.OperatingHoursId != null) { st = t; break; }
         }
         if (st == null && !territories.isEmpty()) st = territories[0];
-        if (st == null) throw new AuraHandledException('No ServiceTerritory found.');
+        if (st == null) throw new AuraHandledException('No ServiceTerritory found for ' + bType + '.');
 
         Id opHoursId = st.OperatingHoursId;
         String tzStr = (st.OperatingHours != null) ? st.OperatingHours.TimeZone : null;
@@ -179,9 +201,7 @@ public without sharing class GuestSchedulerController {
                     FROM ServiceTerritoryWorkType
                     WHERE ServiceTerritoryId IN :rawTerritoryIds
                     ORDER BY CreatedDate DESC LIMIT 1
-                ]) {
-                    wt = stwt.WorkType;
-                }
+                ]) { wt = stwt.WorkType; }
             } catch (Exception e) { }
         }
         if (wt == null) {
@@ -220,17 +240,18 @@ public without sharing class GuestSchedulerController {
             }
         } catch (Exception e) { }
 
-        cachedDiscovery = cfg;
+        cachedDiscoveryMap.put(bType, cfg);
         return cfg;
     }
 
     @AuraEnabled
-    public static Map<String, Object> getBookingConfig(Integer openWindowDays) {
+    public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType) {
         Map<String, Object> out = new Map<String, Object>();
         try {
-            DiscoveredConfig cfg = discover();
+            DiscoveredConfig cfg = discover(bookingType);
             Integer targetDays = (openWindowDays != null && openWindowDays > 0)
                 ? openWindowDays : cfg.timeframeEndDays;
+            out.put('bookingType', cfg.bookingType);
             out.put('workTypeId', cfg.workTypeId);
             out.put('workTypeName', cfg.workTypeName);
             out.put('durationMinutes', cfg.durationMinutes);
@@ -245,6 +266,7 @@ public without sharing class GuestSchedulerController {
             out.put('street', cfg.street);
             out.put('city', cfg.city);
             out.put('state', cfg.state);
+            out.put('meetingType', MEETING_TYPE_MAP.get(cfg.bookingType));
             out.put('availableDates', computeAvailableDates(cfg, targetDays));
             out.put('success', true);
         } catch (Exception e) {
@@ -255,10 +277,10 @@ public without sharing class GuestSchedulerController {
     }
 
     @AuraEnabled
-    public static List<Map<String, String>> getAvailableSlots(String dateStr) {
+    public static List<Map<String, String>> getAvailableSlots(String dateStr, String bookingType) {
         List<Map<String, String>> result = new List<Map<String, String>>();
         try {
-            DiscoveredConfig cfg = discover();
+            DiscoveredConfig cfg = discover(bookingType);
             Date reqDate = Date.valueOf(dateStr);
             String tzId = cfg.territoryTimezone;
             TimeZone tz = TimeZone.getTimeZone(tzId);
@@ -266,16 +288,13 @@ public without sharing class GuestSchedulerController {
             Date scanEnd = today.addDays(cfg.timeframeEndDays - 1);
 
             Map<String, List<TimeSlot>> slotsByDay = loadOperatingHours(cfg.operatingHoursId);
-            ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd);
+            ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
             if (rb.resourceIds.isEmpty()) return result;
 
             DateTime dayStart = localToUtc(reqDate, 0, tz);
             DateTime dayEnd = localToUtc(reqDate.addDays(1), 0, tz);
-            DateTime busyRangeStart = dayStart.addHours(-2);
-            DateTime busyRangeEnd = dayEnd.addHours(2);
-
             Map<Id, List<List<DateTime>>> rawBusy =
-                buildRawBusyMap(rb, cfg.allTerritoryIds, busyRangeStart, busyRangeEnd);
+                buildRawBusyMap(rb, cfg.allTerritoryIds, dayStart.addHours(-2), dayEnd.addHours(2));
 
             List<SlotInfo> candidateSlots = generateSlotsForDate(
                 reqDate, cfg.durationMinutes, cfg.slotIntervalMinutes,
@@ -290,8 +309,7 @@ public without sharing class GuestSchedulerController {
                     });
                 }
             }
-        } catch (Exception e) {
-        }
+        } catch (Exception e) { }
         return result;
     }
 
@@ -300,114 +318,33 @@ public without sharing class GuestSchedulerController {
         String startTimeISO, String endTimeISO,
         String firstName, String lastName, String email, String phone,
         String studentGrade, String leadSource, String guestEmails,
-        String clientTimezone, String utmSource, String utmCampaign, String utmMedium
+        String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
+        String bookingType, String contactId, String opportunityId
     ) {
         Map<String, String> res = new Map<String, String>();
         Savepoint sp = Database.setSavepoint();
         try {
+            String bType = normalizeType(bookingType);
             DateTime startDT = parseISO(startTimeISO);
             DateTime endDT = parseISO(endTimeISO);
-            String cleanEmail = email.trim().toLowerCase();
-            String cleanFirst = firstName.trim();
-            String cleanLast = lastName.trim();
-            String cleanPhone = phone.trim();
-            Database.DMLOptions dmlOpts = dmlAllowDupes();
-            DiscoveredConfig cfg = discover();
+            DiscoveredConfig cfg = discover(bType);
 
-            ResourceAssignment assignment = findAvailableResourceRoundRobin(cfg, startDT, endDT);
+            ResourceAssignment assignment = findAvailableResourceRoundRobin(cfg, startDT, endDT, bType, opportunityId);
             if (assignment == null) {
                 res.put('success', 'false');
                 res.put('error', 'SLOT_UNAVAILABLE');
                 return res;
             }
 
-            Lead mktLead = new Lead(
-                FirstName = cleanFirst, LastName = cleanLast, Email = cleanEmail,
-                Phone = cleanPhone,
-                LeadSource = leadSource,
-                Status = 'IC Scheduled', 
-                Meeting_Status__c = 'Scheduled',
-                Assigned_Admission_Counsellor__c = assignment.userId,
-                OwnerId = assignment.userId);  
-            tryPut(mktLead, 'Student_Grade__c', studentGrade);
-            tryPut(mktLead, 'UTM_Source__c', utmSource);
-            tryPut(mktLead, 'UTM_Campaign__c', utmCampaign);
-            tryPut(mktLead, 'UTM_Medium__c', utmMedium);
-            mktLead.setOptions(dmlOpts);
-            Database.SaveResult leadSr = Database.insert(mktLead, dmlOpts);
-            if (!leadSr.isSuccess()) {
-                String err = '';
-                for (Database.Error e : leadSr.getErrors()) err += e.getMessage() + ' ';
-                throw new AuraHandledException('Lead creation failed: ' + err);
+            if (bType == 'IC') {
+                bookIC(res, cfg, assignment, startDT, endDT,
+                       firstName, lastName, email, phone, studentGrade,
+                       leadSource, guestEmails, clientTimezone,
+                       utmSource, utmCampaign, utmMedium);
+            } else {
+                bookPDorFSS(res, cfg, assignment, bType, startDT, endDT,
+                            contactId, opportunityId, clientTimezone);
             }
-
-            Event booking = new Event();
-            booking.Subject = 'Initial Consultation - Zenith Prep Academy';
-            booking.StartDateTime = startDT;
-            booking.EndDateTime = startDT.addMinutes(60);
-            booking.ShowAs = 'Busy';
-            booking.Type  = 'Meeting';
-            booking.DurationInMinutes = 60;
-            booking.IsAllDayEvent = false;
-            booking.IsPrivate = false;
-            booking.WhoId = mktLead.Id;
-            if (assignment.userId != null) booking.OwnerId = assignment.userId;
-            booking.Location = 'Zoom';
-            insert booking;
-
-            res.put('leadId', mktLead.Id);
-            res.put('eventId', booking.Id);
-            res.put('success', 'true');
-
-            try {
-                Id saTerritoryId = (assignment.territoryId != null)
-                    ? assignment.territoryId : cfg.serviceTerritoryId;
-                ServiceAppointment sa = new ServiceAppointment();
-                sa.ParentRecordId = mktLead.Id;
-                sa.ServiceTerritoryId = saTerritoryId;
-                sa.WorkTypeId = cfg.workTypeId;
-                DateTime saEndDT = startDT.addMinutes(60);
-                sa.EarliestStartTime = startDT;
-                sa.DueDate = saEndDT;
-                sa.SchedStartTime = startDT;
-                sa.SchedEndTime = saEndDT;
-                sa.ArrivalWindowStartTime = startDT;
-                sa.ArrivalWindowEndTime = saEndDT;
-                sa.DurationType = cfg.durationType;
-                sa.AppointmentType = cfg.appointmentType;
-                sa.Status = 'Scheduled';
-                sa.Subject = 'Initial Consultation - Zenith Prep Academy';
-                sa.Street = cfg.street;
-                sa.City = cfg.city;
-                sa.State = cfg.state;
-                sa.Phone = cleanPhone;
-                sa.Email = cleanEmail;
-                sa.Meeting_Type__c = 'Initial Consultation';
-                sa.AdditionalInformation = cfg.workTypeName;
-                sa.Admission_Counselor__c = assignment.userId;
-                sa.Student_Grade__c = studentGrade;
-                insert sa;
-
-                AssignedResource ar = new AssignedResource();
-                ar.ServiceAppointmentId = sa.Id;
-                ar.ServiceResourceId = assignment.resourceId;
-                insert ar;
-
-                res.put('appointmentId', sa.Id);
-                try {
-                    tryPut(booking, 'Service_Appointment__c', sa.Id);
-                    booking.Description += '\nAppointment: ' + sa.Id;
-                    update booking;
-                } catch (Exception ue) { }
-            } catch (Exception saEx) { }
-
-            try {
-                Lead upd = new Lead(Id = mktLead.Id);
-                tryPut(upd, 'Scheduled_Meeting_DateTime__c', startDT);
-                if (res.containsKey('appointmentId'))
-                    tryPut(upd, 'Service_Appointment__c', res.get('appointmentId'));
-                update upd;
-            } catch (Exception ex) { }
 
         } catch (AuraHandledException ae) {
             Database.rollback(sp);
@@ -419,18 +356,232 @@ public without sharing class GuestSchedulerController {
         return res;
     }
 
-    private static ResourceAssignment findAvailableResourceRoundRobin(
-        DiscoveredConfig cfg, DateTime startDT, DateTime endDT
+    private static void bookIC(
+        Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
+        DateTime startDT, DateTime endDT,
+        String firstName, String lastName, String email, String phone,
+        String studentGrade, String leadSource, String guestEmails,
+        String clientTimezone, String utmSource, String utmCampaign, String utmMedium
     ) {
+        String cleanEmail = email.trim().toLowerCase();
+        String cleanFirst = firstName.trim();
+        String cleanLast = lastName.trim();
+        String cleanPhone = phone.trim();
+        Database.DMLOptions dmlOpts = dmlAllowDupes();
+
+        Lead mktLead = new Lead(
+            FirstName = cleanFirst, LastName = cleanLast, Email = cleanEmail,
+            Phone = cleanPhone, LeadSource = leadSource,
+            Status = 'IC Scheduled', Meeting_Status__c = 'Scheduled',
+            Assigned_Admission_Counsellor__c = assignment.userId,
+            OwnerId = assignment.userId);
+        tryPut(mktLead, 'Student_Grade__c', studentGrade);
+        tryPut(mktLead, 'UTM_Source__c', utmSource);
+        tryPut(mktLead, 'UTM_Campaign__c', utmCampaign);
+        tryPut(mktLead, 'UTM_Medium__c', utmMedium);
+        mktLead.setOptions(dmlOpts);
+        Database.SaveResult leadSr = Database.insert(mktLead, dmlOpts);
+        if (!leadSr.isSuccess()) {
+            String err = '';
+            for (Database.Error e : leadSr.getErrors()) err += e.getMessage() + ' ';
+            throw new AuraHandledException('Lead creation failed: ' + err);
+        }
+
+        Event booking = new Event();
+        booking.Subject = SUBJECT_MAP.get('IC');
+        booking.StartDateTime = startDT;
+        booking.EndDateTime = startDT.addMinutes(60);
+        booking.ShowAs = 'Busy';
+        booking.Type = 'Meeting';
+        booking.DurationInMinutes = 60;
+        booking.IsAllDayEvent = false;
+        booking.IsPrivate = false;
+        booking.WhoId = mktLead.Id;
+        if (assignment.userId != null) booking.OwnerId = assignment.userId;
+        booking.Location = 'Zoom';
+        insert booking;
+
+        res.put('leadId', mktLead.Id);
+        res.put('eventId', booking.Id);
+        res.put('success', 'true');
+
+        try {
+            Id saTerritoryId = (assignment.territoryId != null)
+                ? assignment.territoryId : cfg.serviceTerritoryId;
+            ServiceAppointment sa = new ServiceAppointment();
+            sa.ParentRecordId = mktLead.Id;
+            sa.ServiceTerritoryId = saTerritoryId;
+            sa.WorkTypeId = cfg.workTypeId;
+            DateTime saEndDT = startDT.addMinutes(60);
+            sa.EarliestStartTime = startDT;
+            sa.DueDate = saEndDT;
+            sa.SchedStartTime = startDT;
+            sa.SchedEndTime = saEndDT;
+            sa.ArrivalWindowStartTime = startDT;
+            sa.ArrivalWindowEndTime = saEndDT;
+            sa.DurationType = cfg.durationType;
+            sa.AppointmentType = cfg.appointmentType;
+            sa.Status = 'Scheduled';
+            sa.Subject = SUBJECT_MAP.get('IC');
+            sa.Street = cfg.street;
+            sa.City = cfg.city;
+            sa.State = cfg.state;
+            sa.Phone = cleanPhone;
+            sa.Email = cleanEmail;
+            sa.Meeting_Type__c = MEETING_TYPE_MAP.get('IC');
+            sa.AdditionalInformation = cfg.workTypeName;
+            sa.Admission_Counselor__c = assignment.userId;
+            sa.Student_Grade__c = studentGrade;
+            insert sa;
+
+            AssignedResource ar = new AssignedResource();
+            ar.ServiceAppointmentId = sa.Id;
+            ar.ServiceResourceId = assignment.resourceId;
+            insert ar;
+
+            res.put('appointmentId', sa.Id);
+            try {
+                tryPut(booking, 'Service_Appointment__c', sa.Id);
+                booking.Description += '\nAppointment: ' + sa.Id;
+                update booking;
+            } catch (Exception ue) { }
+        } catch (Exception saEx) { }
+
+        try {
+            Lead upd = new Lead(Id = mktLead.Id);
+            tryPut(upd, 'Scheduled_Meeting_DateTime__c', startDT);
+            if (res.containsKey('appointmentId'))
+                tryPut(upd, 'Service_Appointment__c', res.get('appointmentId'));
+            update upd;
+        } catch (Exception ex) { }
+    }
+
+    private static void bookPDorFSS(
+        Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
+        String bType, DateTime startDT, DateTime endDT,
+        String contactId, String opportunityId, String clientTimezone
+    ) {
+        String meetingType = MEETING_TYPE_MAP.get(bType);
+        String subject = SUBJECT_MAP.get(bType);
+        Integer duration = cfg.durationMinutes;
+
+        Id accountId = null;
+        Id conId = null;
+        if (String.isNotBlank(contactId)) {
+            conId = (Id) contactId;
+            List<Contact> contacts = [SELECT AccountId FROM Contact WHERE Id = :conId LIMIT 1];
+            if (!contacts.isEmpty()) accountId = contacts[0].AccountId;
+        }
+
+        Id saTerritoryId = (assignment.territoryId != null)
+            ? assignment.territoryId : cfg.serviceTerritoryId;
+
+        ServiceAppointment sa = new ServiceAppointment();
+        sa.ParentRecordId = accountId;
+        sa.ContactId = conId;
+        sa.ServiceTerritoryId = saTerritoryId;
+        sa.WorkTypeId = cfg.workTypeId;
+        sa.SchedStartTime = startDT;
+        sa.SchedEndTime = endDT;
+        sa.EarliestStartTime = startDT;
+        sa.DueDate = endDT;
+        sa.ArrivalWindowStartTime = startDT;
+        sa.ArrivalWindowEndTime = endDT;
+        sa.DurationType = cfg.durationType;
+        sa.AppointmentType = cfg.appointmentType;
+        sa.Status = 'Scheduled';
+        sa.Subject = subject;
+        sa.Meeting_Type__c = meetingType;
+        sa.OwnerId = assignment.userId;
+        sa.Street = cfg.street;
+        sa.City = cfg.city;
+        sa.State = cfg.state;
+        if (String.isNotBlank(clientTimezone)) sa.TimeZone = clientTimezone;
+        tryPut(sa, 'Program_Director__c', assignment.userId);
+        if (String.isNotBlank(opportunityId)) tryPut(sa, 'Opportunity__c', (Id) opportunityId);
+        insert sa;
+
+        AssignedResource ar = new AssignedResource();
+        ar.ServiceAppointmentId = sa.Id;
+        ar.ServiceResourceId = assignment.resourceId;
+        insert ar;
+
+        try {
+            Event evt = new Event();
+            evt.Subject = subject;
+            evt.StartDateTime = startDT;
+            evt.EndDateTime = endDT;
+            evt.OwnerId = assignment.userId;
+            evt.ShowAs = 'Busy';
+            evt.Location = 'Zoom';
+            if (conId != null) evt.WhoId = conId;
+            if (String.isNotBlank(opportunityId)) evt.WhatId = (Id) opportunityId;
+            tryPut(evt, 'Service_Appointment__c', sa.Id);
+            insert evt;
+        } catch (Exception evtEx) { }
+
+        ServiceResource pdSr = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id = :assignment.resourceId LIMIT 1];
+        pdSr.Appointment_Count__c = (pdSr.Appointment_Count__c != null) ? pdSr.Appointment_Count__c + 1 : 1;
+        update pdSr;
+
+        if (bType == 'PD' && String.isNotBlank(opportunityId)) {
+            try {
+                Opportunity opp = [SELECT Id, Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+                if (opp.Program_Director__c == null) { opp.Program_Director__c = assignment.userId; update opp; }
+            } catch (Exception ex) { }
+            if (conId != null) {
+                try {
+                    Contact con = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :conId LIMIT 1];
+                    if (con.Program_Director__c == null) { con.Program_Director__c = assignment.userId; update con; }
+                } catch (Exception ex) { }
+            }
+        }
+
+        if (bType == 'FSS' && conId != null) {
+            try {
+                Contact con = [SELECT Id, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
+                if (con.Family_Success_Specialist__c == null) { con.Family_Success_Specialist__c = assignment.userId; update con; }
+            } catch (Exception ex) { }
+        }
+
+        User assignedUser = [SELECT Name FROM User WHERE Id = :assignment.userId LIMIT 1];
+        res.put('success', 'true');
+        res.put('appointmentId', sa.Id);
+        res.put('assignedTo', assignedUser.Name);
+        res.put('meetingType', meetingType);
+    }
+
+    private static ResourceAssignment findAvailableResourceRoundRobin(
+        DiscoveredConfig cfg, DateTime startDT, DateTime endDT, String bType, String opportunityId
+    ) {
+        if (bType == 'PD' && String.isNotBlank(opportunityId)) {
+            List<Opportunity> opps = [SELECT Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+            if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
+                List<ServiceResource> srs = [
+                    SELECT Id FROM ServiceResource
+                    WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1
+                ];
+                if (!srs.isEmpty()) {
+                    ResourceAssignment stickyRA = new ResourceAssignment();
+                    stickyRA.resourceId = srs[0].Id;
+                    stickyRA.userId = opps[0].Program_Director__c;
+                    for (ServiceTerritoryMember stm : [
+                        SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                        WHERE ServiceResourceId = :srs[0].Id AND ServiceTerritory.IsActive = true
+                        ORDER BY CreatedDate DESC LIMIT 1
+                    ]) { stickyRA.territoryId = stm.ServiceTerritoryId; }
+                    return stickyRA;
+                }
+            }
+        }
+
         Date today = Date.today();
         Date scanEnd = today.addDays(cfg.timeframeEndDays - 1);
-        ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd);
+        ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, bType);
         if (rb.resourceIds.isEmpty()) return null;
 
-        DateTime busyStart = startDT.addHours(-2);
-        DateTime busyEnd = endDT.addHours(2);
         Map<Id, List<List<DateTime>>> rawBusy =
-            buildRawBusyMap(rb, cfg.allTerritoryIds, busyStart, busyEnd);
+            buildRawBusyMap(rb, cfg.allTerritoryIds, startDT.addHours(-2), endDT.addHours(2));
 
         List<Id> freeRes = new List<Id>();
         for (Id rId : rb.orderedResourceIds) {
@@ -438,10 +589,7 @@ public without sharing class GuestSchedulerController {
             Boolean free = true;
             if (ivs != null) {
                 for (List<DateTime> iv : ivs) {
-                    if (startDT < iv[1] && endDT > iv[0]) {
-                        free = false;
-                        break;
-                    }
+                    if (startDT < iv[1] && endDT > iv[0]) { free = false; break; }
                 }
             }
             if (free && rb.resourceToUserId.containsKey(rId)) freeRes.add(rId);
@@ -473,10 +621,7 @@ public without sharing class GuestSchedulerController {
         Integer minC = 2147483647;
         for (Id rId : freeRes) {
             Integer c = counts.get(rId);
-            if (c < minC) {
-                minC = c;
-                bestId = rId;
-            }
+            if (c < minC) { minC = c; bestId = rId; }
         }
         if (bestId != null) {
             ResourceAssignment ra = new ResourceAssignment();
@@ -516,8 +661,7 @@ public without sharing class GuestSchedulerController {
             for (List<DateTime> iv : raw) {
                 if (iv[0] < dayEndUtc && iv[1] > dayStartUtc) {
                     busyMap.get(rId).add(new List<Integer>{
-                        utcToLocalMinutes(iv[0], d, tz),
-                        utcToLocalMinutes(iv[1], d, tz)
+                        utcToLocalMinutes(iv[0], d, tz), utcToLocalMinutes(iv[1], d, tz)
                     });
                 }
             }
@@ -553,7 +697,7 @@ public without sharing class GuestSchedulerController {
         Map<String, List<TimeSlot>> slotsByDay = loadOperatingHours(cfg.operatingHoursId);
         if (slotsByDay.isEmpty()) return out;
 
-        ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd);
+        ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
         if (rb.resourceIds.isEmpty()) return out;
 
         DateTime scanStartUtc = localToUtc(today, 0, tz).addHours(-2);
@@ -568,10 +712,7 @@ public without sharing class GuestSchedulerController {
                 d, dur, interval, cfg.timeframeStartDays, slotsByDay, rb, rawBusy, tz, tzId);
             Boolean hasAvail = false;
             for (SlotInfo si : slots) {
-                if (countFreeResources(rb, rawBusy, si.startUtc, si.endUtc) > 0) {
-                    hasAvail = true;
-                    break;
-                }
+                if (countFreeResources(rb, rawBusy, si.startUtc, si.endUtc) > 0) { hasAvail = true; break; }
             }
             if (hasAvail) out.add(toDateStr(d));
         }
@@ -591,7 +732,7 @@ public without sharing class GuestSchedulerController {
     }
 
     private static ResourceBundle loadResources(
-        Set<Id> territoryIds, Date rangeStart, Date rangeEnd
+        Set<Id> territoryIds, Date rangeStart, Date rangeEnd, String bType
     ) {
         ResourceBundle rb = new ResourceBundle();
         Map<Id,Id> bestTerritory = new Map<Id,Id>();
@@ -618,25 +759,29 @@ public without sharing class GuestSchedulerController {
             SELECT Id, RelatedRecordId FROM ServiceResource
             WHERE Id IN :candidates AND IsActive = true
         ]) {
-            if (sr.RelatedRecordId != null
-                && String.valueOf(sr.RelatedRecordId).startsWith('005')) {
+            if (sr.RelatedRecordId != null && String.valueOf(sr.RelatedRecordId).startsWith('005')) {
                 srToUser.put(sr.Id, sr.RelatedRecordId);
             }
         }
         if (srToUser.isEmpty()) return rb;
 
-        Set<Id> admUsers = new Set<Id>();
-        for (User u : [
-            SELECT Id FROM User WHERE Id IN :srToUser.values()
-            AND (Profile.Name = :ADMISSION_PROFILE_NAME
-                 OR Profile.Name = :ADMISSION_PROFILE_NAME_ALT)
-            AND IsActive = true
-        ]) {
-            admUsers.add(u.Id);
+        List<String> profileNames = getProfileNames(bType);
+        Set<Id> validUsers = new Set<Id>();
+        if (profileNames.size() == 1) {
+            String pName = profileNames[0];
+            for (User u : [SELECT Id FROM User WHERE Id IN :srToUser.values() AND Profile.Name = :pName AND IsActive = true]) {
+                validUsers.add(u.Id);
+            }
+        } else {
+            String p1 = profileNames[0];
+            String p2 = profileNames[1];
+            for (User u : [SELECT Id FROM User WHERE Id IN :srToUser.values() AND (Profile.Name = :p1 OR Profile.Name = :p2) AND IsActive = true]) {
+                validUsers.add(u.Id);
+            }
         }
 
         for (Id srId : srToUser.keySet()) {
-            if (admUsers.contains(srToUser.get(srId))) {
+            if (validUsers.contains(srToUser.get(srId))) {
                 rb.resourceIds.add(srId);
                 rb.orderedResourceIds.add(srId);
                 rb.resourceToUserId.put(srId, srToUser.get(srId));
@@ -660,14 +805,14 @@ public without sharing class GuestSchedulerController {
         ];
         if (!appts.isEmpty()) {
             Map<Id,ServiceAppointment> saMap = new Map<Id,ServiceAppointment>(appts);
-            for (AssignedResource ar : [
+            for (AssignedResource arRec : [
                 SELECT ServiceAppointmentId, ServiceResourceId FROM AssignedResource
                 WHERE ServiceAppointmentId IN :saMap.keySet()
                 AND ServiceResourceId IN :rb.resourceIds
             ]) {
-                ServiceAppointment sa = saMap.get(ar.ServiceAppointmentId);
-                if (sa != null && busy.containsKey(ar.ServiceResourceId)) {
-                    busy.get(ar.ServiceResourceId).add(
+                ServiceAppointment sa = saMap.get(arRec.ServiceAppointmentId);
+                if (sa != null && busy.containsKey(arRec.ServiceResourceId)) {
+                    busy.get(arRec.ServiceResourceId).add(
                         new List<DateTime>{sa.SchedStartTime, sa.SchedEndTime});
                 }
             }
@@ -712,10 +857,7 @@ public without sharing class GuestSchedulerController {
             if (b == null || b.isEmpty()) return true;
             Boolean free = true;
             for (List<Integer> iv : b) {
-                if (ss < iv[1] && se > iv[0]) {
-                    free = false;
-                    break;
-                }
+                if (ss < iv[1] && se > iv[0]) { free = false; break; }
             }
             if (free) return true;
         }
@@ -723,10 +865,7 @@ public without sharing class GuestSchedulerController {
     }
 
     private static DateTime localToUtc(Date d, Integer mins, TimeZone tz) {
-        if (mins >= 1440) {
-            d = d.addDays(mins / 1440);
-            mins = Math.mod(mins, 1440);
-        }
+        if (mins >= 1440) { d = d.addDays(mins / 1440); mins = Math.mod(mins, 1440); }
         DateTime g = DateTime.newInstanceGmt(d, Time.newInstance(mins/60, Math.mod(mins,60), 0, 0));
         return g.addSeconds(-(tz.getOffset(g) / 1000));
     }

@@ -10,6 +10,7 @@ export default class GuestBookingScheduler extends LightningElement {
 
     @api openWindowDays = 8;
     @api redirectUrl = 'https://www.zenithprepacademy.com/before-your-consultation-video';
+    @api bookingType = '';
 
     @track isLoading = true;
     @track isReady = false;
@@ -22,6 +23,9 @@ export default class GuestBookingScheduler extends LightningElement {
     config = {};
     clientTimezone = 'America/Chicago';
     utmSource = ''; utmCampaign = ''; utmMedium = ''; leadSource = '';
+    _contactId = '';
+    _opportunityId = '';
+    _resolvedType = '';
 
     @track calYear = 0;
     @track calMonth = 0;
@@ -49,6 +53,9 @@ export default class GuestBookingScheduler extends LightningElement {
         try {
             this.clientTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
         } catch (_) {}
+        this._resolvedType = this.bookingType || this._getUrlParam('type') || '';
+        this._contactId = this._getUrlParam('contactId') || '';
+        this._opportunityId = this._getUrlParam('opportunityId') || '';
         this.utmSource = this._getUrlParam('utm_source');
         this.utmCampaign = this._getUrlParam('utm_campaign');
         this.utmMedium = this._getUrlParam('utm_medium');
@@ -100,12 +107,21 @@ export default class GuestBookingScheduler extends LightningElement {
         } catch (_) { return this.clientTimezone; }
     }
     get durationLabel() {
+        if (this._resolvedType === 'FSS') return '30 minutes';
         return '1 hour';
+    }
+    get isICMode() {
+        return !this._resolvedType || this._resolvedType === 'IC';
+    }
+    get headerLabel() {
+        if (this._resolvedType === 'PD') return 'Program Director Meeting with Zenith Prep Academy';
+        if (this._resolvedType === 'FSS') return 'FSS Onboarding Meeting with Zenith Prep Academy';
+        return 'Initial Consultation with Zenith Prep Academy';
     }
 
     async _init() {
         try {
-            const cfg = await getBookingConfig({ openWindowDays: this.openWindowDays });
+            const cfg = await getBookingConfig({ openWindowDays: this.openWindowDays, bookingType: this._resolvedType });
             if (!cfg.success) {
                 this.fatalErrorDetail = cfg.error || 'Configuration error';
                 this.hasFatalError = true;
@@ -190,7 +206,7 @@ export default class GuestBookingScheduler extends LightningElement {
         this.isSlotsLoading = true;
         this.timeSlots = [];
         try {
-            const slots = await getAvailableSlots({ dateStr: this.selectedDate });
+            const slots = await getAvailableSlots({ dateStr: this.selectedDate, bookingType: this._resolvedType });
             this.timeSlots = (slots || []).map(s => ({
                 startUtc: s.startUtc, endUtc: s.endUtc,
                 displayTime: this._fmtTime(s.startUtc)
@@ -208,8 +224,12 @@ export default class GuestBookingScheduler extends LightningElement {
         this.selectedStart = event.currentTarget.dataset.start;
         this.selectedEnd = event.currentTarget.dataset.end;
         if (this.selectedStart && this.selectedEnd) {
-            this.currentStep = 2;
-            this.validationError = '';
+            if (this.isICMode) {
+                this.currentStep = 2;
+                this.validationError = '';
+            } else {
+                this.handleSubmit();
+            }
         }
     }
 
@@ -240,8 +260,10 @@ export default class GuestBookingScheduler extends LightningElement {
     }
 
     async handleSubmit() {
-        const err = this._validate();
-        if (err) { this.validationError = err; return; }
+        if (this.isICMode) {
+            const err = this._validate();
+            if (err) { this.validationError = err; return; }
+        }
         this.validationError = '';
         this.isSubmitting = true;
         try {
@@ -251,7 +273,8 @@ export default class GuestBookingScheduler extends LightningElement {
                 email: this.email.trim(), phone: this.phone.trim(),
                 studentGrade: this.studentGrade, leadSource: this.leadSource,
                 guestEmails: this.guestEmails.trim(), clientTimezone: this.clientTimezone,
-                utmSource: this.utmSource, utmCampaign: this.utmCampaign, utmMedium: this.utmMedium
+                utmSource: this.utmSource, utmCampaign: this.utmCampaign, utmMedium: this.utmMedium,
+                bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId
             });
             if (result && result.success === 'true') {
                 this.timeSlots = this.timeSlots.filter(s => s.startUtc !== this.selectedStart);
