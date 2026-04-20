@@ -145,15 +145,40 @@ public without sharing class GuestSchedulerController {
         List<ServiceTerritory> territories = [
             SELECT Id, Name, IsActive, OperatingHoursId,
                    OperatingHours.TimeZone, Street, City, State
-            FROM ServiceTerritory WHERE Id IN :rawTerritoryIds
+            FROM ServiceTerritory WHERE Id IN :rawTerritoryIds AND OperatingHoursId != null
             ORDER BY CreatedDate DESC
         ];
-        ServiceTerritory st = null;
-        for (ServiceTerritory t : territories) {
-            if (t.OperatingHoursId != null) { st = t; break; }
+        if (territories.isEmpty()) {
+            territories = [
+                SELECT Id, Name, IsActive, OperatingHoursId,
+                       OperatingHours.TimeZone, Street, City, State
+                FROM ServiceTerritory WHERE Id IN :rawTerritoryIds
+                ORDER BY CreatedDate DESC LIMIT 1
+            ];
         }
-        if (st == null && !territories.isEmpty()) st = territories[0];
-        if (st == null) throw new AuraHandledException('No ServiceTerritory found for ' + bType + '.');
+        if (territories.isEmpty()) throw new AuraHandledException('No ServiceTerritory found for ' + bType + '.');
+
+        ServiceTerritory st = territories[0];
+        if (territories.size() > 1) {
+            Map<Id, Id> tToOH = new Map<Id, Id>();
+            for (ServiceTerritory t : territories) {
+                if (t.OperatingHoursId != null) tToOH.put(t.Id, t.OperatingHoursId);
+            }
+            if (!tToOH.isEmpty()) {
+                Set<Id> ohIds = new Set<Id>(tToOH.values());
+                Map<Id, Integer> ohCount = new Map<Id, Integer>();
+                for (TimeSlot ts : [SELECT OperatingHoursId FROM TimeSlot WHERE OperatingHoursId IN :ohIds]) {
+                    Integer c = ohCount.containsKey(ts.OperatingHoursId) ? ohCount.get(ts.OperatingHoursId) + 1 : 1;
+                    ohCount.put(ts.OperatingHoursId, c);
+                }
+                Integer bestCount = 0;
+                for (ServiceTerritory t : territories) {
+                    if (t.OperatingHoursId == null) continue;
+                    Integer c = ohCount.containsKey(t.OperatingHoursId) ? ohCount.get(t.OperatingHoursId) : 0;
+                    if (c > bestCount) { bestCount = c; st = t; }
+                }
+            }
+        }
 
         Id opHoursId = st.OperatingHoursId;
         String tzStr = (st.OperatingHours != null) ? st.OperatingHours.TimeZone : null;
