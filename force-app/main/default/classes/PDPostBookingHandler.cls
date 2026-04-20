@@ -108,6 +108,22 @@ public without sharing class PDPostBookingHandler {
                 sa.OwnerId         = pd.RelatedRecordId;
                 sa.Opportunity__c = opp.Id;
                 sa.Program_Director__c = pd.RelatedRecordId;
+
+                Id pdTerritoryId = null;
+                for (ServiceTerritoryMember stm : [
+                    SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                    WHERE ServiceResourceId = :pd.Id
+                    AND ServiceTerritory.IsActive = true
+                    AND EffectiveStartDate <= :Date.today()
+                    AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+                    ORDER BY CreatedDate DESC LIMIT 1
+                ]) {
+                    pdTerritoryId = stm.ServiceTerritoryId;
+                }
+                if (pdTerritoryId != null) {
+                    sa.ServiceTerritoryId = pdTerritoryId;
+                }
+
                 update sa;
 
                 AssignedResource ar = new AssignedResource();
@@ -142,29 +158,24 @@ public without sharing class PDPostBookingHandler {
                     ? pd.Appointment_Count__c + 1 : 1;
                 update pd;
 
-                Opportunity freshOpp = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id LIMIT 1];
-                Boolean oppChanged = false;
-                if (freshOpp.Program_Director__c == null) {
-                    freshOpp.Program_Director__c = pd.RelatedRecordId;
-                    oppChanged = true;
-                }
-                if (freshOpp.StageName != 'SOM Scheduled') {
-                    freshOpp.StageName = 'SOM Scheduled';
-                    oppChanged = true;
-                }
-                if (oppChanged) {
-                    update freshOpp;
+                Opportunity oppToUpdate = new Opportunity(Id = opp.Id);
+                oppToUpdate.Program_Director__c = pd.RelatedRecordId;
+                oppToUpdate.StageName = 'SOM Scheduled';
+                Database.SaveResult oppSr = Database.update(oppToUpdate, false);
+                if (!oppSr.isSuccess()) {
+                    for (Database.Error e : oppSr.getErrors()) {
+                        System.debug(LoggingLevel.ERROR, 'Opp update failed: ' + e.getMessage());
+                    }
                 }
 
                 if (contactId != null) {
-                    try {
-                        Contact freshCon = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
-                        if (freshCon.Program_Director__c == null) {
-                            freshCon.Program_Director__c = pd.RelatedRecordId;
-                            update freshCon;
+                    Contact conToUpdate = new Contact(Id = contactId);
+                    conToUpdate.Program_Director__c = pd.RelatedRecordId;
+                    Database.SaveResult conSr = Database.update(conToUpdate, false);
+                    if (!conSr.isSuccess()) {
+                        for (Database.Error e : conSr.getErrors()) {
+                            System.debug(LoggingLevel.ERROR, 'Contact update failed: ' + e.getMessage());
                         }
-                    } catch (Exception ex) {
-                        System.debug(LoggingLevel.WARN, 'Contact Program_Director__c update failed: ' + ex.getMessage());
                     }
                 }
 

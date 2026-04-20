@@ -1607,13 +1607,11 @@
         </fields>
         <fields>
             <name>MeetingTypeSelection</name>
-            <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choicePDLink</choiceReferences>
             <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
-                <stringValue>first_som</stringValue>
+                <stringValue>follow_up</stringValue>
             </defaultValue>
             <fieldText>Select an option</fieldText>
             <fieldType>RadioButtons</fieldType>
