@@ -121,7 +121,8 @@ export default class GuestBookingScheduler extends LightningElement {
 
     async _init() {
         try {
-            const cfg = await getBookingConfig({ openWindowDays: this.openWindowDays, bookingType: this._resolvedType });
+            const windowDays = this.isICMode ? this.openWindowDays : 0;
+            const cfg = await getBookingConfig({ openWindowDays: windowDays, bookingType: this._resolvedType });
             if (!cfg.success) {
                 this.fatalErrorDetail = cfg.error || 'Configuration error';
                 this.hasFatalError = true;
