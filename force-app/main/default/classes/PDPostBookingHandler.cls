@@ -68,31 +68,18 @@ public without sharing class PDPostBookingHandler {
                 }
 
                 Id contactId = null;
-                Id stickyResourceId = null;
-                Boolean contactNeedsPD = false;
                 List<OpportunityContactRole> ocrs = [
-                    SELECT ContactId, Contact.Program_Director__c
+                    SELECT ContactId
                     FROM OpportunityContactRole
                     WHERE OpportunityId = :opp.Id AND IsPrimary = true
                     LIMIT 1
                 ];
                 if (!ocrs.isEmpty()) {
                     contactId = ocrs[0].ContactId;
-                    if (ocrs[0].Contact.Program_Director__c != null) {
-                        List<ServiceResource> conSR = [
-                            SELECT Id FROM ServiceResource
-                            WHERE RelatedRecordId = :ocrs[0].Contact.Program_Director__c
-                            AND IsActive = true LIMIT 1
-                        ];
-                        if (!conSR.isEmpty()) {
-                            stickyResourceId = conSR[0].Id;
-                        }
-                    } else {
-                        contactNeedsPD = true;
-                    }
                 }
 
-                if (stickyResourceId == null && opp.Program_Director__c != null) {
+                Id stickyResourceId = null;
+                if (opp.Program_Director__c != null) {
                     List<ServiceResource> oppSR = [
                         SELECT Id FROM ServiceResource
                         WHERE RelatedRecordId = :opp.Program_Director__c AND IsActive = true LIMIT 1
@@ -165,23 +152,15 @@ public without sharing class PDPostBookingHandler {
                     update opp;
                 }
 
-                if (contactId != null && contactNeedsPD) {
+                if (contactId != null) {
                     try {
-                        Contact con = new Contact(Id = contactId);
-                        con.Program_Director__c = pd.RelatedRecordId;
-                        update con;
-                    } catch (Exception ex) {
-                        System.debug(LoggingLevel.WARN, 'Contact Program_Director__c update failed: ' + ex.getMessage());
-                    }
-                } else if (contactId != null && opp.Program_Director__c != null && contactNeedsPD == false) {
-                    try {
-                        Contact conCheck = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
-                        if (conCheck.Program_Director__c == null) {
-                            conCheck.Program_Director__c = pd.RelatedRecordId;
-                            update conCheck;
+                        Contact con = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
+                        if (con.Program_Director__c == null) {
+                            con.Program_Director__c = pd.RelatedRecordId;
+                            update con;
                         }
                     } catch (Exception ex) {
-                        System.debug(LoggingLevel.WARN, 'Contact consistency sync failed: ' + ex.getMessage());
+                        System.debug(LoggingLevel.WARN, 'Contact Program_Director__c update failed: ' + ex.getMessage());
                     }
                 }
 

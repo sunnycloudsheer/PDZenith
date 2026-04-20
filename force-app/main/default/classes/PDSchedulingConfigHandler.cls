@@ -244,54 +244,27 @@ public without sharing class PDSchedulingConfigHandler {
     private static Id getStickyResource(Id opportunityId) {
         if (opportunityId == null) return null;
 
-        Id stickyResourceId = null;
-
-        List<OpportunityContactRole> ocrs = [
-            SELECT Contact.Program_Director__c
-            FROM OpportunityContactRole
-            WHERE OpportunityId = :opportunityId AND IsPrimary = true
-            LIMIT 1
+        List<Opportunity> opps = [
+            SELECT Program_Director__c FROM Opportunity
+            WHERE Id = :opportunityId LIMIT 1
         ];
-        if (!ocrs.isEmpty() && ocrs[0].Contact.Program_Director__c != null) {
-            List<ServiceResource> conSR = [
-                SELECT Id FROM ServiceResource
-                WHERE RelatedRecordId = :ocrs[0].Contact.Program_Director__c
-                AND IsActive = true LIMIT 1
-            ];
-            if (!conSR.isEmpty()) {
-                stickyResourceId = conSR[0].Id;
-            }
-        }
+        if (opps.isEmpty() || opps[0].Program_Director__c == null) return null;
 
-        if (stickyResourceId == null) {
-            List<Opportunity> opps = [
-                SELECT Program_Director__c FROM Opportunity
-                WHERE Id = :opportunityId LIMIT 1
-            ];
-            if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
-                List<ServiceResource> oppSR = [
-                    SELECT Id FROM ServiceResource
-                    WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1
-                ];
-                if (!oppSR.isEmpty()) {
-                    stickyResourceId = oppSR[0].Id;
-                }
-            }
-        }
+        Id pdUserId = opps[0].Program_Director__c;
 
-        if (stickyResourceId == null) return null;
-
-        ServiceResource sr = [
-            SELECT Id, RelatedRecordId FROM ServiceResource
-            WHERE Id = :stickyResourceId LIMIT 1
-        ];
         List<User> uList = [
             SELECT Id FROM User
-            WHERE Id = :sr.RelatedRecordId
+            WHERE Id = :pdUserId
             AND Profile.Name = :PD_PROFILE_NAME
             AND IsActive = true LIMIT 1
         ];
-        return uList.isEmpty() ? null : stickyResourceId;
+        if (uList.isEmpty()) return null;
+
+        List<ServiceResource> srList = [
+            SELECT Id FROM ServiceResource
+            WHERE RelatedRecordId = :pdUserId AND IsActive = true LIMIT 1
+        ];
+        return srList.isEmpty() ? null : srList[0].Id;
     }
 
     private static Id getLowestLoadResource(Integer targetDuration, String durationLabel) {
