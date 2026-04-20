@@ -174,25 +174,19 @@ public without sharing class PDPostBookingHandler {
                     ? pd.Appointment_Count__c + 1 : 1;
                 update pd;
 
-                Opportunity oppToUpdate = new Opportunity(Id = opp.Id);
-                oppToUpdate.Program_Director__c = pd.RelatedRecordId;
-                oppToUpdate.StageName = 'SOM Scheduled';
-                Database.SaveResult oppSr = Database.update(oppToUpdate, false);
-                if (!oppSr.isSuccess()) {
-                    for (Database.Error e : oppSr.getErrors()) {
-                        System.debug(LoggingLevel.ERROR, 'Opp update failed: ' + e.getMessage());
-                    }
+                Id pdUserIdForStamp = pd.RelatedRecordId;
+
+                Opportunity oppForPD = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id FOR UPDATE];
+                oppForPD.Program_Director__c = pdUserIdForStamp;
+                if (oppForPD.StageName != 'SOM Scheduled') {
+                    oppForPD.StageName = 'SOM Scheduled';
                 }
+                update oppForPD;
 
                 if (contactId != null) {
-                    Contact conToUpdate = new Contact(Id = contactId);
-                    conToUpdate.Program_Director__c = pd.RelatedRecordId;
-                    Database.SaveResult conSr = Database.update(conToUpdate, false);
-                    if (!conSr.isSuccess()) {
-                        for (Database.Error e : conSr.getErrors()) {
-                            System.debug(LoggingLevel.ERROR, 'Contact update failed: ' + e.getMessage());
-                        }
-                    }
+                    Contact conForPD = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId FOR UPDATE];
+                    conForPD.Program_Director__c = pdUserIdForStamp;
+                    update conForPD;
                 }
 
                 res.success           = true;
