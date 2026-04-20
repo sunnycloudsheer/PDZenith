@@ -94,6 +94,80 @@
             <name>pdDisplayName</name>
         </outputParameters>
     </actionCalls>
+    <actionCalls>
+        <name>Send_PD_Email</name>
+        <label>Send PD Scheduling Email</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
+        <connector>
+            <targetReference>Email_Sent_Screen</targetReference>
+        </connector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>emailAddresses</name>
+            <value>
+                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <stringValue>Schedule Your Program Director Meeting - Zenith Prep Academy</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailBody</name>
+            <value>
+                <elementReference>pdEmailBody</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>sendRichBody</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>emailSimple</nameSegment>
+    </actionCalls>
+    <actionCalls>
+        <name>Send_FSS_Email</name>
+        <label>Send FSS Scheduling Email</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
+        <connector>
+            <targetReference>Email_Sent_Screen</targetReference>
+        </connector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>emailAddresses</name>
+            <value>
+                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <stringValue>Schedule Your Onboarding Meeting - Zenith Prep Academy</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailBody</name>
+            <value>
+                <elementReference>fssEmailBody</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>sendRichBody</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>emailSimple</nameSegment>
+    </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
     <assignments>
@@ -113,15 +187,31 @@
         </connector>
     </assignments>
     <assignments>
-        <name>Set_IsFollowUp_From_Screen</name>
-        <label>Set IsFollowUp From Screen</label>
+        <name>Capture_Selection</name>
+        <label>Capture Selection</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varSelectedAction</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>capturedAction</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Route_Selection</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <name>Set_First_SOM</name>
+        <label>Set First SOM</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <assignmentItems>
             <assignToReference>varIsFollowUp</assignToReference>
             <operator>Assign</operator>
             <value>
-                <elementReference>MeetingTypeSelection</elementReference>
+                <booleanValue>false</booleanValue>
             </value>
         </assignmentItems>
         <connector>
@@ -252,19 +342,90 @@
     <choices>
         <name>choiceFirstSOM</name>
         <choiceText>First SOM Call (60 min)</choiceText>
-        <dataType>Boolean</dataType>
+        <dataType>String</dataType>
         <value>
-            <booleanValue>false</booleanValue>
+            <stringValue>first_som</stringValue>
         </value>
     </choices>
     <choices>
         <name>choiceFollowUp</name>
         <choiceText>Follow-up Call (30 min)</choiceText>
-        <dataType>Boolean</dataType>
+        <dataType>String</dataType>
         <value>
-            <booleanValue>true</booleanValue>
+            <stringValue>follow_up</stringValue>
         </value>
     </choices>
+    <choices>
+        <name>choicePDLink</name>
+        <choiceText>PD Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>pd_link</stringValue>
+        </value>
+    </choices>
+    <choices>
+        <name>choiceFSSLink</name>
+        <choiceText>FSS Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>fss_link</stringValue>
+        </value>
+    </choices>
+    <decisions>
+        <name>Route_Selection</name>
+        <label>Route Selection</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Set_First_SOM</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>First SOM (default)</defaultConnectorLabel>
+        <rules>
+            <name>Is_Follow_Up</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>follow_up</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Force_Follow_Up</targetReference>
+            </connector>
+            <label>Follow-up Call</label>
+        </rules>
+        <rules>
+            <name>Is_PD_Link</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>pd_link</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Send_PD_Email</targetReference>
+            </connector>
+            <label>PD Scheduling Link</label>
+        </rules>
+        <rules>
+            <name>Is_FSS_Link</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>fss_link</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Send_FSS_Email</targetReference>
+            </connector>
+            <label>FSS Scheduling Link</label>
+        </rules>
+    </decisions>
     <decisions>
         <name>Check_PD_Assigned</name>
         <label>PD Already Assigned?</label>
@@ -285,7 +446,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Force_Follow_Up</targetReference>
+                <targetReference>Select_Meeting_Type_Screen</targetReference>
             </connector>
             <label>PD Already Assigned</label>
         </rules>
@@ -298,7 +459,7 @@
         <defaultConnector>
             <targetReference>Select_Meeting_Type_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>No First SOM - Show Choices</defaultConnectorLabel>
+        <defaultConnectorLabel>No First SOM - Show All Choices</defaultConnectorLabel>
         <rules>
             <name>First_SOM_Exists</name>
             <conditionLogic>and</conditionLogic>
@@ -310,7 +471,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Force_Follow_Up</targetReference>
+                <targetReference>Select_Meeting_Type_Screen</targetReference>
             </connector>
             <label>First SOM Exists</label>
         </rules>
@@ -516,6 +677,21 @@
         </rules>
     </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
+    <formulas>
+        <name>capturedAction</name>
+        <dataType>String</dataType>
+        <expression>IF(ISBLANK({!MeetingTypeSelection}), {!MeetingTypeSelectionNoSOM}, {!MeetingTypeSelection})</expression>
+    </formulas>
+    <formulas>
+        <name>pdEmailBody</name>
+        <dataType>String</dataType>
+        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;Thank you for choosing Zenith Prep Academy! We&apos;re excited to connect you with your dedicated Program Director for a strategy planning session.&lt;/p&gt;&lt;p&gt;Please use the link below to select a time that works best for you:&lt;/p&gt;&lt;p style=&apos;text-align:center;margin:20px 0&apos;&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=PD&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&amp;opportunityId=&quot; &amp; {!recordId} &amp; &quot;&apos; style=&apos;background-color:#1a73e8;color:#fff;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold&apos;&gt;Schedule Your PD Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;This meeting will be approximately 60 minutes via Zoom.&lt;/p&gt;&lt;p&gt;Best regards,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
+    </formulas>
+    <formulas>
+        <name>fssEmailBody</name>
+        <dataType>String</dataType>
+        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;Welcome to the Zenith Prep Academy family! We&apos;re thrilled to have you on board.&lt;/p&gt;&lt;p&gt;Please use the link below to schedule your onboarding meeting:&lt;/p&gt;&lt;p style=&apos;text-align:center;margin:20px 0&apos;&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=FSS&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&apos; style=&apos;background-color:#34a853;color:#fff;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold&apos;&gt;Schedule Your Onboarding Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;This meeting will be approximately 30 minutes via Zoom.&lt;/p&gt;&lt;p&gt;Best regards,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
+    </formulas>
     <formulas>
         <name>endTime</name>
         <dataType>DateTime</dataType>
@@ -1343,11 +1519,11 @@
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <connector>
-            <targetReference>Set_IsFollowUp_From_Screen</targetReference>
+            <targetReference>Capture_Selection</targetReference>
         </connector>
         <fields>
             <name>MeetingTypeHeader</name>
-            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Select Action&lt;/strong&gt;&lt;/p&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1362,11 +1538,13 @@
             <name>MeetingTypeSelection</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <dataType>Boolean</dataType>
+            <choiceReferences>choicePDLink</choiceReferences>
+            <choiceReferences>choiceFSSLink</choiceReferences>
+            <dataType>String</dataType>
             <defaultValue>
-                <booleanValue>false</booleanValue>
+                <stringValue>first_som</stringValue>
             </defaultValue>
-            <fieldText>Is this a follow-up call?</fieldText>
+            <fieldText>What would you like to do?</fieldText>
             <fieldType>RadioButtons</fieldType>
             <isRequired>true</isRequired>
             <styleProperties>
@@ -1377,8 +1555,74 @@
                     <stringValue>12</stringValue>
                 </width>
             </styleProperties>
+            <visibilityRule>
+                <conditionLogic>and</conditionLogic>
+                <conditions>
+                    <leftValueReference>Check_Existing_First_SOM</leftValueReference>
+                    <operator>IsNull</operator>
+                    <rightValue>
+                        <booleanValue>true</booleanValue>
+                    </rightValue>
+                </conditions>
+            </visibilityRule>
+        </fields>
+        <fields>
+            <name>MeetingTypeSelectionNoSOM</name>
+            <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDLink</choiceReferences>
+            <choiceReferences>choiceFSSLink</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>follow_up</stringValue>
+            </defaultValue>
+            <fieldText>What would you like to do?</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+            <visibilityRule>
+                <conditionLogic>and</conditionLogic>
+                <conditions>
+                    <leftValueReference>Check_Existing_First_SOM</leftValueReference>
+                    <operator>IsNull</operator>
+                    <rightValue>
+                        <booleanValue>false</booleanValue>
+                    </rightValue>
+                </conditions>
+            </visibilityRule>
         </fields>
         <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Email_Sent_Screen</name>
+        <label>Email Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>EmailSentMsg</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has been sent!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The scheduling email has been sent to the primary contact.&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>
@@ -1452,6 +1696,13 @@
     </variables>
     <variables>
         <name>varPDWorkTypeId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+    <variables>
+        <name>varSelectedAction</name>
         <dataType>String</dataType>
         <isCollection>false</isCollection>
         <isInput>false</isInput>
