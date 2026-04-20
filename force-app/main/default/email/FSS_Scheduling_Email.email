@@ -1,0 +1,32 @@
+<html>
+<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+<p>Hi {!Contact.FirstName},</p>
+
+<p>Welcome to the <strong>Zenith Prep Academy</strong> family! We're thrilled to have you on board and can't wait to get started.</p>
+
+<p>Your Family Success Specialist will be your go-to person for:</p>
+<ul>
+    <li>Onboarding and getting you set up for success</li>
+    <li>Scheduling your student's sessions and activities</li>
+    <li>Answering questions about programs and resources</li>
+    <li>Ensuring a smooth transition into our academy</li>
+</ul>
+
+<p>Please use the link below to schedule your onboarding meeting:</p>
+
+<p style="text-align: center; margin: 20px 0;">
+    <a href="https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=FSS"
+       style="background-color: #34a853; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+       Schedule Your Onboarding Meeting
+    </a>
+</p>
+
+<p>This meeting will be approximately <strong>30 minutes</strong> and will take place via <strong>Zoom</strong>.</p>
+
+<p>If you have any questions before your meeting, don't hesitate to reach out.</p>
+
+<p>Best regards,<br/>
+<strong>Zenith Prep Academy</strong><br/>
+<em>Empowering Students to Achieve Their Full Potential</em></p>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<template>
+    <!-- Loading -->
+    <template if:true={isLoading}>
+        <div class="loading-container">
+            <lightning-spinner alternative-text="Loading..." size="large"></lightning-spinner>
+            <p class="loading-text">Loading available times...</p>
+        </div>
+    </template>
+
+    <!-- Fatal Error -->
+    <template if:true={hasFatalError}>
+        <div class="error-container">
+            <lightning-icon icon-name="utility:error" size="large" variant="error"></lightning-icon>
+            <h2>Unable to Load Booking</h2>
+            <p>{fatalErrorDetail}</p>
+        </div>
+    </template>
+
+    <!-- Step 1: Select Date & Time -->
+    <template if:false={isLoading}>
+        <template if:false={hasFatalError}>
+            <template if:true={isStep1}>
+                <div class="booking-container">
+                    <div class="booking-header">
+                        <h1>{headerTitle}</h1>
+                        <p class="subtitle">Duration: {meetingDuration} | Via Zoom</p>
+                    </div>
+
+                    <!-- Contact Info Banner -->
+                    <template if:true={contactInfo.firstName}>
+                        <div class="contact-banner">
+                            <p>Booking for: <strong>{contactInfo.firstName} {contactInfo.lastName}</strong></p>
+                        </div>
+                    </template>
+
+                    <div class="scheduler-grid">
+                        <!-- Calendar -->
+                        <div class="calendar-section">
+                            <div class="cal-header">
+                                <button class="nav-btn" onclick={handlePrevMonth} disabled={prevMonthDisabled}>&lsaquo;</button>
+                                <h3>{currentMonthLabel}</h3>
+                                <button class="nav-btn" onclick={handleNextMonth} disabled={nextMonthDisabled}>&rsaquo;</button>
+                            </div>
+                            <div class="cal-weekdays">
+                                <span>Sun</span><span>Mon</span><span>Tue</span>
+                                <span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                            </div>
+                            <template for:each={calendarDays} for:item="week">
+                                <div class="cal-week" key={week.key}>
+                                    <template for:each={week.days} for:item="day">
+                                        <button key={day.key} class={day.cls}
+                                                data-date={day.dateStr}
+                                                disabled={day.disabled}
+                                                onclick={handleDateClick}>
+                                            {day.label}
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Time Slots -->
+                        <div class="slots-section">
+                            <template if:true={noDateSelected}>
+                                <p class="hint">Select a date to view available times</p>
+                            </template>
+
+                            <template if:true={isSlotsLoading}>
+                                <lightning-spinner alternative-text="Loading slots..." size="medium"></lightning-spinner>
+                            </template>
+
+                            <template if:true={noSlotsForDate}>
+                                <p class="no-slots">No available times for {selectedDateLong}</p>
+                            </template>
+
+                            <template if:true={hasSlots}>
+                                <h3 class="slots-header">{selectedDateLong}</h3>
+                                <div class="slots-grid">
+                                    <template for:each={timeSlots} for:item="slot">
+                                        <button key={slot.key} class={slot.cls}
+                                                data-start={slot.startUtc}
+                                                data-end={slot.endUtc}
+                                                onclick={handleSlotClick}>
+                                            {slot.label}
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <template if:true={selectedStart}>
+                                <div class="book-action">
+                                    <button class="book-btn" onclick={handleBook} disabled={isSubmitting}>
+                                        <template if:true={isSubmitting}>Booking...</template>
+                                        <template if:false={isSubmitting}>Confirm Booking</template>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Step 2: Confirmation -->
+            <template if:true={isStep2}>
+                <div class="confirmation-container">
+                    <div class="success-icon">
+                        <lightning-icon icon-name="utility:check" size="large" variant="success"></lightning-icon>
+                    </div>
+                    <h1>Your Meeting is Scheduled!</h1>
+                    <div class="confirmation-details">
+                        <p><strong>Meeting:</strong> {bookingResult.meetingType}</p>
+                        <p><strong>Assigned To:</strong> {bookingResult.assignedTo}</p>
+                        <p><strong>Appointment #:</strong> {bookingResult.appointmentNumber}</p>
+                    </div>
+                    <p class="confirmation-note">You will receive a calendar invitation shortly.</p>
+                </div>
+            </template>
+        </template>
+    </template>
+</template>
