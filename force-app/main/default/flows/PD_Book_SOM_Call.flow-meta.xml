@@ -446,9 +446,34 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Select_Meeting_Type_Screen</targetReference>
+                <targetReference>Force_Follow_Up</targetReference>
             </connector>
             <label>PD Already Assigned</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Stage_Close_Won</name>
+        <label>Stage Close Won?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_PD_Assigned</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Close Won</defaultConnectorLabel>
+        <rules>
+            <name>Is_Close_Won</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Won</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Close_Won_Error_Screen</targetReference>
+            </connector>
+            <label>Close Won</label>
         </rules>
     </decisions>
     <decisions>
@@ -459,7 +484,7 @@
         <defaultConnector>
             <targetReference>Select_Meeting_Type_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>No First SOM - Show All Choices</defaultConnectorLabel>
+        <defaultConnectorLabel>No First SOM</defaultConnectorLabel>
         <rules>
             <name>First_SOM_Exists</name>
             <conditionLogic>and</conditionLogic>
@@ -471,7 +496,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Select_Meeting_Type_Screen</targetReference>
+                <targetReference>Select_Followup_Screen</targetReference>
             </connector>
             <label>First SOM Exists</label>
         </rules>
@@ -646,7 +671,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_PD_Assigned</targetReference>
+                <targetReference>Check_Stage_Close_Won</targetReference>
             </connector>
             <label>Contact Found</label>
         </rules>
@@ -680,7 +705,7 @@
     <formulas>
         <name>capturedAction</name>
         <dataType>String</dataType>
-        <expression>IF(ISBLANK({!MeetingTypeSelection}), {!MeetingTypeSelectionNoSOM}, {!MeetingTypeSelection})</expression>
+        <expression>IF(NOT(ISBLANK({!MeetingTypeSelection})), {!MeetingTypeSelection}, IF(NOT(ISBLANK({!MeetingTypeSelectionNoFSS})), {!MeetingTypeSelectionNoFSS}, IF(NOT(ISBLANK({!MeetingTypeSelectionFollowupFSS})), {!MeetingTypeSelectionFollowupFSS}, IF(NOT(ISBLANK({!MeetingTypeSelectionFollowupOnly})), {!MeetingTypeSelectionFollowupOnly}, &quot;follow_up&quot;))))</expression>
     </formulas>
     <formulas>
         <name>pdEmailBody</name>
@@ -1512,7 +1537,7 @@
     </screens>
     <screens>
         <name>Select_Meeting_Type_Screen</name>
-        <label>Select Meeting Type</label>
+        <label>Select Action</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <allowBack>false</allowBack>
@@ -1523,7 +1548,7 @@
         </connector>
         <fields>
             <name>MeetingTypeHeader</name>
-            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Select Action&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1538,13 +1563,12 @@
             <name>MeetingTypeSelection</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choicePDLink</choiceReferences>
             <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>first_som</stringValue>
             </defaultValue>
-            <fieldText>What would you like to do?</fieldText>
+            <fieldText>Select an option</fieldText>
             <fieldType>RadioButtons</fieldType>
             <isRequired>true</isRequired>
             <styleProperties>
@@ -1558,24 +1582,23 @@
             <visibilityRule>
                 <conditionLogic>and</conditionLogic>
                 <conditions>
-                    <leftValueReference>Check_Existing_First_SOM</leftValueReference>
-                    <operator>IsNull</operator>
+                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                    <operator>EqualTo</operator>
                     <rightValue>
-                        <booleanValue>true</booleanValue>
+                        <stringValue>Contract Signed</stringValue>
                     </rightValue>
                 </conditions>
             </visibilityRule>
         </fields>
         <fields>
-            <name>MeetingTypeSelectionNoSOM</name>
+            <name>MeetingTypeSelectionNoFSS</name>
+            <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choicePDLink</choiceReferences>
-            <choiceReferences>choiceFSSLink</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
-                <stringValue>follow_up</stringValue>
+                <stringValue>first_som</stringValue>
             </defaultValue>
-            <fieldText>What would you like to do?</fieldText>
+            <fieldText>Select an option</fieldText>
             <fieldType>RadioButtons</fieldType>
             <isRequired>true</isRequired>
             <styleProperties>
@@ -1589,15 +1612,126 @@
             <visibilityRule>
                 <conditionLogic>and</conditionLogic>
                 <conditions>
-                    <leftValueReference>Check_Existing_First_SOM</leftValueReference>
-                    <operator>IsNull</operator>
+                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                    <operator>NotEqualTo</operator>
                     <rightValue>
-                        <booleanValue>false</booleanValue>
+                        <stringValue>Contract Signed</stringValue>
                     </rightValue>
                 </conditions>
             </visibilityRule>
         </fields>
         <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Select_Followup_Screen</name>
+        <label>Select Action</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>Capture_Selection</targetReference>
+        </connector>
+        <fields>
+            <name>FollowupHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>MeetingTypeSelectionFollowupFSS</name>
+            <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choiceFSSLink</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>follow_up</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+            <visibilityRule>
+                <conditionLogic>and</conditionLogic>
+                <conditions>
+                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                    <operator>EqualTo</operator>
+                    <rightValue>
+                        <stringValue>Contract Signed</stringValue>
+                    </rightValue>
+                </conditions>
+            </visibilityRule>
+        </fields>
+        <fields>
+            <name>MeetingTypeSelectionFollowupOnly</name>
+            <choiceReferences>choiceFollowUp</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>follow_up</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+            <visibilityRule>
+                <conditionLogic>and</conditionLogic>
+                <conditions>
+                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                    <operator>NotEqualTo</operator>
+                    <rightValue>
+                        <stringValue>Contract Signed</stringValue>
+                    </rightValue>
+                </conditions>
+            </visibilityRule>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Close_Won_Error_Screen</name>
+        <label>Opportunity Closed</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>CloseWonMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;This Opportunity is Closed Won. Booking is not available for closed opportunities.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>
