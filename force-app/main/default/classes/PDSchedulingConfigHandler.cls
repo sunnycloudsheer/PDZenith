@@ -69,29 +69,36 @@ public without sharing class PDSchedulingConfigHandler {
                 Id targetTerritoryId = null;
                 Id targetWorkTypeId  = null;
 
-                List<ServiceTerritory> territories = new List<ServiceTerritory>();
-                try {
-                    territories = [
-                        SELECT Id, Name, OperatingHoursId
-                        FROM ServiceTerritory
-                        WHERE Name LIKE :('%' + durationLabel + ' Min%')
-                        AND Assigned_Service_Resource__c = :pdUserId
-                        AND IsActive = true
-                        ORDER BY CreatedDate DESC LIMIT 1
-                    ];
-                } catch (Exception e) { }
+                if (isSticky) {
+                    List<ServiceTerritory> territories = new List<ServiceTerritory>();
+                    try {
+                        territories = [
+                            SELECT Id, Name, OperatingHoursId
+                            FROM ServiceTerritory
+                            WHERE Name LIKE :('%' + durationLabel + ' Min%')
+                            AND Assigned_Service_Resource__c = :pdUserId
+                            AND IsActive = true
+                            ORDER BY CreatedDate DESC LIMIT 1
+                        ];
+                    } catch (Exception e) { }
 
-                if (!territories.isEmpty()) {
-                    targetTerritoryId = territories[0].Id;
+                    if (!territories.isEmpty()) {
+                        targetTerritoryId = territories[0].Id;
+                    }
                 }
 
                 if (targetTerritoryId == null) {
                     Date today = Date.today();
+
+                    Set<Id> stmResourceIds = isSticky
+                        ? new Set<Id>{ anchorResourceId }
+                        : (cachedAllResourceIds != null ? getAllResourceIdSet() : new Set<Id>{ anchorResourceId });
+
                     List<ServiceTerritoryMember> stmList = [
                         SELECT Id, ServiceTerritoryId, TerritoryType, OperatingHoursId,
                                ServiceTerritory.Name, ServiceTerritory.IsActive, ServiceTerritory.OperatingHoursId
                         FROM ServiceTerritoryMember
-                        WHERE ServiceResourceId = :anchorResourceId
+                        WHERE ServiceResourceId IN :stmResourceIds
                         AND EffectiveStartDate <= :today
                         AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
                         AND ServiceTerritory.IsActive = true
@@ -400,6 +407,19 @@ public without sharing class PDSchedulingConfigHandler {
         }
         cachedAllResourceIds = String.join(allIds, ',');
         return bestId;
+    }
+
+    private static Set<Id> getAllResourceIdSet() {
+        Set<Id> ids = new Set<Id>();
+        if (cachedAllResourceIds != null) {
+            for (String s : cachedAllResourceIds.split(',')) {
+                String trimmed = s.trim();
+                if (String.isNotBlank(trimmed)) {
+                    ids.add((Id) trimmed);
+                }
+            }
+        }
+        return ids;
     }
 
     private static Id ensureWorkTypeGroup(Id workTypeId) {
