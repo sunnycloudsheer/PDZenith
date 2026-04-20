@@ -20,17 +20,27 @@
     <template lwc:elseif={isReady}>
         <div class="widget-shell">
 
-            <div class="step-track">
-                <div class={step1NodeClass}>
-                    <span class="step-dot">1</span>
-                    <span class="step-text">CHOOSE TIME</span>
+            <template lwc:if={isICMode}>
+                <div class="step-track">
+                    <div class={step1NodeClass}>
+                        <span class="step-dot">1</span>
+                        <span class="step-text">CHOOSE TIME</span>
+                    </div>
+                    <div class="step-line"></div>
+                    <div class={step2NodeClass}>
+                        <span class="step-dot">2</span>
+                        <span class="step-text">YOUR INFO</span>
+                    </div>
                 </div>
-                <div class="step-line"></div>
-                <div class={step2NodeClass}>
-                    <span class="step-dot">2</span>
-                    <span class="step-text">YOUR INFO</span>
+            </template>
+            <template lwc:else>
+                <div class="step-track">
+                    <div class="step-node active">
+                        <span class="step-dot">1</span>
+                        <span class="step-text">SELECT TIME &amp; BOOK</span>
+                    </div>
                 </div>
-            </div>
+            </template>
 
             <template lwc:if={isStep1}>
                 <div class="split-panel">
@@ -127,6 +137,7 @@
             </template>
 
             <template lwc:if={isStep2}>
+                <template lwc:if={isICMode}>
                 <div class="form-panel">
                     <div class="form-header">
                         <h2 class="form-title">Your information</h2>
@@ -235,6 +246,7 @@
                         </button>
                     </div>
                 </div>
+                </template>
             </template>
 
             <template lwc:if={isStep3}>
