@@ -262,6 +262,63 @@
         </value>
     </choices>
     <decisions>
+        <name>Check_PD_Assigned</name>
+        <label>PD Already Assigned?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_Existing_First_SOM</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No PD Assigned</defaultConnectorLabel>
+        <rules>
+            <name>PD_Is_Assigned</name>
+            <conditionLogic>or</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Primary_Contact.Contact.Program_Director__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.Program_Director__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Force_Follow_Up</targetReference>
+            </connector>
+            <label>PD Already Assigned</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Has_First_SOM_Already</name>
+        <label>Has First SOM Already?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Select_Meeting_Type_Screen</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No First SOM - Show Choices</defaultConnectorLabel>
+        <rules>
+            <name>First_SOM_Exists</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Check_Existing_First_SOM</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Force_Follow_Up</targetReference>
+            </connector>
+            <label>First SOM Exists</label>
+        </rules>
+    </decisions>
+    <decisions>
         <name>Check_PD_Resource_Found</name>
         <label>Check PD Resource Found</label>
         <locationX>0</locationX>
@@ -412,31 +469,6 @@
         </rules>
     </decisions>
     <decisions>
-        <name>Has_First_SOM_Already</name>
-        <label>Has First SOM Already?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Select_Meeting_Type_Screen</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No First SOM - Show Choices</defaultConnectorLabel>
-        <rules>
-            <name>First_SOM_Exists</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Check_Existing_First_SOM</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Force_Follow_Up</targetReference>
-            </connector>
-            <label>First SOM Exists</label>
-        </rules>
-    </decisions>
-    <decisions>
         <name>Verify_Contact_Found</name>
         <label>Verify Contact Found</label>
         <locationX>0</locationX>
@@ -456,7 +488,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_Existing_First_SOM</targetReference>
+                <targetReference>Check_PD_Assigned</targetReference>
             </connector>
             <label>Contact Found</label>
         </rules>
@@ -486,7 +518,7 @@
             <label>Config Found</label>
         </rules>
     </decisions>
-    <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups. Follows the same pattern as SRC: Book An Appointment For 60 Minutes.</description>
+    <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
     <formulas>
         <name>endTime</name>
         <dataType>DateTime</dataType>

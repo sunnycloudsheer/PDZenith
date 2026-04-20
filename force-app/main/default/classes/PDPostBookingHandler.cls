@@ -165,13 +165,23 @@ public without sharing class PDPostBookingHandler {
                     update opp;
                 }
 
-                if (contactNeedsPD && contactId != null) {
+                if (contactId != null && contactNeedsPD) {
                     try {
                         Contact con = new Contact(Id = contactId);
                         con.Program_Director__c = pd.RelatedRecordId;
                         update con;
                     } catch (Exception ex) {
                         System.debug(LoggingLevel.WARN, 'Contact Program_Director__c update failed: ' + ex.getMessage());
+                    }
+                } else if (contactId != null && opp.Program_Director__c != null && contactNeedsPD == false) {
+                    try {
+                        Contact conCheck = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
+                        if (conCheck.Program_Director__c == null) {
+                            conCheck.Program_Director__c = pd.RelatedRecordId;
+                            update conCheck;
+                        }
+                    } catch (Exception ex) {
+                        System.debug(LoggingLevel.WARN, 'Contact consistency sync failed: ' + ex.getMessage());
                     }
                 }
 
