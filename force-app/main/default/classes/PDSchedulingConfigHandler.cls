@@ -155,6 +155,10 @@ public without sharing class PDSchedulingConfigHandler {
 
                 if (!isSticky && cachedAllResourceIds != null) {
                     ensureAllResourcesInTerritory(targetTerritoryId, getAllResourceIdSet());
+                    Id territoryOwnerResourceId = getOriginalTerritoryMember(targetTerritoryId);
+                    if (territoryOwnerResourceId != null) {
+                        anchorResourceId = territoryOwnerResourceId;
+                    }
                 }
 
                 if (targetWorkTypeId == null) {
@@ -393,6 +397,26 @@ public without sharing class PDSchedulingConfigHandler {
         }
         cachedAllResourceIds = String.join(allIds, ',');
         return bestId;
+    }
+
+    private static Id getOriginalTerritoryMember(Id territoryId) {
+        try {
+            List<ServiceTerritoryMember> stmList = [
+                SELECT ServiceResourceId FROM ServiceTerritoryMember
+                WHERE ServiceTerritoryId = :territoryId
+                AND TerritoryType = 'P'
+                ORDER BY CreatedDate ASC LIMIT 1
+            ];
+            if (!stmList.isEmpty()) return stmList[0].ServiceResourceId;
+
+            stmList = [
+                SELECT ServiceResourceId FROM ServiceTerritoryMember
+                WHERE ServiceTerritoryId = :territoryId
+                ORDER BY CreatedDate ASC LIMIT 1
+            ];
+            if (!stmList.isEmpty()) return stmList[0].ServiceResourceId;
+        } catch (Exception e) { }
+        return null;
     }
 
     private static void ensureAllResourcesInTerritory(Id territoryId, Set<Id> resourceIds) {
