@@ -555,8 +555,20 @@ public without sharing class GuestSchedulerController {
             if (!contacts.isEmpty()) accountId = contacts[0].AccountId;
         }
 
-        Id saTerritoryId = (assignment.territoryId != null)
-            ? assignment.territoryId : cfg.serviceTerritoryId;
+        Id saTerritoryId = null;
+        for (ServiceTerritoryMember stm : [
+            SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+            WHERE ServiceResourceId = :assignment.resourceId
+            AND ServiceTerritory.IsActive = true
+            AND EffectiveStartDate <= :Date.today()
+            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+            ORDER BY CreatedDate DESC LIMIT 1
+        ]) {
+            saTerritoryId = stm.ServiceTerritoryId;
+        }
+        if (saTerritoryId == null) {
+            saTerritoryId = (assignment.territoryId != null) ? assignment.territoryId : cfg.serviceTerritoryId;
+        }
 
         ServiceAppointment sa = new ServiceAppointment();
         sa.ParentRecordId = accountId;
