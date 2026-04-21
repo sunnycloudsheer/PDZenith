@@ -3,8 +3,8 @@
     <actionCalls>
         <name>Call_PD_Post_Booking</name>
         <label>PD Post-Booking Handler</label>
-        <locationX>176</locationX>
-        <locationY>132</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <actionName>PDPostBookingHandler</actionName>
         <actionType>apex</actionType>
         <connector>
@@ -49,8 +49,8 @@
     <actionCalls>
         <name>Call_PD_Round_Robin</name>
         <label>Get PD Scheduling Config</label>
-        <locationX>176</locationX>
-        <locationY>264</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <actionName>PDSchedulingConfigHandler</actionName>
         <actionType>apex</actionType>
         <connector>
@@ -95,96 +95,86 @@
         </outputParameters>
     </actionCalls>
     <actionCalls>
-        <name>Send_PD_Email</name>
-        <label>Send PD Scheduling Email</label>
-        <locationX>176</locationX>
-        <locationY>396</locationY>
-        <actionName>SchedulingEmailSender</actionName>
-        <actionType>apex</actionType>
-        <connector>
-            <targetReference>Email_Sent_Screen</targetReference>
-        </connector>
-        <faultConnector>
-            <targetReference>PD_Assignment_Error</targetReference>
-        </faultConnector>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>contactId</name>
-            <value>
-                <elementReference>Get_Primary_Contact.ContactId</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>opportunityId</name>
-            <value>
-                <elementReference>recordId</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>emailType</name>
-            <value>
-                <stringValue>PD</stringValue>
-            </value>
-        </inputParameters>
-        <nameSegment>SchedulingEmailSender</nameSegment>
-    </actionCalls>
-    <actionCalls>
         <name>Send_FSS_Email</name>
         <label>Send FSS Scheduling Email</label>
-        <locationX>176</locationX>
-        <locationY>528</locationY>
-        <actionName>SchedulingEmailSender</actionName>
-        <actionType>apex</actionType>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
         <connector>
             <targetReference>Email_Sent_Screen</targetReference>
         </connector>
-        <faultConnector>
-            <targetReference>PD_Assignment_Error</targetReference>
-        </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
         <inputParameters>
-            <name>contactId</name>
+            <name>emailAddresses</name>
             <value>
-                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>opportunityId</name>
+            <name>emailSubject</name>
             <value>
-                <elementReference>recordId</elementReference>
+                <stringValue>Welcome to the Zenith Family! - Schedule Your Onboarding Meeting</stringValue>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>emailType</name>
+            <name>emailBody</name>
             <value>
-                <stringValue>FSS</stringValue>
+                <elementReference>fssEmailBody</elementReference>
             </value>
         </inputParameters>
-        <nameSegment>SchedulingEmailSender</nameSegment>
+        <inputParameters>
+            <name>sendRichBody</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>emailSimple</nameSegment>
+    </actionCalls>
+    <actionCalls>
+        <name>Send_PD_Email</name>
+        <label>Send PD Scheduling Email</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
+        <connector>
+            <targetReference>Email_Sent_Screen</targetReference>
+        </connector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>emailAddresses</name>
+            <value>
+                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <stringValue>Schedule Your Program Director Meeting - Zenith Prep Academy</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailBody</name>
+            <value>
+                <elementReference>pdEmailBody</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>sendRichBody</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>emailSimple</nameSegment>
     </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
     <assignments>
-        <name>Force_Follow_Up</name>
-        <label>Force Follow-Up</label>
-        <locationX>176</locationX>
-        <locationY>660</locationY>
-        <assignmentItems>
-            <assignToReference>varIsFollowUp</assignToReference>
-            <operator>Assign</operator>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </assignmentItems>
-        <connector>
-            <targetReference>Call_PD_Round_Robin</targetReference>
-        </connector>
-    </assignments>
-    <assignments>
         <name>Capture_Selection</name>
         <label>Capture Selection</label>
-        <locationX>176</locationX>
-        <locationY>792</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignmentItems>
             <assignToReference>varSelectedAction</assignToReference>
             <operator>Assign</operator>
@@ -197,10 +187,26 @@
         </connector>
     </assignments>
     <assignments>
+        <name>Force_Follow_Up</name>
+        <label>Force Follow-Up</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varIsFollowUp</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Call_PD_Round_Robin</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
         <name>Set_First_SOM</name>
         <label>Set First SOM</label>
-        <locationX>176</locationX>
-        <locationY>924</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignmentItems>
             <assignToReference>varIsFollowUp</assignToReference>
             <operator>Assign</operator>
@@ -215,8 +221,8 @@
     <assignments>
         <name>Set_PD_Initial_Fields</name>
         <label>Set PD Initial Fields</label>
-        <locationX>176</locationX>
-        <locationY>1056</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignmentItems>
             <assignToReference>ServiceAppointment.ParentRecordId</assignToReference>
             <operator>Assign</operator>
@@ -350,14 +356,6 @@
         </value>
     </choices>
     <choices>
-        <name>choicePDLink</name>
-        <choiceText>PD Scheduling Link</choiceText>
-        <dataType>String</dataType>
-        <value>
-            <stringValue>pd_link</stringValue>
-        </value>
-    </choices>
-    <choices>
         <name>choiceFSSLink</name>
         <choiceText>FSS Scheduling Link</choiceText>
         <dataType>String</dataType>
@@ -365,11 +363,388 @@
             <stringValue>fss_link</stringValue>
         </value>
     </choices>
+    <choices>
+        <name>choicePDLink</name>
+        <choiceText>PD Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>pd_link</stringValue>
+        </value>
+    </choices>
+    <decisions>
+        <name>Check_FSS_Link_Sent</name>
+        <label>FSS Link Already Sent?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Send_FSS_Email</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Sent - Proceed</defaultConnectorLabel>
+        <rules>
+            <name>Both_Links_Sent_FSS</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Both_Links_Sent_Screen</targetReference>
+            </connector>
+            <label>Both Links Already Sent</label>
+        </rules>
+        <rules>
+            <name>FSS_Link_Already_Sent</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>FSS_Link_Already_Sent_Screen</targetReference>
+            </connector>
+            <label>FSS Link Already Sent</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Link_Sent</name>
+        <label>PD Link Already Sent?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Send_PD_Email</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Sent - Proceed</defaultConnectorLabel>
+        <rules>
+            <name>Both_Links_Sent_PD</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Both_Links_Sent_Screen</targetReference>
+            </connector>
+            <label>Both Links Already Sent</label>
+        </rules>
+        <rules>
+            <name>PD_Link_Already_Sent</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>PD_Link_Already_Sent_Screen</targetReference>
+            </connector>
+            <label>PD Link Already Sent</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Assigned</name>
+        <label>PD Already Assigned?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_Existing_First_SOM</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No PD Assigned</defaultConnectorLabel>
+        <rules>
+            <name>PD_Is_Assigned</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.Program_Director__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Force_Follow_Up</targetReference>
+            </connector>
+            <label>PD Already Assigned</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Resource_Found</name>
+        <label>Check PD Resource Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Service_Resource</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>PD_Resource_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Service_Resource</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Service_Territory</targetReference>
+            </connector>
+            <label>PD Resource Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Territory_Found</name>
+        <label>Check PD Territory Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Service_Territory</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>PD_Territory_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Service_Territory</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Territory_Member</targetReference>
+            </connector>
+            <label>PD Territory Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Territory_Member</name>
+        <label>Check PD Territory Member</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Territory_Member</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>PD_Member_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Territory_Member</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Work_Type</targetReference>
+            </connector>
+            <label>PD Member Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_Work_Type</name>
+        <label>Check PD Work Type</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Work_Type</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>PD_Work_Type_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Work_Type</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Work_Type_Member</targetReference>
+            </connector>
+            <label>PD Work Type Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_WTG</name>
+        <label>Check Work Type Group</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Work_Type_Group</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>WTG_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Work_Type_Group</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Operating_Hours</targetReference>
+            </connector>
+            <label>WTG Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_PD_WTG_Member</name>
+        <label>Check Work Type Group Member</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_Work_Type_Member</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>WTG_Member_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_PD_Work_Type_Member</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_PD_Work_Type_Group</targetReference>
+            </connector>
+            <label>WTG Member Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Stage_Close_Won</name>
+        <label>Stage Close Won?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_Stage_Closed</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Close Won</defaultConnectorLabel>
+        <rules>
+            <name>Is_Close_Won</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed Won</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Close_Won_Error_Screen</targetReference>
+            </connector>
+            <label>Close Won</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Stage_Closed</name>
+        <label>Stage Closed?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_PD_Assigned</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Closed</defaultConnectorLabel>
+        <rules>
+            <name>Is_Closed</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Closed</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Closed_Error_Screen</targetReference>
+            </connector>
+            <label>Closed</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_Stage_For_FSS</name>
+        <label>Stage Contract Signed?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Force_Follow_Up</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Not Contract Signed - Auto Follow-up</defaultConnectorLabel>
+        <rules>
+            <name>Is_Contract_Signed_FSS</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Contract Signed</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_FSS_Link_Sent</targetReference>
+            </connector>
+            <label>Contract Signed - FSS Link</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Has_First_SOM_Already</name>
+        <label>Has First SOM Already?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Select_Meeting_Type_Screen</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No First SOM</defaultConnectorLabel>
+        <rules>
+            <name>First_SOM_Exists</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Check_Existing_First_SOM</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_Stage_For_FSS</targetReference>
+            </connector>
+            <label>First SOM Exists</label>
+        </rules>
+    </decisions>
     <decisions>
         <name>Route_Selection</name>
         <label>Route Selection</label>
-        <locationX>176</locationX>
-        <locationY>1188</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <defaultConnector>
             <targetReference>Set_First_SOM</targetReference>
         </defaultConnector>
@@ -414,7 +789,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_PD_Link_Already_Sent</targetReference>
+                <targetReference>Check_PD_Link_Sent</targetReference>
             </connector>
             <label>PD Scheduling Link</label>
         </rules>
@@ -436,266 +811,16 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_FSS_Link_Already_Sent</targetReference>
+                <targetReference>Check_FSS_Link_Sent</targetReference>
             </connector>
             <label>FSS Scheduling Link</label>
         </rules>
     </decisions>
     <decisions>
-        <name>Check_PD_Assigned</name>
-        <label>PD Already Assigned?</label>
-        <locationX>176</locationX>
-        <locationY>1320</locationY>
-        <defaultConnector>
-            <targetReference>Check_Existing_First_SOM</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No PD Assigned</defaultConnectorLabel>
-        <rules>
-            <name>PD_Is_Assigned</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.Program_Director__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Force_Follow_Up</targetReference>
-            </connector>
-            <label>PD Already Assigned</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_Stage_Close_Won</name>
-        <label>Stage Close Won?</label>
-        <locationX>176</locationX>
-        <locationY>1452</locationY>
-        <defaultConnector>
-            <targetReference>Check_Existing_First_SOM</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Close Won</defaultConnectorLabel>
-        <rules>
-            <name>Is_Close_Won</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Closed Won</stringValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Close_Won_Error_Screen</targetReference>
-            </connector>
-            <label>Close Won</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Has_First_SOM_Already</name>
-        <label>Has First SOM Already?</label>
-        <locationX>176</locationX>
-        <locationY>1584</locationY>
-        <defaultConnector>
-            <targetReference>Select_Meeting_Type_Screen</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No First SOM</defaultConnectorLabel>
-        <rules>
-            <name>First_SOM_Exists</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Check_Existing_First_SOM</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Check_Stage_For_FSS</targetReference>
-            </connector>
-            <label>First SOM Exists</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_Stage_For_FSS</name>
-        <label>Stage Contract Signed?</label>
-        <locationX>176</locationX>
-        <locationY>1716</locationY>
-        <defaultConnector>
-            <targetReference>Force_Follow_Up</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Contract Signed - Auto Follow-up</defaultConnectorLabel>
-        <rules>
-            <name>Is_Contract_Signed_FSS</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Contract Signed</stringValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Check_FSS_Link_Already_Sent</targetReference>
-            </connector>
-            <label>Contract Signed - Auto Send FSS Link</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Resource_Found</name>
-        <label>Check PD Resource Found</label>
-        <locationX>176</locationX>
-        <locationY>1848</locationY>
-        <defaultConnector>
-            <targetReference>No_Service_Resource</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>PD_Resource_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Service_Resource</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Service_Territory</targetReference>
-            </connector>
-            <label>PD Resource Found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Territory_Found</name>
-        <label>Check PD Territory Found</label>
-        <locationX>176</locationX>
-        <locationY>1980</locationY>
-        <defaultConnector>
-            <targetReference>No_Service_Territory</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>PD_Territory_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Service_Territory</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Territory_Member</targetReference>
-            </connector>
-            <label>PD Territory Found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Territory_Member</name>
-        <label>Check PD Territory Member</label>
-        <locationX>176</locationX>
-        <locationY>2112</locationY>
-        <defaultConnector>
-            <targetReference>No_Territory_Member</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>PD_Member_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Territory_Member</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Work_Type</targetReference>
-            </connector>
-            <label>PD Member Found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Work_Type</name>
-        <label>Check PD Work Type</label>
-        <locationX>176</locationX>
-        <locationY>2244</locationY>
-        <defaultConnector>
-            <targetReference>No_Work_Type</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>PD_Work_Type_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Work_Type</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Work_Type_Member</targetReference>
-            </connector>
-            <label>PD Work Type Found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_WTG</name>
-        <label>Check Work Type Group</label>
-        <locationX>176</locationX>
-        <locationY>2376</locationY>
-        <defaultConnector>
-            <targetReference>No_Work_Type_Group</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>WTG_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Work_Type_Group</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Operating_Hours</targetReference>
-            </connector>
-            <label>WTG Found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_WTG_Member</name>
-        <label>Check Work Type Group Member</label>
-        <locationX>176</locationX>
-        <locationY>2508</locationY>
-        <defaultConnector>
-            <targetReference>No_Work_Type_Member</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default</defaultConnectorLabel>
-        <rules>
-            <name>WTG_Member_Found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_PD_Work_Type_Member</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Get_PD_Work_Type_Group</targetReference>
-            </connector>
-            <label>WTG Member Found</label>
-        </rules>
-    </decisions>
-    <decisions>
         <name>Verify_Contact_Found</name>
         <label>Verify Contact Found</label>
-        <locationX>176</locationX>
-        <locationY>2640</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <defaultConnector>
             <targetReference>ContactNotFound</targetReference>
         </defaultConnector>
@@ -719,8 +844,8 @@
     <decisions>
         <name>Verify_PD_Assignment</name>
         <label>Verify Scheduling Config</label>
-        <locationX>176</locationX>
-        <locationY>2772</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <defaultConnector>
             <targetReference>PD_Assignment_Error</targetReference>
         </defaultConnector>
@@ -741,76 +866,26 @@
             <label>Config Found</label>
         </rules>
     </decisions>
-    <decisions>
-        <name>Check_PD_Link_Already_Sent</name>
-        <label>PD Link Already Sent?</label>
-        <locationX>176</locationX>
-        <locationY>2904</locationY>
-        <defaultConnector>
-            <targetReference>Send_PD_Email</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Sent Yet</defaultConnectorLabel>
-        <rules>
-            <name>PD_Link_Exists</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>PD_Link_Already_Sent_Screen</targetReference>
-            </connector>
-            <label>PD Link Already Sent</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_FSS_Link_Already_Sent</name>
-        <label>FSS Link Already Sent?</label>
-        <locationX>176</locationX>
-        <locationY>3036</locationY>
-        <defaultConnector>
-            <targetReference>Send_FSS_Email</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Sent Yet</defaultConnectorLabel>
-        <rules>
-            <name>FSS_Link_Exists</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>FSS_Link_Already_Sent_Screen</targetReference>
-            </connector>
-            <label>FSS Link Already Sent</label>
-        </rules>
-    </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
     <formulas>
         <name>capturedAction</name>
         <dataType>String</dataType>
-        <expression>IF(NOT(ISBLANK({!MeetingTypeSelectionNoFSS})), {!MeetingTypeSelectionNoFSS}, &quot;first_som&quot;)</expression>
-    </formulas>
-    <formulas>
-        <name>pdEmailBody</name>
-        <dataType>String</dataType>
-        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;Thank you for choosing Zenith Prep Academy! We&apos;re excited to connect you with your dedicated Program Director for a strategy planning session.&lt;/p&gt;&lt;p&gt;This meeting is an opportunity to discuss your student&apos;s goals, map out a personalized plan, and answer any questions you may have. &lt;strong&gt;We want to make sure you are able to get started as soon as possible, so keep in mind that only one parent needs to attend (though more are always welcome!), and students are optional but encouraged if available.&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Please use the scheduling link below to choose a meeting time that works best for your family&apos;s schedule:&lt;/p&gt;&lt;p style=&apos;text-align:center;margin:20px 0&apos;&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=PD&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&amp;opportunityId=&quot; &amp; {!recordId} &amp; &quot;&apos; style=&apos;background-color:#1a73e8;color:#fff;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold&apos;&gt;Schedule Your PD Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;This meeting will be approximately 60 minutes via Zoom. Your Program Director will be your student&apos;s primary strategist and point of contact throughout the program.&lt;/p&gt;&lt;p&gt;Looking forward to getting started!&lt;/p&gt;&lt;p&gt;Best,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
-    </formulas>
-    <formulas>
-        <name>fssEmailBody</name>
-        <dataType>String</dataType>
-        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;I know I speak for our entire team when I say that we&apos;re very excited to have your family be part of our college consulting program and are looking forward to seeing all that we&apos;ll be able to achieve together.&lt;/p&gt;&lt;p&gt;The next step is to schedule your Onboarding Meeting with one of our Family Success Specialists (FSS) over Zoom. This meeting is a chance for us to get to know your family, explore available resources, and ensure you feel supported every step of the way. &lt;strong&gt;We want to make sure you are able to get started as soon as possible, so keep in mind that only one parent needs to attend (though more are always welcome!), and students are optional but encouraged if available.&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Please use the scheduling link below to choose a meeting time that works best for your family&apos;s schedule:&lt;/p&gt;&lt;p style=&apos;text-align:center;margin:20px 0&apos;&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=FSS&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&amp;opportunityId=&quot; &amp; {!recordId} &amp; &quot;&apos; style=&apos;background-color:#34a853;color:#fff;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold&apos;&gt;Schedule Your Onboarding Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;Once you&apos;ve selected a time, your assigned FSS will follow up to confirm your appointment within 24-36 hours and introduce themselves. Your FSS will be your family&apos;s advocate and partner throughout this process. They will be with your family from the first Onboarding Meeting through any major decisions or hurdles to make sure your family has support that reflects our highest standard of professional quality.&lt;/p&gt;&lt;p&gt;After the initial onboarding meeting, the FSS will coordinate with our leadership team to connect your family to your student&apos;s team, including their Educational Strategist, and they will be reaching out within 24 hours to set up the initial strategy meeting.&lt;/p&gt;&lt;p&gt;Looking forward to having your family as part of our Zenith family.&lt;/p&gt;&lt;p&gt;Best,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
+        <expression>IF(NOT(ISBLANK({!MeetingTypeSelectionICNoSOM})), {!MeetingTypeSelectionICNoSOM}, &quot;first_som&quot;)</expression>
     </formulas>
     <formulas>
         <name>endTime</name>
         <dataType>DateTime</dataType>
         <expression>{!ServiceAppointment.SchedEndTime}</expression>
+    </formulas>
+    <formulas>
+        <name>fssEmailBody</name>
+        <dataType>String</dataType>
+        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;I know I speak for our entire team when I say that we&apos;re very excited to have your student be part of our college consulting program and are looking forward to seeing all that they&apos;ll be able to achieve with us by their side.&lt;/p&gt;&lt;p&gt;The next step is to schedule your Onboarding Meeting with one of our Family Success Specialists (FSS) over Zoom. This meeting is a chance for us to get to know your family, explore available resources, and ensure you feel supported every step of the way. &lt;b&gt;We want to make sure you are able to get started as soon as possible, so keep in mind that only one parent needs to attend (though more are always welcome!), and students are optional but encouraged if available.&lt;/b&gt;&lt;/p&gt;&lt;p&gt;Please use the scheduling link below to choose a meeting time that works best for your family&apos;s schedule:&lt;/p&gt;&lt;p&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=FSS&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&apos;&gt;Schedule Your Onboarding Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;Once you&apos;ve selected a time, your assigned FSS will follow up to confirm your appointment within 24-36 hours and introduce themselves. Your FSS will be your family&apos;s advocate and partner throughout this process. They will be with your family from the first Onboarding Meeting through any major decisions or hurdles to make sure your family has support that reflects our highest standard of professional quality.&lt;/p&gt;&lt;p&gt;After the initial onboarding meeting, the FSS will coordinate with our leadership team to connect your family to your student&apos;s team, including their Educational Strategist, and they will be reaching out within 24 hours to set up the initial strategy meeting.&lt;/p&gt;&lt;p&gt;Looking forward to having your family as part of our Zenith family.&lt;/p&gt;&lt;p&gt;Best,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
+    </formulas>
+    <formulas>
+        <name>pdEmailBody</name>
+        <dataType>String</dataType>
+        <expression>&quot;&lt;p&gt;Hi &quot; &amp; {!Get_Primary_Contact.Contact.FirstName} &amp; &quot;,&lt;/p&gt;&lt;p&gt;Thank you for choosing Zenith Prep Academy! We&apos;re excited to connect you with your dedicated Program Director for a strategy planning session.&lt;/p&gt;&lt;p&gt;Please use the link below to select a time that works best for you:&lt;/p&gt;&lt;p&gt;&lt;a href=&apos;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=PD&amp;contactId=&quot; &amp; {!Get_Primary_Contact.ContactId} &amp; &quot;&amp;opportunityId=&quot; &amp; {!recordId} &amp; &quot;&apos;&gt;Schedule Your PD Meeting&lt;/a&gt;&lt;/p&gt;&lt;p&gt;This meeting will be approximately 60 minutes via Zoom.&lt;/p&gt;&lt;p&gt;Best regards,&lt;br/&gt;Zenith Prep Academy&lt;/p&gt;&quot;</expression>
     </formulas>
     <formulas>
         <name>pdSubject</name>
@@ -842,8 +917,8 @@
     <recordCreates>
         <name>Create_PD_Service_Appointment</name>
         <label>Create Service Appointment</label>
-        <locationX>176</locationX>
-        <locationY>3168</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <connector>
             <targetReference>Call_PD_Post_Booking</targetReference>
         </connector>
@@ -855,8 +930,8 @@
     <recordLookups>
         <name>Check_Existing_First_SOM</name>
         <label>Check Existing First SOM</label>
-        <locationX>176</locationX>
-        <locationY>3300</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Has_First_SOM_Already</targetReference>
@@ -890,8 +965,8 @@
     <recordLookups>
         <name>Get_Opportunity_Record</name>
         <label>Get Opportunity Record</label>
-        <locationX>176</locationX>
-        <locationY>3432</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Get_Primary_Contact</targetReference>
@@ -911,8 +986,8 @@
     <recordLookups>
         <name>Get_PD_Operating_Hours</name>
         <label>Get PD Operating Hours</label>
-        <locationX>176</locationX>
-        <locationY>3564</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>PD_Select_Time_Screen</targetReference>
@@ -932,8 +1007,8 @@
     <recordLookups>
         <name>Get_PD_Service_Resource</name>
         <label>Get PD Service Resource</label>
-        <locationX>176</locationX>
-        <locationY>3696</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_Resource_Found</targetReference>
@@ -953,8 +1028,8 @@
     <recordLookups>
         <name>Get_PD_Service_Territory</name>
         <label>Get PD Service Territory</label>
-        <locationX>176</locationX>
-        <locationY>3828</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_Territory_Found</targetReference>
@@ -974,8 +1049,8 @@
     <recordLookups>
         <name>Get_PD_Territory_Member</name>
         <label>Get PD Territory Member</label>
-        <locationX>176</locationX>
-        <locationY>3960</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_Territory_Member</targetReference>
@@ -995,8 +1070,8 @@
     <recordLookups>
         <name>Get_PD_Work_Type</name>
         <label>Get PD Work Type</label>
-        <locationX>176</locationX>
-        <locationY>4092</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_Work_Type</targetReference>
@@ -1016,8 +1091,8 @@
     <recordLookups>
         <name>Get_PD_Work_Type_Group</name>
         <label>Get PD Work Type Group</label>
-        <locationX>176</locationX>
-        <locationY>4224</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_WTG</targetReference>
@@ -1037,8 +1112,8 @@
     <recordLookups>
         <name>Get_PD_Work_Type_Member</name>
         <label>Get PD Work Type Member</label>
-        <locationX>176</locationX>
-        <locationY>4356</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Check_PD_WTG_Member</targetReference>
@@ -1058,8 +1133,8 @@
     <recordLookups>
         <name>Get_Primary_Contact</name>
         <label>Get Primary Contact</label>
-        <locationX>176</locationX>
-        <locationY>4488</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
             <targetReference>Verify_Contact_Found</targetReference>
@@ -1085,10 +1160,130 @@
     </recordLookups>
     <runInMode>SystemModeWithoutSharing</runInMode>
     <screens>
+        <name>Both_Links_Sent_Screen</name>
+        <label>Links Already Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>BothLinksMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Do not send the email to the customer again.&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;Both the PD and FSS scheduling links have already been shared.&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>FSS_Link_Already_Sent_Screen</name>
+        <label>FSS Link Already Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>FSSLinkSentMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;FSS meeting link has already been sent.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>PD_Link_Already_Sent_Screen</name>
+        <label>PD Link Already Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>PDLinkSentMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;PD scheduling link has already been shared via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Close_Won_Error_Screen</name>
+        <label>Opportunity Closed</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>CloseWonMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;This Opportunity is Closed Won. Booking is not available for closed opportunities.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Closed_Error_Screen</name>
+        <label>Opportunity Closed</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>ClosedMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;This Opportunity is Closed. Booking is not available for closed opportunities.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
         <name>ContactNotFound</name>
         <label>Contact Not Found</label>
-        <locationX>176</locationX>
-        <locationY>4620</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1109,10 +1304,35 @@
         <showHeader>false</showHeader>
     </screens>
     <screens>
+        <name>Email_Sent_Screen</name>
+        <label>Email Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>EmailSentMsg</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has been sent!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The scheduling email has been sent to the primary contact.&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
         <name>No_Service_Resource</name>
         <label>No Service Resource</label>
-        <locationX>176</locationX>
-        <locationY>4752</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1135,8 +1355,8 @@
     <screens>
         <name>No_Service_Territory</name>
         <label>No Service Territory</label>
-        <locationX>176</locationX>
-        <locationY>4884</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1159,8 +1379,8 @@
     <screens>
         <name>No_Territory_Member</name>
         <label>No Territory Member</label>
-        <locationX>176</locationX>
-        <locationY>5016</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1183,8 +1403,8 @@
     <screens>
         <name>No_Work_Type</name>
         <label>No Work Type</label>
-        <locationX>176</locationX>
-        <locationY>5148</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1207,8 +1427,8 @@
     <screens>
         <name>No_Work_Type_Group</name>
         <label>No Work Type Group</label>
-        <locationX>176</locationX>
-        <locationY>5280</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1231,8 +1451,8 @@
     <screens>
         <name>No_Work_Type_Member</name>
         <label>No Work Type Member</label>
-        <locationX>176</locationX>
-        <locationY>5412</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1255,8 +1475,8 @@
     <screens>
         <name>PD_Appointment_Scheduled</name>
         <label>Appointment Scheduled</label>
-        <locationX>176</locationX>
-        <locationY>5544</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1280,8 +1500,8 @@
     <screens>
         <name>PD_Assignment_Error</name>
         <label>PD Assignment Error</label>
-        <locationX>176</locationX>
-        <locationY>5676</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1304,8 +1524,8 @@
     <screens>
         <name>PD_Review_Screen</name>
         <label>Review Meeting Details</label>
-        <locationX>176</locationX>
-        <locationY>5808</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>true</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1490,8 +1710,8 @@
     <screens>
         <name>PD_Select_Time_Screen</name>
         <label>Select a Time</label>
-        <locationX>176</locationX>
-        <locationY>5940</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1604,8 +1824,8 @@
     <screens>
         <name>SA_Creation_Error</name>
         <label>Service Appointment Error</label>
-        <locationX>176</locationX>
-        <locationY>6072</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1628,8 +1848,8 @@
     <screens>
         <name>Select_Meeting_Type_Screen</name>
         <label>Select Action</label>
-        <locationX>176</locationX>
-        <locationY>6204</locationY>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
@@ -1650,7 +1870,7 @@
             </styleProperties>
         </fields>
         <fields>
-            <name>MeetingTypeSelectionNoFSS</name>
+            <name>MeetingTypeSelectionICNoSOM</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choicePDLink</choiceReferences>
             <dataType>String</dataType>
@@ -1673,192 +1893,8 @@
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>
-    <screens>
-        <name>Select_Followup_Screen</name>
-        <label>Select Action</label>
-        <locationX>176</locationX>
-        <locationY>6336</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <connector>
-            <targetReference>Capture_Selection</targetReference>
-        </connector>
-        <fields>
-            <name>FollowupHeader</name>
-            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <fields>
-            <name>MeetingTypeSelectionFollowupFSS</name>
-            <choiceReferences>choiceFollowUp</choiceReferences>
-            <choiceReferences>choiceFSSLink</choiceReferences>
-            <dataType>String</dataType>
-            <defaultValue>
-                <stringValue>follow_up</stringValue>
-            </defaultValue>
-            <fieldText>Select an option</fieldText>
-            <fieldType>RadioButtons</fieldType>
-            <isRequired>true</isRequired>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-            <visibilityRule>
-                <conditionLogic>and</conditionLogic>
-                <conditions>
-                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
-                    <operator>EqualTo</operator>
-                    <rightValue>
-                        <stringValue>Contract Signed</stringValue>
-                    </rightValue>
-                </conditions>
-            </visibilityRule>
-        </fields>
-        <fields>
-            <name>MeetingTypeSelectionFollowupOnly</name>
-            <choiceReferences>choiceFollowUp</choiceReferences>
-            <dataType>String</dataType>
-            <defaultValue>
-                <stringValue>follow_up</stringValue>
-            </defaultValue>
-            <fieldText>Select an option</fieldText>
-            <fieldType>RadioButtons</fieldType>
-            <isRequired>true</isRequired>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-            <visibilityRule>
-                <conditionLogic>and</conditionLogic>
-                <conditions>
-                    <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
-                    <operator>NotEqualTo</operator>
-                    <rightValue>
-                        <stringValue>Contract Signed</stringValue>
-                    </rightValue>
-                </conditions>
-            </visibilityRule>
-        </fields>
-        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>Close_Won_Error_Screen</name>
-        <label>Opportunity Closed</label>
-        <locationX>176</locationX>
-        <locationY>6468</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>CloseWonMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;This Opportunity is Closed Won. Booking is not available for closed opportunities.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>Email_Sent_Screen</name>
-        <label>Email Sent</label>
-        <locationX>176</locationX>
-        <locationY>6600</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>EmailSentMsg</name>
-            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has been sent!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The scheduling email has been sent to the primary contact.&lt;/p&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>PD_Link_Already_Sent_Screen</name>
-        <label>PD Link Already Sent</label>
-        <locationX>176</locationX>
-        <locationY>6732</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>PDLinkAlreadySentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;A PD scheduling email has already been shared with this family. The scheduling link is available on the Opportunity record.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>FSS_Link_Already_Sent_Screen</name>
-        <label>FSS Link Already Sent</label>
-        <locationX>176</locationX>
-        <locationY>6864</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>FSSLinkAlreadySentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;An FSS scheduling email has already been shared with this family. The scheduling link is available on the Opportunity record.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
     <start>
-        <locationX>176</locationX>
+        <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
             <targetReference>Get_Opportunity_Record</targetReference>
@@ -1888,6 +1924,13 @@
         <objectType>ServiceAppointment</objectType>
     </variables>
     <variables>
+        <name>varAllPDResourceIds</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
+    <variables>
         <name>varIsFollowUp</name>
         <dataType>Boolean</dataType>
         <isCollection>false</isCollection>
@@ -1896,6 +1939,13 @@
         <value>
             <booleanValue>false</booleanValue>
         </value>
+    </variables>
+    <variables>
+        <name>varPDDisplayName</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
     </variables>
     <variables>
         <name>varPDName</name>
@@ -1934,20 +1984,6 @@
     </variables>
     <variables>
         <name>varSelectedAction</name>
-        <dataType>String</dataType>
-        <isCollection>false</isCollection>
-        <isInput>false</isInput>
-        <isOutput>false</isOutput>
-    </variables>
-    <variables>
-        <name>varPDDisplayName</name>
-        <dataType>String</dataType>
-        <isCollection>false</isCollection>
-        <isInput>false</isInput>
-        <isOutput>false</isOutput>
-    </variables>
-    <variables>
-        <name>varAllPDResourceIds</name>
         <dataType>String</dataType>
         <isCollection>false</isCollection>
         <isInput>false</isInput>

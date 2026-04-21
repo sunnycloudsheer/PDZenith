@@ -111,15 +111,15 @@
                             <div class="val-error step1-error">{bookingError}</div>
                         </template>
 
+                        <div class="tz-display">
+                            <span class="tz-icon">&#x1F310;</span>
+                            <span class="tz-text">{timezoneDisplay}</span>
+                        </div>
+
                         <template lwc:if={selectedDate}>
                             <div class="info-block">
                                 <p class="info-label">What time works best?</p>
                                 <p class="info-sublabel">Showing times for <strong>{selectedDateLong}</strong></p>
-                            </div>
-
-                            <div class="tz-display">
-                                <span class="tz-icon">&#x1F310;</span>
-                                <span class="tz-text">{timezoneDisplay}</span>
                             </div>
 
                             <template lwc:if={isSlotsLoading}>

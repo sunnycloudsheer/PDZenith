@@ -8,7 +8,7 @@
 
 <p>Please use the scheduling link below to choose a meeting time that works best for your family's schedule:</p>
 
-<p style="text-align:center;margin:20px 0"><a href="[[SCHEDULING_LINK]]" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your Onboarding Meeting</a></p>
+<p><a href="https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=FSS&amp;contactId={!Contact.Id}" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your Onboarding Meeting</a></p>
 
 <p>Once you've selected a time, your assigned FSS will follow up to confirm your appointment within 24-36 hours and introduce themselves. Your FSS will be your family's advocate and partner throughout this process. They will be with your family from the first Onboarding Meeting through any major decisions or hurdles to make sure your family has support that reflects our highest standard of professional quality.</p>
 
