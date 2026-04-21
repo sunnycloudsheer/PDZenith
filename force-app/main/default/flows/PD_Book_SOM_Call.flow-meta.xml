@@ -99,74 +99,68 @@
         <label>Send FSS Scheduling Email</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <actionName>emailSimple</actionName>
-        <actionType>emailSimple</actionType>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
         <connector>
             <targetReference>Email_Sent_Screen</targetReference>
         </connector>
+        <faultConnector>
+            <targetReference>Email_Send_Error_Screen</targetReference>
+        </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
         <inputParameters>
-            <name>emailAddresses</name>
+            <name>contactId</name>
             <value>
-                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>emailSubject</name>
+            <name>opportunityId</name>
             <value>
-                <stringValue>Welcome to the Zenith Family! - Schedule Your Onboarding Meeting</stringValue>
+                <elementReference>recordId</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>emailBody</name>
+            <name>emailType</name>
             <value>
-                <elementReference>fssEmailBody</elementReference>
+                <stringValue>FSS</stringValue>
             </value>
         </inputParameters>
-        <inputParameters>
-            <name>sendRichBody</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <nameSegment>emailSimple</nameSegment>
+        <nameSegment>SchedulingEmailSender</nameSegment>
     </actionCalls>
     <actionCalls>
         <name>Send_PD_Email</name>
         <label>Send PD Scheduling Email</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <actionName>emailSimple</actionName>
-        <actionType>emailSimple</actionType>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
         <connector>
             <targetReference>Email_Sent_Screen</targetReference>
         </connector>
+        <faultConnector>
+            <targetReference>Email_Send_Error_Screen</targetReference>
+        </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
         <inputParameters>
-            <name>emailAddresses</name>
+            <name>contactId</name>
             <value>
-                <elementReference>Get_Primary_Contact.Contact.Email</elementReference>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>emailSubject</name>
+            <name>opportunityId</name>
             <value>
-                <stringValue>Schedule Your Program Director Meeting - Zenith Prep Academy</stringValue>
+                <elementReference>recordId</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>emailBody</name>
+            <name>emailType</name>
             <value>
-                <elementReference>pdEmailBody</elementReference>
+                <stringValue>PD</stringValue>
             </value>
         </inputParameters>
-        <inputParameters>
-            <name>sendRichBody</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <nameSegment>emailSimple</nameSegment>
+        <nameSegment>SchedulingEmailSender</nameSegment>
     </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
@@ -716,12 +710,37 @@
         </rules>
     </decisions>
     <decisions>
+        <name>Check_Stage_No_SOM</name>
+        <label>Check Stage (No SOM)</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Select_Meeting_Type_Screen</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Show Radio Screen</defaultConnectorLabel>
+        <rules>
+            <name>No_SOM_Contract_Signed</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Contract Signed</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_FSS_Link_Sent</targetReference>
+            </connector>
+            <label>Contract Signed - FSS Link</label>
+        </rules>
+    </decisions>
+    <decisions>
         <name>Has_First_SOM_Already</name>
         <label>Has First SOM Already?</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
-            <targetReference>Select_Meeting_Type_Screen</targetReference>
+            <targetReference>Check_Stage_No_SOM</targetReference>
         </defaultConnector>
         <defaultConnectorLabel>No First SOM</defaultConnectorLabel>
         <rules>
@@ -1193,7 +1212,7 @@
         <allowPause>false</allowPause>
         <fields>
             <name>FSSLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;FSS meeting link has already been sent.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1217,7 +1236,7 @@
         <allowPause>false</allowPause>
         <fields>
             <name>PDLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;PD scheduling link has already been shared via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1290,6 +1309,30 @@
         <fields>
             <name>ContactNotFoundMsg</name>
             <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;No primary Contact found on this Opportunity. Please add a Contact Role before booking.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Email_Send_Error_Screen</name>
+        <label>Email Error</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>EmailErrorMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;An error occurred while sending the scheduling email. Please try again or contact the administrator.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>

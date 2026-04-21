@@ -8,7 +8,7 @@
 
 <p>Please use the scheduling link below to choose a meeting time that works best for your family's schedule:</p>
 
-<p><a href="https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?type=PD&amp;contactId={!Contact.Id}&amp;opportunityId={!Opportunity.Id}" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your PD Meeting</a></p>
+<p><a href="[[SCHEDULING_LINK]]" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your PD Meeting</a></p>
 
 <p>This meeting will be approximately 60 minutes via Zoom. Your Program Director will be your student's primary strategist and point of contact throughout the program.</p>
 

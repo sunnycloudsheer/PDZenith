@@ -607,6 +607,19 @@ public without sharing class GuestSchedulerController {
         if (bType == 'PD') {
             tryPut(sa, 'Program_Director__c', assignment.userId);
         }
+        if (bType == 'FSS') {
+            tryPut(sa, 'Family_Success_Specialist__c', assignment.userId);
+        }
+        if (String.isBlank(opportunityId) && conId != null) {
+            try {
+                List<OpportunityContactRole> ocrs = [
+                    SELECT OpportunityId FROM OpportunityContactRole
+                    WHERE ContactId = :conId AND Opportunity.IsClosed = false
+                    ORDER BY CreatedDate DESC LIMIT 1
+                ];
+                if (!ocrs.isEmpty()) opportunityId = ocrs[0].OpportunityId;
+            } catch (Exception ex) { }
+        }
         if (String.isNotBlank(opportunityId)) tryPut(sa, 'Opportunity__c', (Id) opportunityId);
         insert sa;
 
@@ -646,11 +659,19 @@ public without sharing class GuestSchedulerController {
             }
         }
 
-        if (bType == 'FSS' && conId != null) {
-            try {
-                Contact con = [SELECT Id, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
-                if (con.Family_Success_Specialist__c == null) { con.Family_Success_Specialist__c = assignment.userId; update con; }
-            } catch (Exception ex) { }
+        if (bType == 'FSS') {
+            if (String.isNotBlank(opportunityId)) {
+                try {
+                    Opportunity opp = [SELECT Id, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+                    if (opp.Family_Success_Specialist__c == null) { opp.Family_Success_Specialist__c = assignment.userId; update opp; }
+                } catch (Exception ex) { }
+            }
+            if (conId != null) {
+                try {
+                    Contact con = [SELECT Id, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
+                    if (con.Family_Success_Specialist__c == null) { con.Family_Success_Specialist__c = assignment.userId; update con; }
+                } catch (Exception ex) { }
+            }
         }
 
         User assignedUser = [SELECT Name FROM User WHERE Id = :assignment.userId LIMIT 1];
