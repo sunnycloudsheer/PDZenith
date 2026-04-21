@@ -1,7 +1,7 @@
 import { LightningElement, api, track } from 'lwc';
-import getBookingConfig  from '@salesforce/apex/GuestSchedulerController.getBookingConfig';
-import getAvailableSlots from '@salesforce/apex/GuestSchedulerController.getAvailableSlots';
-import bookAppointment   from '@salesforce/apex/GuestSchedulerController.bookAppointment';
+import getBookingConfig    from '@salesforce/apex/GuestSchedulerController.getBookingConfigWithToken';
+import getAvailableSlots   from '@salesforce/apex/GuestSchedulerController.getAvailableSlotsWithToken';
+import bookAppointment     from '@salesforce/apex/GuestSchedulerController.bookAppointmentWithToken';
 
 const MONTHS = ['January','February','March','April','May','June',
     'July','August','September','October','November','December'];
@@ -20,12 +20,19 @@ export default class GuestBookingScheduler extends LightningElement {
     @track isSlotsLoading = false;
     @track isSubmitting = false;
 
+    // Step-1 level error (shown above the slot list for PD/FSS where there is no form step)
+    @track bookingError = '';
+
     config = {};
     clientTimezone = 'America/Chicago';
     utmSource = ''; utmCampaign = ''; utmMedium = ''; leadSource = '';
     _contactId = '';
     _opportunityId = '';
+    _token = '';
     _resolvedType = '';
+
+    // Populated from getBookingConfig so the UI can show WHO the PD is before the user books
+    @track assignedPdDisplay = '';
 
     @track calYear = 0;
     @track calMonth = 0;
@@ -56,6 +63,7 @@ export default class GuestBookingScheduler extends LightningElement {
         this._resolvedType = this.bookingType || this._getUrlParam('type') || '';
         this._contactId = this._getUrlParam('contactId') || '';
         this._opportunityId = this._getUrlParam('opportunityId') || '';
+        this._token = this._getUrlParam('token') || '';
         this.utmSource = this._getUrlParam('utm_source');
         this.utmCampaign = this._getUrlParam('utm_campaign');
         this.utmMedium = this._getUrlParam('utm_medium');
@@ -113,10 +121,15 @@ export default class GuestBookingScheduler extends LightningElement {
     get isICMode() {
         return !this._resolvedType || this._resolvedType === 'IC';
     }
+    get isPDMode()  { return this._resolvedType === 'PD'; }
+    get isFSSMode() { return this._resolvedType === 'FSS'; }
     get headerLabel() {
         if (this._resolvedType === 'PD') return 'Program Director Meeting with Zenith Prep Academy';
         if (this._resolvedType === 'FSS') return 'FSS Onboarding Meeting with Zenith Prep Academy';
         return 'Initial Consultation with Zenith Prep Academy';
+    }
+    get showAssignedPdBanner() {
+        return this.isPDMode && !!this.assignedPdDisplay;
     }
 
     async _init() {
@@ -124,7 +137,8 @@ export default class GuestBookingScheduler extends LightningElement {
             const windowDays = this.isICMode ? this.openWindowDays : 0;
             const cfg = await getBookingConfig({
                 openWindowDays: windowDays, bookingType: this._resolvedType,
-                contactId: this._contactId, opportunityId: this._opportunityId
+                contactId: this._contactId, opportunityId: this._opportunityId,
+                token: this._token
             });
             if (!cfg.success) {
                 this.fatalErrorDetail = cfg.error || 'Configuration error';
@@ -133,6 +147,14 @@ export default class GuestBookingScheduler extends LightningElement {
                 return;
             }
             this.config = cfg;
+
+            // If Apex pre-assigned (or already had) a sticky PD, show the name up-front
+            if (cfg.isSticky && cfg.stickyUserId) {
+                // We don't have the name back from the server in this payload; the banner just
+                // confirms "your PD is assigned" so the user knows who they'll meet with.
+                this.assignedPdDisplay = 'Your dedicated Program Director';
+            }
+
             const dates = cfg.availableDates || [];
             this.availableDateSet = new Set(dates);
             if (dates.length > 0) {
@@ -140,7 +162,6 @@ export default class GuestBookingScheduler extends LightningElement {
                 this.lastAvailableDate = new Date(+y, +m-1, +d);
             }
 
-            // ── Auto-navigate to the month of the FIRST available date ──
             if (dates.length > 0) {
                 const [fy, fm] = dates[0].split('-');
                 this.calYear = +fy;
@@ -202,6 +223,7 @@ export default class GuestBookingScheduler extends LightningElement {
         this.selectedDate = event.currentTarget.dataset.date;
         this.selectedStart = null;
         this.selectedEnd = null;
+        this.bookingError = '';
         this._renderCalendar();
         this._loadSlots();
     }
@@ -212,7 +234,8 @@ export default class GuestBookingScheduler extends LightningElement {
         try {
             const slots = await getAvailableSlots({
                 dateStr: this.selectedDate, bookingType: this._resolvedType,
-                contactId: this._contactId, opportunityId: this._opportunityId
+                contactId: this._contactId, opportunityId: this._opportunityId,
+                token: this._token
             });
             this.timeSlots = (slots || []).map(s => ({
                 startUtc: s.startUtc, endUtc: s.endUtc,
@@ -228,15 +251,24 @@ export default class GuestBookingScheduler extends LightningElement {
     }
 
     handleSlotClick(event) {
+        // Ignore clicks while a previous booking is still in flight — prevents the
+        // "click does nothing / ends up double-booking" feel.
+        if (this.isSubmitting) return;
+
         this.selectedStart = event.currentTarget.dataset.start;
-        this.selectedEnd = event.currentTarget.dataset.end;
-        if (this.selectedStart && this.selectedEnd) {
-            if (this.isICMode) {
-                this.currentStep = 2;
-                this.validationError = '';
-            } else {
-                this.handleSubmit();
-            }
+        this.selectedEnd   = event.currentTarget.dataset.end;
+        this.bookingError  = '';
+
+        if (!this.selectedStart || !this.selectedEnd) return;
+
+        if (this.isICMode) {
+            // IC keeps the two-step form flow
+            this.currentStep = 2;
+            this.validationError = '';
+        } else {
+            // PD / FSS book immediately — the user was identified via contactId/opportunityId
+            // in the URL, so no additional form is needed.
+            this.handleSubmit();
         }
     }
 
@@ -272,6 +304,7 @@ export default class GuestBookingScheduler extends LightningElement {
             if (err) { this.validationError = err; return; }
         }
         this.validationError = '';
+        this.bookingError    = '';
         this.isSubmitting = true;
         try {
             const result = await bookAppointment({
@@ -281,7 +314,8 @@ export default class GuestBookingScheduler extends LightningElement {
                 studentGrade: this.studentGrade, leadSource: this.leadSource,
                 guestEmails: this.guestEmails.trim(), clientTimezone: this.clientTimezone,
                 utmSource: this.utmSource, utmCampaign: this.utmCampaign, utmMedium: this.utmMedium,
-                bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId
+                bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId,
+                token: this._token
             });
             if (result && result.success === 'true') {
                 this.timeSlots = this.timeSlots.filter(s => s.startUtc !== this.selectedStart);
@@ -293,13 +327,19 @@ export default class GuestBookingScheduler extends LightningElement {
             } else if (result && result.error === 'SLOT_UNAVAILABLE') {
                 this.currentStep = 1;
                 this.selectedStart = null; this.selectedEnd = null;
-                this.validationError = 'This time slot is no longer available. Please select another time.';
+                const msg = 'This time slot is no longer available. Please select another time.';
+                this.validationError = msg;
+                this.bookingError    = msg;
                 if (this.selectedDate) this._loadSlots();
             } else {
-                this.validationError = (result && result.error) ? result.error : 'Booking could not be completed.';
+                const msg = (result && result.error) ? result.error : 'Booking could not be completed.';
+                this.validationError = msg;
+                this.bookingError    = msg;
             }
         } catch (error) {
-            this.validationError = error?.body?.message || error?.message || 'An error occurred.';
+            const msg = error?.body?.message || error?.message || 'An error occurred.';
+            this.validationError = msg;
+            this.bookingError    = msg;
         } finally { this.isSubmitting = false; }
     }
 }

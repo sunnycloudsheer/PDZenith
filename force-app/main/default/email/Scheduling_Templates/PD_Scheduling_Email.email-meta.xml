@@ -4,8 +4,8 @@
     <description>Email sent to primary contact with PD scheduling portal link</description>
     <encodingKey>UTF-8</encodingKey>
     <name>PD Scheduling Email</name>
+    <letterhead>Zenith_Prep_Classic_Letterhead</letterhead>
     <style>freeForm</style>
     <subject>Schedule Your Program Director Meeting - Zenith Prep Academy</subject>
     <type>html</type>
-    <relatedEntityType>Contact</relatedEntityType>
 </EmailTemplate>

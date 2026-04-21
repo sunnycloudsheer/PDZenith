@@ -4,8 +4,8 @@
     <description>Email sent to primary contact with FSS onboarding scheduling portal link</description>
     <encodingKey>UTF-8</encodingKey>
     <name>FSS Scheduling Email</name>
+    <letterhead>Zenith_Prep_Classic_Letterhead</letterhead>
     <style>freeForm</style>
-    <subject>Schedule Your Onboarding Meeting - Zenith Prep Academy</subject>
+    <subject>Welcome to the Zenith Family! - Schedule Your Onboarding Meeting</subject>
     <type>html</type>
-    <relatedEntityType>Contact</relatedEntityType>
 </EmailTemplate>

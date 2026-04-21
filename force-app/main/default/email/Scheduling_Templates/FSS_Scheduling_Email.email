@@ -1,0 +1,22 @@
+<html>
+<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+<p>Hi {!Contact.FirstName},</p>
+
+<p>I know I speak for our entire team when I say that we're very excited to have your family be part of our college consulting program and are looking forward to seeing all that we'll be able to achieve together.</p>
+
+<p>The next step is to schedule your Onboarding Meeting with one of our Family Success Specialists (FSS) over Zoom. This meeting is a chance for us to get to know your family, explore available resources, and ensure you feel supported every step of the way. <strong>We want to make sure you are able to get started as soon as possible, so keep in mind that only one parent needs to attend (though more are always welcome!), and students are optional but encouraged if available.</strong></p>
+
+<p>Please use the scheduling link below to choose a meeting time that works best for your family's schedule:</p>
+
+<p style="text-align:center;margin:20px 0"><a href="[[SCHEDULING_LINK]]" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your Onboarding Meeting</a></p>
+
+<p>Once you've selected a time, your assigned FSS will follow up to confirm your appointment within 24-36 hours and introduce themselves. Your FSS will be your family's advocate and partner throughout this process. They will be with your family from the first Onboarding Meeting through any major decisions or hurdles to make sure your family has support that reflects our highest standard of professional quality.</p>
+
+<p>After the initial onboarding meeting, the FSS will coordinate with our leadership team to connect your family to your student's team, including their Educational Strategist, and they will be reaching out within 24 hours to set up the initial strategy meeting.</p>
+
+<p>Looking forward to having your family as part of our Zenith family.</p>
+
+<p>Best,<br/>
+Zenith Prep Academy</p>
+</body>
+</html>

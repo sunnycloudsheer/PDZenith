@@ -13,6 +13,9 @@
             <div class="error-wrap">
                 <p class="error-heading">Booking Unavailable</p>
                 <p class="error-body">We're having trouble loading the booking form. Please refresh the page or call us directly.</p>
+                <template lwc:if={fatalErrorDetail}>
+                    <p class="error-body error-detail">{fatalErrorDetail}</p>
+                </template>
             </div>
         </div>
     </template>
@@ -81,6 +84,17 @@
                     </div>
 
                     <div class="panel-right">
+
+                        <!-- NEW: Assigned-PD banner. Shows on Step 1 for PD mode when a PD has
+                             been stuck to the Opportunity (either pre-existing sticky or freshly
+                             assigned by the round-robin in getBookingConfig). -->
+                        <template lwc:if={showAssignedPdBanner}>
+                            <div class="pd-banner">
+                                <span class="pd-banner-icon">&#x1F464;</span>
+                                <span class="pd-banner-text">{assignedPdDisplay}</span>
+                            </div>
+                        </template>
+
                         <div class="info-block">
                             <p class="info-label">Meeting location</p>
                             <p class="info-value">&#x1F4CD; Zoom</p>
@@ -89,6 +103,13 @@
                             <p class="info-label">Meeting duration</p>
                             <div class="duration-badge">{durationLabel}</div>
                         </div>
+
+                        <!-- NEW: Step-1 booking error. Without this, a booking failure on a
+                             PD/FSS slot click was invisible (validationError only renders on
+                             Step 2's IC form) — the slot looked "not clickable". -->
+                        <template lwc:if={bookingError}>
+                            <div class="val-error step1-error">{bookingError}</div>
+                        </template>
 
                         <template lwc:if={selectedDate}>
                             <div class="info-block">
@@ -114,6 +135,7 @@
                                                 class="slot-btn"
                                                 data-start={slot.startUtc}
                                                 data-end={slot.endUtc}
+                                                disabled={isSubmitting}
                                                 onclick={handleSlotClick}>{slot.displayTime}</button>
                                     </template>
                                 </div>
@@ -133,6 +155,18 @@
                             </div>
                         </template>
                     </div>
+
+                    <!-- NEW: Booking overlay for PD/FSS. Step-1 had no visible feedback
+                         while the Apex call was in flight — this covers the whole split-panel
+                         so the user knows their click was received. -->
+                    <template lwc:if={isSubmitting}>
+                        <div class="booking-overlay">
+                            <div class="booking-overlay-card">
+                                <lightning-spinner alternative-text="Booking..." size="small"></lightning-spinner>
+                                <p class="booking-overlay-text">Booking your meeting&hellip;</p>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
 

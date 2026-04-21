@@ -40,7 +40,7 @@ public without sharing class PDSchedulingConfigHandler {
 
     @InvocableMethod(
         label='Get PD Scheduling Config'
-        description='Returns territory, WorkType, and resource for flowTimeslot.'
+        description='Returns territory, WorkType, and resource for flowTimeslot. Always restricts timeslots to one PD.'
         category='Scheduling'
     )
     public static List<ConfigResult> getSchedulingConfig(List<ConfigRequest> requests) {
@@ -93,9 +93,10 @@ public without sharing class PDSchedulingConfigHandler {
                 if (targetTerritoryId == null) {
                     Date today = Date.today();
 
-                    Set<Id> stmResourceIds = isSticky
-                        ? new Set<Id>{ anchorResourceId }
-                        : (cachedAllResourceIds != null ? getAllResourceIdSet() : new Set<Id>{ anchorResourceId });
+                    // Always look at the chosen PD's own territories first. Never pull in
+                    // "all PD resources" here — that was how the timeslot picker ended up
+                    // showing another PD (e.g., Rebecca) instead of the one selected.
+                    Set<Id> stmResourceIds = new Set<Id>{ anchorResourceId };
 
                     List<ServiceTerritoryMember> stmList = [
                         SELECT Id, ServiceTerritoryId, TerritoryType, OperatingHoursId,
@@ -117,13 +118,11 @@ public without sharing class PDSchedulingConfigHandler {
                         }
                     }
 
-                    if (isSticky && !durationMatchTerritories.isEmpty()) {
+                    if (!durationMatchTerritories.isEmpty()) {
                         for (Id tId : durationMatchTerritories) {
                             targetTerritoryId = tId;
                             break;
                         }
-                    } else if (!isSticky && !durationMatchTerritories.isEmpty()) {
-                        targetTerritoryId = findTerritoryWithMostSlots(durationMatchTerritories);
                     }
 
                     if (targetTerritoryId == null && !stmList.isEmpty()) {
@@ -156,13 +155,10 @@ public without sharing class PDSchedulingConfigHandler {
                     throw new AuraHandledException('No Service Territory found for the selected Program Director.');
                 }
 
-                if (!isSticky && cachedAllResourceIds != null) {
-                    ensureAllResourcesInTerritory(targetTerritoryId, getAllResourceIdSet());
-                    Id territoryOwnerResourceId = getOriginalTerritoryMember(targetTerritoryId);
-                    if (territoryOwnerResourceId != null) {
-                        anchorResourceId = territoryOwnerResourceId;
-                    }
-                }
+                // IMPORTANT: Do NOT override anchorResourceId with the territory's first-created
+                // member. That was the Rebecca bug — the lowest-load PD got picked, then the
+                // "territory owner" was substituted back in right before the timeslot component
+                // rendered. We keep the round-robin winner as the primary resource.
 
                 if (targetWorkTypeId == null) {
                     try {
@@ -239,24 +235,23 @@ public without sharing class PDSchedulingConfigHandler {
 
                 res.workTypeGroupId = ensureWorkTypeGroup(targetWorkTypeId);
 
-                if (isSticky) {
+                // For sticky (follow-up) bookings, restrict to the assigned PD only.
+                // For round-robin (first booking), show ALL eligible PDs' availability
+                // so the user sees combined time slots. PDPostBookingHandler.selectPD
+                // does its own round-robin at booking time to pick the actual PD.
+                if (isSticky || cachedAllResourceIds == null) {
                     res.allResourceIds = String.valueOf(anchorResourceId);
                 } else {
-                    res.allResourceIds = (cachedAllResourceIds != null)
-                        ? cachedAllResourceIds
-                        : String.valueOf(anchorResourceId);
+                    res.allResourceIds = cachedAllResourceIds;
                 }
 
                 res.serviceTerritoryId = targetTerritoryId;
                 res.workTypeId         = targetWorkTypeId;
                 res.primaryResourceId  = anchorResourceId;
-                if (isSticky) {
-                    List<User> pdUser = [SELECT Name FROM User WHERE Id = :pdUserId LIMIT 1];
-                    res.pdDisplayName = pdUser.isEmpty() ? sr.Name : pdUser[0].Name;
-                } else {
-                    res.pdDisplayName = 'Will be assigned after booking';
-                }
-                res.success            = true;
+
+                List<User> pdUser = [SELECT Name FROM User WHERE Id = :pdUserId LIMIT 1];
+                res.pdDisplayName = pdUser.isEmpty() ? sr.Name : pdUser[0].Name;
+                res.success       = true;
 
             } catch (Exception e) {
                 res.success      = false;
@@ -406,107 +401,6 @@ public without sharing class PDSchedulingConfigHandler {
         }
         cachedAllResourceIds = String.join(allIds, ',');
         return bestId;
-    }
-
-    private static Id getOriginalTerritoryMember(Id territoryId) {
-        try {
-            List<ServiceTerritoryMember> stmList = [
-                SELECT ServiceResourceId FROM ServiceTerritoryMember
-                WHERE ServiceTerritoryId = :territoryId
-                AND TerritoryType = 'P'
-                ORDER BY CreatedDate ASC LIMIT 1
-            ];
-            if (!stmList.isEmpty()) return stmList[0].ServiceResourceId;
-
-            stmList = [
-                SELECT ServiceResourceId FROM ServiceTerritoryMember
-                WHERE ServiceTerritoryId = :territoryId
-                ORDER BY CreatedDate ASC LIMIT 1
-            ];
-            if (!stmList.isEmpty()) return stmList[0].ServiceResourceId;
-        } catch (Exception e) { }
-        return null;
-    }
-
-    private static void ensureAllResourcesInTerritory(Id territoryId, Set<Id> resourceIds) {
-        try {
-            Date today = Date.today();
-            Set<Id> alreadyMembers = new Set<Id>();
-            for (ServiceTerritoryMember stm : [
-                SELECT ServiceResourceId FROM ServiceTerritoryMember
-                WHERE ServiceTerritoryId = :territoryId
-                AND ServiceResourceId IN :resourceIds
-                AND EffectiveStartDate <= :today
-                AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
-            ]) {
-                alreadyMembers.add(stm.ServiceResourceId);
-            }
-
-            List<ServiceTerritoryMember> toInsert = new List<ServiceTerritoryMember>();
-            for (Id srId : resourceIds) {
-                if (!alreadyMembers.contains(srId)) {
-                    toInsert.add(new ServiceTerritoryMember(
-                        ServiceTerritoryId = territoryId,
-                        ServiceResourceId  = srId,
-                        EffectiveStartDate = today,
-                        TerritoryType      = 'S'
-                    ));
-                }
-            }
-            if (!toInsert.isEmpty()) {
-                insert toInsert;
-            }
-        } catch (Exception e) {
-            System.debug(LoggingLevel.WARN, 'ensureAllResourcesInTerritory failed: ' + e.getMessage());
-        }
-    }
-
-    private static Id findTerritoryWithMostSlots(Set<Id> territoryIds) {
-        Map<Id, Id> territoryToOH = new Map<Id, Id>();
-        for (ServiceTerritory st : [
-            SELECT Id, OperatingHoursId FROM ServiceTerritory
-            WHERE Id IN :territoryIds AND OperatingHoursId != null
-        ]) {
-            territoryToOH.put(st.Id, st.OperatingHoursId);
-        }
-        if (territoryToOH.isEmpty()) return territoryIds.iterator().next();
-
-        Set<Id> ohIds = new Set<Id>(territoryToOH.values());
-        Map<Id, Integer> ohSlotCount = new Map<Id, Integer>();
-        for (TimeSlot ts : [
-            SELECT OperatingHoursId FROM TimeSlot
-            WHERE OperatingHoursId IN :ohIds
-        ]) {
-            Integer cnt = ohSlotCount.containsKey(ts.OperatingHoursId)
-                ? ohSlotCount.get(ts.OperatingHoursId) + 1 : 1;
-            ohSlotCount.put(ts.OperatingHoursId, cnt);
-        }
-
-        Id bestTerritoryId = null;
-        Integer bestCount = 0;
-        for (Id tId : territoryIds) {
-            Id ohId = territoryToOH.get(tId);
-            if (ohId == null) continue;
-            Integer cnt = ohSlotCount.containsKey(ohId) ? ohSlotCount.get(ohId) : 0;
-            if (cnt > bestCount) {
-                bestCount = cnt;
-                bestTerritoryId = tId;
-            }
-        }
-        return bestTerritoryId != null ? bestTerritoryId : territoryIds.iterator().next();
-    }
-
-    private static Set<Id> getAllResourceIdSet() {
-        Set<Id> ids = new Set<Id>();
-        if (cachedAllResourceIds != null) {
-            for (String s : cachedAllResourceIds.split(',')) {
-                String trimmed = s.trim();
-                if (String.isNotBlank(trimmed)) {
-                    ids.add((Id) trimmed);
-                }
-            }
-        }
-        return ids;
     }
 
     private static Id ensureWorkTypeGroup(Id workTypeId) {

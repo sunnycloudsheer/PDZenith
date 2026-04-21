@@ -44,13 +44,17 @@ public without sharing class PDPostBookingHandler {
         ]);
 
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Program_Director__c, StageName, AccountId
+            SELECT Id, Program_Director__c, Family_Success_Specialist__c, StageName, AccountId
             FROM Opportunity
             WHERE Id IN :oppIds
         ]);
 
         for (PostBookingRequest req : requests) {
             PostBookingResult res = new PostBookingResult();
+            Id resolvedContactId = null;
+            Id resolvedPdUserId  = null;
+            Id resolvedFssUserId = null;
+
             try {
                 Boolean followUp    = (req.isFollowUp != null && req.isFollowUp);
                 String  meetingType = followUp
@@ -67,7 +71,6 @@ public without sharing class PDPostBookingHandler {
                     throw new HandlerException('Opportunity not found: ' + req.opportunityId);
                 }
 
-                Id contactId = null;
                 List<OpportunityContactRole> ocrs = [
                     SELECT ContactId
                     FROM OpportunityContactRole
@@ -75,7 +78,29 @@ public without sharing class PDPostBookingHandler {
                     LIMIT 1
                 ];
                 if (!ocrs.isEmpty()) {
-                    contactId = ocrs[0].ContactId;
+                    resolvedContactId = ocrs[0].ContactId;
+                }
+
+                // Resolve the primary Contact's Account. This Account becomes the SA parent
+                // (SA.ParentRecordId) — never the Opportunity. Order of preference:
+                //   1. Contact.AccountId from the resolved primary contact
+                //   2. Opportunity.AccountId (fallback when the Opportunity has no primary OCR)
+                Id resolvedAccountId = null;
+                if (resolvedContactId != null) {
+                    List<Contact> cons = [SELECT AccountId, Family_Success_Specialist__c FROM Contact WHERE Id = :resolvedContactId LIMIT 1];
+                    if (!cons.isEmpty() && cons[0].AccountId != null) {
+                        resolvedAccountId = cons[0].AccountId;
+                    }
+                    if (!cons.isEmpty() && cons[0].Family_Success_Specialist__c != null) {
+                        resolvedFssUserId = cons[0].Family_Success_Specialist__c;
+                    }
+                }
+                // Fallback: read FSS from Opportunity if Contact didn't have one
+                if (resolvedFssUserId == null && opp.Family_Success_Specialist__c != null) {
+                    resolvedFssUserId = opp.Family_Success_Specialist__c;
+                }
+                if (resolvedAccountId == null && opp.AccountId != null) {
+                    resolvedAccountId = opp.AccountId;
                 }
 
                 Id stickyResourceId = null;
@@ -102,12 +127,25 @@ public without sharing class PDPostBookingHandler {
                     WHERE Id = :selectedResourceId
                     LIMIT 1
                 ];
+                resolvedPdUserId = pd.RelatedRecordId;
 
                 sa.Meeting_Type__c = meetingType;
                 sa.Subject         = meetingType + ' - Zenith Prep Academy';
                 sa.OwnerId         = pd.RelatedRecordId;
-                sa.Opportunity__c = opp.Id;
+                sa.Opportunity__c  = opp.Id;
                 sa.Program_Director__c = pd.RelatedRecordId;
+                if (resolvedFssUserId != null) {
+                    sa.Family_Success_Specialist__c = resolvedFssUserId;
+                }
+                // ParentRecordId MUST be the primary Contact's Account — never the Opportunity.
+                // Only overwrite if we actually resolved an Account; otherwise leave whatever the
+                // Flow originally set so we don't accidentally blank it out.
+                if (resolvedAccountId != null) {
+                    sa.ParentRecordId = resolvedAccountId;
+                }
+                if (resolvedContactId != null) {
+                    sa.ContactId = resolvedContactId;
+                }
 
                 Id pdTerritoryId = null;
                 String durationTag = followUp ? '30' : '60';
@@ -154,8 +192,8 @@ public without sharing class PDPostBookingHandler {
                     evt.EndDateTime   = sa.SchedEndTime;
                     evt.OwnerId       = pd.RelatedRecordId;
                     evt.WhatId        = opp.Id;
-                    if (contactId != null) {
-                        evt.WhoId = contactId;
+                    if (resolvedContactId != null) {
+                        evt.WhoId = resolvedContactId;
                     }
                     evt.ShowAs      = 'Busy';
                     evt.Location    = 'Zoom';
@@ -170,23 +208,12 @@ public without sharing class PDPostBookingHandler {
                     System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
                 }
 
-                pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
-                    ? pd.Appointment_Count__c + 1 : 1;
-                update pd;
-
-                Id pdUserIdForStamp = pd.RelatedRecordId;
-
-                Opportunity oppForPD = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id FOR UPDATE];
-                oppForPD.Program_Director__c = pdUserIdForStamp;
-                if (oppForPD.StageName != 'SOM Scheduled') {
-                    oppForPD.StageName = 'SOM Scheduled';
-                }
-                update oppForPD;
-
-                if (contactId != null) {
-                    Contact conForPD = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId FOR UPDATE];
-                    conForPD.Program_Director__c = pdUserIdForStamp;
-                    update conForPD;
+                try {
+                    pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
+                        ? pd.Appointment_Count__c + 1 : 1;
+                    update pd;
+                } catch (Exception pdEx) {
+                    System.debug(LoggingLevel.WARN, 'ServiceResource counter update failed: ' + pdEx.getMessage());
                 }
 
                 res.success           = true;
@@ -198,6 +225,62 @@ public without sharing class PDPostBookingHandler {
                 res.success      = false;
                 res.errorMessage = e.getMessage();
             }
+
+            // -----------------------------------------------------------------
+            //  Sticky PD writes on Opportunity + Contact.
+            //  Critical: these live OUTSIDE the main try/catch so they always run
+            //  whenever we have a resolved PD user, even if the SA / AssignedResource /
+            //  counter updates above threw. This is why the original code was not
+            //  writing Program_Director__c to Opp/Contact — the earlier DML would throw
+            //  and skip the sticky update entirely.
+            // -----------------------------------------------------------------
+            if (resolvedPdUserId != null) {
+                List<SObject> stickyUpdates = new List<SObject>();
+                Opportunity oppUpd = new Opportunity(
+                    Id = req.opportunityId, Program_Director__c = resolvedPdUserId);
+                Opportunity origOpp = oppMap.get(req.opportunityId);
+                if (origOpp != null && origOpp.Family_Success_Specialist__c == null && resolvedFssUserId != null) {
+                    oppUpd.Family_Success_Specialist__c = resolvedFssUserId;
+                }
+                stickyUpdates.add(oppUpd);
+                if (resolvedContactId != null) {
+                    Contact conUpd = new Contact(
+                        Id = resolvedContactId, Program_Director__c = resolvedPdUserId);
+                    if (resolvedFssUserId != null) {
+                        conUpd.Family_Success_Specialist__c = resolvedFssUserId;
+                    }
+                    stickyUpdates.add(conUpd);
+                }
+                try {
+                    Database.SaveResult[] srs = Database.update(stickyUpdates, false);
+                    for (Integer i = 0; i < srs.size(); i++) {
+                        if (!srs[i].isSuccess()) {
+                            String recType = (stickyUpdates[i] instanceof Opportunity) ? 'Opportunity' : 'Contact';
+                            String err = srs[i].getErrors()[0].getMessage();
+                            System.debug(LoggingLevel.ERROR, recType + ' PD sticky update failed: ' + err);
+                            res.errorMessage = (res.errorMessage == null ? '' : res.errorMessage + ' | ')
+                                + recType + ': ' + err;
+                        }
+                    }
+                } catch (Exception stickyEx) {
+                    System.debug(LoggingLevel.ERROR, 'Sticky PD update threw: ' + stickyEx.getMessage());
+                    res.errorMessage = (res.errorMessage == null ? '' : res.errorMessage + ' | ')
+                        + 'Sticky: ' + stickyEx.getMessage();
+                }
+            }
+
+            // -----------------------------------------------------------------
+            //  StageName update is its own DML so a validation rule or downstream
+            //  flow on StageName cannot take down the Program_Director__c write.
+            // -----------------------------------------------------------------
+            if (res.success == true) {
+                try {
+                    update new Opportunity(Id = req.opportunityId, StageName = 'SOM Scheduled');
+                } catch (Exception stageEx) {
+                    System.debug(LoggingLevel.WARN, 'Stage update skipped: ' + stageEx.getMessage());
+                }
+            }
+
             results.add(res);
         }
 

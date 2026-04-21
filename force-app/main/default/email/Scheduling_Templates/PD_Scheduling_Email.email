@@ -1,0 +1,20 @@
+<html>
+<body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+<p>Hi {!Contact.FirstName},</p>
+
+<p>Thank you for choosing Zenith Prep Academy! We're excited to connect you with your dedicated Program Director for a strategy planning session.</p>
+
+<p>This meeting is an opportunity to discuss your student's goals, map out a personalized plan, and answer any questions you may have. <strong>We want to make sure you are able to get started as soon as possible, so keep in mind that only one parent needs to attend (though more are always welcome!), and students are optional but encouraged if available.</strong></p>
+
+<p>Please use the scheduling link below to choose a meeting time that works best for your family's schedule:</p>
+
+<p style="text-align:center;margin:20px 0"><a href="[[SCHEDULING_LINK]]" style="color:#1a73e8;text-decoration:underline;font-weight:bold;">Schedule Your PD Meeting</a></p>
+
+<p>This meeting will be approximately 60 minutes via Zoom. Your Program Director will be your student's primary strategist and point of contact throughout the program.</p>
+
+<p>Looking forward to getting started!</p>
+
+<p>Best,<br/>
+Zenith Prep Academy</p>
+</body>
+</html>

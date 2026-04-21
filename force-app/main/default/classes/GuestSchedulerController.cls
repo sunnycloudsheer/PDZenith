@@ -3,7 +3,10 @@ public without sharing class GuestSchedulerController {
     private static final String ADMISSION_PROFILE_NAME     = 'Admission Counsellor';
     private static final String ADMISSION_PROFILE_NAME_ALT = 'Admission Counselor';
     private static final String PD_PROFILE_NAME            = 'Program Director';
-    private static final String FSS_PROFILE_NAME           = 'FSS Onboarding';
+    // FSS may be stored under any of these profile labels across orgs; we tolerate all.
+    private static final Set<String> FSS_PROFILE_NAMES     = new Set<String>{
+        'FSS Onboarding', 'FSS Onboarding Specialist', 'Family Success Specialist', 'FSS'
+    };
     private static final Integer DEFAULT_SCAN_DAYS     = 30;
     private static final Integer DEFAULT_ADVANCE_HOURS = 2;
     private static Map<String, DiscoveredConfig> cachedDiscoveryMap = new Map<String, DiscoveredConfig>();
@@ -18,6 +21,75 @@ public without sharing class GuestSchedulerController {
         'PD'  => 'Program Director - 60 Minutes - Zenith Prep Academy',
         'FSS' => 'FSS Onboarding Meeting - Zenith Prep Academy'
     };
+
+    // ServiceAppointment.TimeZone is a RESTRICTED PICKLIST in Salesforce. Browsers may send
+    // legacy IANA names (via Intl.DateTimeFormat) that Salesforce no longer accepts, e.g.
+    // "Asia/Calcutta" (renamed to "Asia/Kolkata" in the IANA db years ago). Map deprecated
+    // aliases to their modern equivalents so the insert does not fail.
+    private static final Map<String, String> TZ_ALIAS_MAP = new Map<String, String>{
+        'Asia/Calcutta'        => 'Asia/Kolkata',
+        'Asia/Katmandu'        => 'Asia/Kathmandu',
+        'Asia/Saigon'          => 'Asia/Ho_Chi_Minh',
+        'Asia/Rangoon'         => 'Asia/Yangon',
+        'Asia/Macao'           => 'Asia/Macau',
+        'Asia/Chongqing'       => 'Asia/Shanghai',
+        'Asia/Chungking'       => 'Asia/Shanghai',
+        'Asia/Harbin'          => 'Asia/Shanghai',
+        'Asia/Kashgar'         => 'Asia/Urumqi',
+        'Asia/Ulan_Bator'      => 'Asia/Ulaanbaatar',
+        'Asia/Dacca'           => 'Asia/Dhaka',
+        'Asia/Istanbul'        => 'Europe/Istanbul',
+        'Europe/Kiev'          => 'Europe/Kyiv',
+        'Europe/Nicosia'       => 'Asia/Nicosia',
+        'America/Buenos_Aires' => 'America/Argentina/Buenos_Aires',
+        'America/Cordoba'      => 'America/Argentina/Cordoba',
+        'America/Mendoza'      => 'America/Argentina/Mendoza',
+        'America/Rosario'      => 'America/Argentina/Cordoba',
+        'America/Catamarca'    => 'America/Argentina/Catamarca',
+        'America/Jujuy'        => 'America/Argentina/Jujuy',
+        'America/Indianapolis' => 'America/Indiana/Indianapolis',
+        'America/Louisville'   => 'America/Kentucky/Louisville',
+        'America/Atka'         => 'America/Adak',
+        'America/Knox_IN'      => 'America/Indiana/Knox',
+        'America/Porto_Acre'   => 'America/Rio_Branco',
+        'America/Fort_Wayne'   => 'America/Indiana/Indianapolis',
+        'US/Pacific'           => 'America/Los_Angeles',
+        'US/Eastern'           => 'America/New_York',
+        'US/Central'           => 'America/Chicago',
+        'US/Mountain'          => 'America/Denver',
+        'US/Arizona'           => 'America/Phoenix',
+        'US/Hawaii'            => 'Pacific/Honolulu',
+        'US/Alaska'            => 'America/Anchorage',
+        'US/Samoa'             => 'Pacific/Pago_Pago',
+        'Canada/Pacific'       => 'America/Vancouver',
+        'Canada/Mountain'      => 'America/Edmonton',
+        'Canada/Central'       => 'America/Winnipeg',
+        'Canada/Eastern'       => 'America/Toronto',
+        'Canada/Atlantic'      => 'America/Halifax',
+        'Canada/Newfoundland'  => 'America/St_Johns',
+        'Australia/ACT'        => 'Australia/Sydney',
+        'Australia/Canberra'   => 'Australia/Sydney',
+        'Australia/NSW'        => 'Australia/Sydney',
+        'Australia/Victoria'   => 'Australia/Melbourne',
+        'Australia/Queensland' => 'Australia/Brisbane',
+        'Australia/Tasmania'   => 'Australia/Hobart',
+        'Australia/North'      => 'Australia/Darwin',
+        'Australia/South'      => 'Australia/Adelaide',
+        'Australia/West'       => 'Australia/Perth',
+        'Pacific/Ponape'       => 'Pacific/Pohnpei',
+        'Pacific/Truk'         => 'Pacific/Chuuk',
+        'Pacific/Samoa'        => 'Pacific/Pago_Pago',
+        'GMT0'                 => 'GMT',
+        'Greenwich'            => 'GMT',
+        'UCT'                  => 'UTC',
+        'Universal'            => 'UTC',
+        'Zulu'                 => 'UTC'
+    };
+
+    private static String normalizeTimezone(String tz) {
+        if (String.isBlank(tz)) return null;
+        return TZ_ALIAS_MAP.containsKey(tz) ? TZ_ALIAS_MAP.get(tz) : tz;
+    }
 
     private class DiscoveredConfig {
         Id workTypeId;
@@ -66,7 +138,7 @@ public without sharing class GuestSchedulerController {
 
     private static List<String> getProfileNames(String bType) {
         if (bType == 'PD') return new List<String>{ PD_PROFILE_NAME };
-        if (bType == 'FSS') return new List<String>{ FSS_PROFILE_NAME };
+        if (bType == 'FSS') return new List<String>(FSS_PROFILE_NAMES);
         return new List<String>{ ADMISSION_PROFILE_NAME, ADMISSION_PROFILE_NAME_ALT };
     }
 
@@ -105,20 +177,14 @@ public without sharing class GuestSchedulerController {
         List<String> profileNames = getProfileNames(bType);
 
         Set<Id> userIds = new Set<Id>();
-        String profileQuery = (profileNames.size() == 1) ? profileNames[0] : null;
-        if (profileQuery != null) {
-            for (User u : [SELECT Id FROM User WHERE Profile.Name = :profileQuery AND IsActive = true]) {
-                userIds.add(u.Id);
-            }
-        } else {
-            String p1 = profileNames[0];
-            String p2 = profileNames[1];
-            for (User u : [SELECT Id FROM User WHERE (Profile.Name = :p1 OR Profile.Name = :p2) AND IsActive = true]) {
-                userIds.add(u.Id);
-            }
+        for (User u : [
+            SELECT Id FROM User
+            WHERE Profile.Name IN :profileNames AND IsActive = true
+        ]) {
+            userIds.add(u.Id);
         }
         if (userIds.isEmpty())
-            throw new AuraHandledException('No active users found for ' + bType + ' booking.');
+            throw new AuraHandledException('No active users found for ' + bType + ' booking. Check profile assignment.');
 
         Set<Id> resourceIds = new Set<Id>();
         for (ServiceResource sr : [
@@ -128,7 +194,7 @@ public without sharing class GuestSchedulerController {
             resourceIds.add(sr.Id);
         }
         if (resourceIds.isEmpty())
-            throw new AuraHandledException('No Service Resources found for ' + bType + ' users.');
+            throw new AuraHandledException('No Service Resources found for ' + bType + ' users. Create a ServiceResource for each ' + bType + ' user.');
 
         Set<Id> rawTerritoryIds = new Set<Id>();
         for (ServiceTerritoryMember stm : [
@@ -140,7 +206,7 @@ public without sharing class GuestSchedulerController {
             rawTerritoryIds.add(stm.ServiceTerritoryId);
         }
         if (rawTerritoryIds.isEmpty())
-            throw new AuraHandledException('No territories found for ' + bType + ' resources.');
+            throw new AuraHandledException('No active Service Territory membership found for ' + bType + ' resources.');
 
         List<ServiceTerritory> territories = [
             SELECT Id, Name, IsActive, OperatingHoursId,
@@ -302,9 +368,126 @@ public without sharing class GuestSchedulerController {
         return null;
     }
 
+    // Pre-selects the lowest-load PD based on Appointment_Count__c / Weight__c.
+    // Returns the User Id (not the ServiceResource Id) so it can be written to Opportunity.Program_Director__c.
+    private static Id preselectLowestLoadPdUser(DiscoveredConfig cfg) {
+        Set<Id> pdUserIds = new Set<Id>();
+        for (User u : [SELECT Id FROM User WHERE Profile.Name = :PD_PROFILE_NAME AND IsActive = true]) {
+            pdUserIds.add(u.Id);
+        }
+        if (pdUserIds.isEmpty()) return null;
+
+        Date today = Date.today();
+        Date scanEnd = today.addDays(cfg.timeframeEndDays - 1);
+        ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
+        if (rb.resourceIds.isEmpty()) return null;
+
+        List<ServiceResource> pdResources = [
+            SELECT Id, Appointment_Count__c, Weight__c, RelatedRecordId
+            FROM ServiceResource
+            WHERE Id IN :rb.resourceIds AND IsActive = true
+        ];
+        Id bestUserId = null;
+        Decimal bestLoad = null;
+        for (ServiceResource sr : pdResources) {
+            Decimal cnt = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
+            Decimal wt  = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
+            Decimal load = cnt / wt;
+            if (bestLoad == null || load < bestLoad) {
+                bestLoad = load;
+                bestUserId = sr.RelatedRecordId;
+            }
+        }
+        return bestUserId;
+    }
+
+    // Writes Program_Director__c to Opportunity and Contact.
+    // Each DML is isolated so a failure on one record (validation rule, FLS, sharing) does not
+    // block the other. Returns a map of errors encountered, never throws.
+    private static Map<String, String> writeStickyPD(String opportunityId, String contactId, Id pdUserId) {
+        Map<String, String> errs = new Map<String, String>();
+        if (pdUserId == null) return errs;
+
+        if (String.isNotBlank(opportunityId)) {
+            try {
+                Opportunity upd = new Opportunity(Id = (Id) opportunityId, Program_Director__c = pdUserId);
+                Database.SaveResult sr = Database.update(upd, false);
+                if (!sr.isSuccess()) {
+                    String m = '';
+                    for (Database.Error e : sr.getErrors()) m += e.getMessage() + ' ';
+                    errs.put('opportunity', m);
+                    System.debug(LoggingLevel.ERROR, 'Opp PD update failed: ' + m);
+                }
+            } catch (Exception ex) {
+                errs.put('opportunity', ex.getMessage());
+                System.debug(LoggingLevel.ERROR, 'Opp PD update threw: ' + ex.getMessage());
+            }
+        }
+
+        if (String.isNotBlank(contactId)) {
+            try {
+                Contact upd = new Contact(Id = (Id) contactId, Program_Director__c = pdUserId);
+                Database.SaveResult sr = Database.update(upd, false);
+                if (!sr.isSuccess()) {
+                    String m = '';
+                    for (Database.Error e : sr.getErrors()) m += e.getMessage() + ' ';
+                    errs.put('contact', m);
+                    System.debug(LoggingLevel.ERROR, 'Contact PD update failed: ' + m);
+                }
+            } catch (Exception ex) {
+                errs.put('contact', ex.getMessage());
+                System.debug(LoggingLevel.ERROR, 'Contact PD update threw: ' + ex.getMessage());
+            }
+        }
+        return errs;
+    }
+
+    // Resolves contactId/opportunityId from an encrypted token when the plain IDs are blank.
+    // Called at the top of every public method so token decryption always happens server-side.
+    private static Map<String, String> resolveFromToken(String contactId, String opportunityId, String token) {
+        Map<String, String> ids = new Map<String, String>();
+        ids.put('contactId', contactId);
+        ids.put('opportunityId', opportunityId);
+        if (String.isBlank(contactId) && String.isBlank(opportunityId) && String.isNotBlank(token)) {
+            try {
+                Map<String, String> decoded = BookingTokenUtil.decrypt(token);
+                if (decoded.containsKey('contactId'))     ids.put('contactId', decoded.get('contactId'));
+                if (decoded.containsKey('opportunityId')) ids.put('opportunityId', decoded.get('opportunityId'));
+            } catch (Exception e) {
+                System.debug(LoggingLevel.WARN, 'Token decryption failed: ' + e.getMessage());
+            }
+        }
+        return ids;
+    }
+
+    @AuraEnabled
+    public static Map<String, String> resolveBookingToken(String token) {
+        Map<String, String> result = new Map<String, String>();
+        try {
+            Map<String, String> decoded = BookingTokenUtil.decrypt(token);
+            result.put('contactId', decoded.get('contactId'));
+            result.put('opportunityId', decoded.get('opportunityId'));
+            result.put('success', 'true');
+        } catch (Exception e) {
+            result.put('success', 'false');
+            result.put('error', 'Invalid or expired booking link.');
+        }
+        return result;
+    }
+
     @AuraEnabled
     public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType,
                                                         String contactId, String opportunityId) {
+        return getBookingConfigWithToken(openWindowDays, bookingType, contactId, opportunityId, null);
+    }
+
+    @AuraEnabled
+    public static Map<String, Object> getBookingConfigWithToken(Integer openWindowDays, String bookingType,
+                                                        String contactId, String opportunityId, String token) {
+        Map<String, String> resolved = resolveFromToken(contactId, opportunityId, token);
+        contactId     = resolved.get('contactId');
+        opportunityId = resolved.get('opportunityId');
+
         Map<String, Object> out = new Map<String, Object>();
         try {
             DiscoveredConfig cfg = discover(bookingType);
@@ -313,9 +496,22 @@ public without sharing class GuestSchedulerController {
 
             Boolean isSticky = false;
             Id stickyResourceId = null;
+            Id stickyUserId = null;
+
             if (cfg.bookingType == 'PD') {
+                // Only use a sticky PD when one ALREADY EXISTS on the Opportunity or Contact
+                // (i.e. a prior SOM call has been booked). For first-time bookings, show the
+                // combined availability of ALL PDs and let the user pick any time — the PD is
+                // then chosen at slot-click time from whoever is actually free at that moment.
                 stickyResourceId = findStickyResourceForContact(contactId, opportunityId);
                 isSticky = (stickyResourceId != null);
+                if (isSticky) {
+                    List<ServiceResource> srs = [
+                        SELECT RelatedRecordId FROM ServiceResource
+                        WHERE Id = :stickyResourceId LIMIT 1
+                    ];
+                    if (!srs.isEmpty()) stickyUserId = srs[0].RelatedRecordId;
+                }
             }
 
             out.put('bookingType', cfg.bookingType);
@@ -336,7 +532,9 @@ public without sharing class GuestSchedulerController {
             out.put('meetingType', MEETING_TYPE_MAP.get(cfg.bookingType));
             out.put('isSticky', isSticky);
             out.put('stickyResourceId', stickyResourceId);
-            out.put('availableDates', computeAvailableDates(cfg, targetDays));
+            out.put('stickyUserId', stickyUserId);
+            // availableDates now filters to the sticky PD when one exists
+            out.put('availableDates', computeAvailableDates(cfg, targetDays, stickyResourceId));
             out.put('success', true);
         } catch (Exception e) {
             out.put('success', false);
@@ -348,6 +546,16 @@ public without sharing class GuestSchedulerController {
     @AuraEnabled
     public static List<Map<String, String>> getAvailableSlots(String dateStr, String bookingType,
                                                                String contactId, String opportunityId) {
+        return getAvailableSlotsWithToken(dateStr, bookingType, contactId, opportunityId, null);
+    }
+
+    @AuraEnabled
+    public static List<Map<String, String>> getAvailableSlotsWithToken(String dateStr, String bookingType,
+                                                               String contactId, String opportunityId, String token) {
+        Map<String, String> resolved = resolveFromToken(contactId, opportunityId, token);
+        contactId     = resolved.get('contactId');
+        opportunityId = resolved.get('opportunityId');
+
         List<Map<String, String>> result = new List<Map<String, String>>();
         try {
             DiscoveredConfig cfg = discover(bookingType);
@@ -391,7 +599,9 @@ public without sharing class GuestSchedulerController {
                     });
                 }
             }
-        } catch (Exception e) { }
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'getAvailableSlots failed: ' + e.getMessage());
+        }
         return result;
     }
 
@@ -403,6 +613,23 @@ public without sharing class GuestSchedulerController {
         String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
         String bookingType, String contactId, String opportunityId
     ) {
+        return bookAppointmentWithToken(startTimeISO, endTimeISO, firstName, lastName, email, phone,
+            studentGrade, leadSource, guestEmails, clientTimezone, utmSource, utmCampaign, utmMedium,
+            bookingType, contactId, opportunityId, null);
+    }
+
+    @AuraEnabled
+    public static Map<String, String> bookAppointmentWithToken(
+        String startTimeISO, String endTimeISO,
+        String firstName, String lastName, String email, String phone,
+        String studentGrade, String leadSource, String guestEmails,
+        String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
+        String bookingType, String contactId, String opportunityId, String token
+    ) {
+        Map<String, String> resolved = resolveFromToken(contactId, opportunityId, token);
+        contactId     = resolved.get('contactId');
+        opportunityId = resolved.get('opportunityId');
+
         Map<String, String> res = new Map<String, String>();
         Savepoint sp = Database.setSavepoint();
         try {
@@ -547,12 +774,52 @@ public without sharing class GuestSchedulerController {
         String subject = SUBJECT_MAP.get(bType);
         Integer duration = cfg.durationMinutes;
 
+        // PD/FSS bookings require at least a contactId or opportunityId to resolve the Account
+        if (String.isBlank(contactId) && String.isBlank(opportunityId)) {
+            throw new AuraHandledException(
+                'Invalid booking link. Please use the scheduling link from your email.');
+        }
+
+        // Resolve the primary Contact and the Account that owns it. ParentRecordId on the
+        // ServiceAppointment is ALWAYS the Account of the primary Contact — never the Opportunity.
+        // Resolution order:
+        //   1. contactId passed from the URL (explicit, fastest)
+        //   2. Opportunity's primary OpportunityContactRole (fallback for when only opportunityId is in scope)
         Id accountId = null;
         Id conId = null;
+        Id existingPdUserId = null;
+        Id existingFssUserId = null;
+
+        // Read existing PD/FSS from Opportunity
+        if (String.isNotBlank(opportunityId)) {
+            List<Opportunity> opps = [SELECT Program_Director__c, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+            if (!opps.isEmpty()) {
+                existingPdUserId = opps[0].Program_Director__c;
+                existingFssUserId = opps[0].Family_Success_Specialist__c;
+            }
+        }
+
         if (String.isNotBlank(contactId)) {
             conId = (Id) contactId;
-            List<Contact> contacts = [SELECT AccountId FROM Contact WHERE Id = :conId LIMIT 1];
-            if (!contacts.isEmpty()) accountId = contacts[0].AccountId;
+        } else if (String.isNotBlank(opportunityId)) {
+            List<OpportunityContactRole> ocrs = [
+                SELECT ContactId FROM OpportunityContactRole
+                WHERE OpportunityId = :opportunityId AND IsPrimary = true
+                LIMIT 1
+            ];
+            if (!ocrs.isEmpty()) conId = ocrs[0].ContactId;
+        }
+        if (conId != null) {
+            List<Contact> contacts = [SELECT AccountId, Program_Director__c, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
+            if (!contacts.isEmpty()) {
+                accountId = contacts[0].AccountId;
+                if (existingPdUserId == null && contacts[0].Program_Director__c != null) {
+                    existingPdUserId = contacts[0].Program_Director__c;
+                }
+                if (existingFssUserId == null && contacts[0].Family_Success_Specialist__c != null) {
+                    existingFssUserId = contacts[0].Family_Success_Specialist__c;
+                }
+            }
         }
 
         Id saTerritoryId = null;
@@ -603,12 +870,47 @@ public without sharing class GuestSchedulerController {
         sa.Street = cfg.street;
         sa.City = cfg.city;
         sa.State = cfg.state;
-        if (String.isNotBlank(clientTimezone)) sa.TimeZone = clientTimezone;
+        // Normalize deprecated IANA aliases (e.g. Asia/Calcutta -> Asia/Kolkata) so the
+        // restricted picklist on ServiceAppointment.TimeZone accepts the value.
+        String normalizedTz = normalizeTimezone(clientTimezone);
+        if (String.isNotBlank(normalizedTz)) sa.TimeZone = normalizedTz;
         if (bType == 'PD') {
             tryPut(sa, 'Program_Director__c', assignment.userId);
+            // Carry existing FSS to SA so it's always populated
+            if (existingFssUserId != null) {
+                tryPut(sa, 'Family_Success_Specialist__c', existingFssUserId);
+            }
+        } else if (bType == 'FSS') {
+            tryPut(sa, 'Family_Success_Specialist__c', assignment.userId);
+            // Carry existing PD to SA so it's always populated
+            if (existingPdUserId != null) {
+                tryPut(sa, 'Program_Director__c', existingPdUserId);
+            }
         }
         if (String.isNotBlank(opportunityId)) tryPut(sa, 'Opportunity__c', (Id) opportunityId);
-        insert sa;
+
+        // Self-healing insert: if the restricted TimeZone picklist rejects whatever the
+        // browser sent (unknown zone, corporate network shenanigans, etc.), clear it and
+        // retry ONCE. The booking is cosmetic on that field, so losing it is acceptable,
+        // but losing the booking is not.
+        try {
+            insert sa;
+        } catch (DmlException dex) {
+            Boolean tzIssue = false;
+            String dmlMsg = dex.getMessage();
+            if (dmlMsg != null && dmlMsg.contains('TimeZone')
+                    && dmlMsg.contains('INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST')) {
+                tzIssue = true;
+            }
+            if (tzIssue) {
+                System.debug(LoggingLevel.WARN,
+                    'ServiceAppointment.TimeZone rejected ("' + normalizedTz + '"); retrying without it.');
+                sa.TimeZone = null;
+                insert sa;
+            } else {
+                throw dex;
+            }
+        }
 
         AssignedResource ar = new AssignedResource();
         ar.ServiceAppointmentId = sa.Id;
@@ -627,30 +929,63 @@ public without sharing class GuestSchedulerController {
             if (String.isNotBlank(opportunityId)) evt.WhatId = (Id) opportunityId;
             tryPut(evt, 'Service_Appointment__c', sa.Id);
             insert evt;
-        } catch (Exception evtEx) { }
+        } catch (Exception evtEx) {
+            System.debug(LoggingLevel.WARN, 'Event creation failed: ' + evtEx.getMessage());
+        }
 
-        ServiceResource pdSr = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id = :assignment.resourceId LIMIT 1];
-        pdSr.Appointment_Count__c = (pdSr.Appointment_Count__c != null) ? pdSr.Appointment_Count__c + 1 : 1;
-        update pdSr;
+        // Appointment counter — isolated so a sharing/CRUD issue cannot roll back the whole booking.
+        try {
+            ServiceResource pdSr = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id = :assignment.resourceId LIMIT 1];
+            pdSr.Appointment_Count__c = (pdSr.Appointment_Count__c != null) ? pdSr.Appointment_Count__c + 1 : 1;
+            update pdSr;
+        } catch (Exception srEx) {
+            System.debug(LoggingLevel.WARN, 'ServiceResource counter update failed: ' + srEx.getMessage());
+        }
 
-        if (bType == 'PD' && String.isNotBlank(opportunityId)) {
-            try {
-                Opportunity opp = [SELECT Id, Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-                if (opp.Program_Director__c == null) { opp.Program_Director__c = assignment.userId; update opp; }
-            } catch (Exception ex) { }
-            if (conId != null) {
-                try {
-                    Contact con = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :conId LIMIT 1];
-                    if (con.Program_Director__c == null) { con.Program_Director__c = assignment.userId; update con; }
-                } catch (Exception ex) { }
+        // Sticky PD writes — isolated and reported in response so caller can see silent failures.
+        if (bType == 'PD') {
+            Map<String, String> stickyErrs = writeStickyPD(opportunityId, conId != null ? String.valueOf(conId) : null, assignment.userId);
+            if (!stickyErrs.isEmpty()) {
+                // Non-fatal, booking still succeeds. Surface in response so UI/tests can see it.
+                if (stickyErrs.containsKey('opportunity')) res.put('opportunityUpdateError', stickyErrs.get('opportunity'));
+                if (stickyErrs.containsKey('contact'))     res.put('contactUpdateError',     stickyErrs.get('contact'));
             }
         }
 
-        if (bType == 'FSS' && conId != null) {
-            try {
-                Contact con = [SELECT Id, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
-                if (con.Family_Success_Specialist__c == null) { con.Family_Success_Specialist__c = assignment.userId; update con; }
-            } catch (Exception ex) { }
+        if (bType == 'FSS') {
+            // Stamp FSS on Opportunity
+            if (String.isNotBlank(opportunityId)) {
+                try {
+                    Opportunity oppUpd = new Opportunity(Id = (Id) opportunityId);
+                    oppUpd.Family_Success_Specialist__c = assignment.userId;
+                    Database.SaveResult sr = Database.update(oppUpd, false);
+                    if (!sr.isSuccess()) {
+                        String m = '';
+                        for (Database.Error e : sr.getErrors()) m += e.getMessage() + ' ';
+                        res.put('opportunityUpdateError', m);
+                        System.debug(LoggingLevel.ERROR, 'Opp FSS update failed: ' + m);
+                    }
+                } catch (Exception ex) {
+                    res.put('opportunityUpdateError', ex.getMessage());
+                    System.debug(LoggingLevel.ERROR, 'Opp FSS update threw: ' + ex.getMessage());
+                }
+            }
+            // Stamp FSS on Contact
+            if (conId != null) {
+                try {
+                    Contact con = new Contact(Id = conId, Family_Success_Specialist__c = assignment.userId);
+                    Database.SaveResult sr = Database.update(con, false);
+                    if (!sr.isSuccess()) {
+                        String m = '';
+                        for (Database.Error e : sr.getErrors()) m += e.getMessage() + ' ';
+                        res.put('contactUpdateError', m);
+                        System.debug(LoggingLevel.ERROR, 'Contact FSS update failed: ' + m);
+                    }
+                } catch (Exception ex) {
+                    res.put('contactUpdateError', ex.getMessage());
+                    System.debug(LoggingLevel.ERROR, 'Contact FSS update threw: ' + ex.getMessage());
+                }
+            }
         }
 
         User assignedUser = [SELECT Name FROM User WHERE Id = :assignment.userId LIMIT 1];
@@ -705,32 +1040,25 @@ public without sharing class GuestSchedulerController {
         }
         if (freeRes.isEmpty()) return null;
 
-        Map<Id,Id> userToRes = new Map<Id,Id>();
-        Map<Id,Integer> counts = new Map<Id,Integer>();
-        for (Id rId : freeRes) {
-            counts.put(rId, 0);
-            Id uId = rb.resourceToUserId.get(rId);
-            if (uId != null) userToRes.put(uId, rId);
+        // Prefer the lowest Appointment_Count__c / Weight__c among the free candidates so this
+        // matches the same ranking used at pre-assignment time.
+        Map<Id, Decimal> loadByRes = new Map<Id, Decimal>();
+        for (ServiceResource sr : [
+            SELECT Id, Appointment_Count__c, Weight__c
+            FROM ServiceResource WHERE Id IN :freeRes
+        ]) {
+            Decimal cnt = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
+            Decimal wt  = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
+            loadByRes.put(sr.Id, cnt / wt);
         }
-        if (!userToRes.isEmpty()) {
-            for (AggregateResult ag : [
-                SELECT OwnerId, COUNT(Id) cnt FROM Event
-                WHERE OwnerId IN :userToRes.keySet()
-                AND StartDateTime >= :today
-                GROUP BY OwnerId
-            ]) {
-                Id uId = (Id)ag.get('OwnerId');
-                Id rId = userToRes.get(uId);
-                if (rId != null && counts.containsKey(rId))
-                    counts.put(rId, (Integer)ag.get('cnt'));
-            }
-        }
-
         Id bestId = null;
-        Integer minC = 2147483647;
+        Decimal bestLoad = null;
         for (Id rId : freeRes) {
-            Integer c = counts.get(rId);
-            if (c < minC) { minC = c; bestId = rId; }
+            Decimal load = loadByRes.containsKey(rId) ? loadByRes.get(rId) : 0;
+            if (bestLoad == null || load < bestLoad) {
+                bestLoad = load;
+                bestId = rId;
+            }
         }
         if (bestId != null) {
             ResourceAssignment ra = new ResourceAssignment();
@@ -793,7 +1121,13 @@ public without sharing class GuestSchedulerController {
         return out;
     }
 
+    // Overload retains old signature for any callers; new param filterToResourceId narrows
+    // the date list to a single resource's availability (used when we have a sticky PD).
     private static List<String> computeAvailableDates(DiscoveredConfig cfg, Integer targetDays) {
+        return computeAvailableDates(cfg, targetDays, null);
+    }
+
+    private static List<String> computeAvailableDates(DiscoveredConfig cfg, Integer targetDays, Id filterToResourceId) {
         List<String> out = new List<String>();
         Integer dur = cfg.durationMinutes;
         Integer interval = cfg.slotIntervalMinutes;
@@ -808,6 +1142,16 @@ public without sharing class GuestSchedulerController {
 
         ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
         if (rb.resourceIds.isEmpty()) return out;
+
+        // Narrow to sticky PD if supplied — this is what gives the user "only my PD's dates".
+        if (filterToResourceId != null && rb.resourceIds.contains(filterToResourceId)) {
+            ResourceBundle filtered = new ResourceBundle();
+            filtered.resourceIds.add(filterToResourceId);
+            filtered.orderedResourceIds.add(filterToResourceId);
+            filtered.resourceToUserId.put(filterToResourceId, rb.resourceToUserId.get(filterToResourceId));
+            filtered.resourceToTerritoryId.put(filterToResourceId, rb.resourceToTerritoryId.get(filterToResourceId));
+            rb = filtered;
+        }
 
         DateTime scanStartUtc = localToUtc(today, 0, tz).addHours(-2);
         DateTime scanEndUtc = localToUtc(scanEnd.addDays(1), 0, tz).addHours(2);
@@ -876,16 +1220,44 @@ public without sharing class GuestSchedulerController {
 
         List<String> profileNames = getProfileNames(bType);
         Set<Id> validUsers = new Set<Id>();
-        if (profileNames.size() == 1) {
-            String pName = profileNames[0];
-            for (User u : [SELECT Id FROM User WHERE Id IN :srToUser.values() AND Profile.Name = :pName AND IsActive = true]) {
-                validUsers.add(u.Id);
+        for (User u : [
+            SELECT Id FROM User
+            WHERE Id IN :srToUser.values()
+            AND Profile.Name IN :profileNames
+            AND IsActive = true
+        ]) {
+            validUsers.add(u.Id);
+        }
+
+        // FSS fallback: if the strict profile filter finds nothing, accept any active user
+        // whose ServiceResource is a member of a territory named like 'FSS%' or 'Onboarding%'.
+        // This prevents "no slots visible" when the org uses a non-standard FSS profile label.
+        if (validUsers.isEmpty() && bType == 'FSS') {
+            Set<Id> fssTerritoryIds = new Set<Id>();
+            for (ServiceTerritory st : [
+                SELECT Id FROM ServiceTerritory
+                WHERE Id IN :territoryIds AND IsActive = true
+                AND (Name LIKE 'FSS%' OR Name LIKE '%Onboarding%' OR Name LIKE '%FSS%')
+            ]) {
+                fssTerritoryIds.add(st.Id);
             }
-        } else {
-            String p1 = profileNames[0];
-            String p2 = profileNames[1];
-            for (User u : [SELECT Id FROM User WHERE Id IN :srToUser.values() AND (Profile.Name = :p1 OR Profile.Name = :p2) AND IsActive = true]) {
-                validUsers.add(u.Id);
+            if (!fssTerritoryIds.isEmpty()) {
+                Set<Id> fallbackSrIds = new Set<Id>();
+                for (ServiceTerritoryMember m : [
+                    SELECT ServiceResourceId FROM ServiceTerritoryMember
+                    WHERE ServiceTerritoryId IN :fssTerritoryIds
+                    AND ServiceResourceId IN :srToUser.keySet()
+                    AND EffectiveStartDate <= :rangeEnd
+                    AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :rangeStart)
+                ]) {
+                    fallbackSrIds.add(m.ServiceResourceId);
+                }
+                for (Id srId : fallbackSrIds) {
+                    Id uId = srToUser.get(srId);
+                    if (uId != null) validUsers.add(uId);
+                }
+                System.debug(LoggingLevel.WARN,
+                    'FSS profile-strict filter returned no users; fell back to territory-name match. Users: ' + validUsers);
             }
         }
 
