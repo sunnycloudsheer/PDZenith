@@ -304,9 +304,18 @@ public without sharing class GuestSchedulerController {
 
     @AuraEnabled
     public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType,
-                                                        String contactId, String opportunityId) {
+                                                        String contactId, String opportunityId, String token) {
         Map<String, Object> out = new Map<String, Object>();
         try {
+            if (String.isBlank(contactId) && String.isNotBlank(token)) {
+                try {
+                    Map<String, String> decoded = BookingTokenUtil.decrypt(token);
+                    contactId = decoded.get('contactId');
+                    opportunityId = decoded.get('opportunityId');
+                } catch (Exception te) { }
+            }
+            out.put('contactId', contactId);
+            out.put('opportunityId', opportunityId);
             DiscoveredConfig cfg = discover(bookingType);
             Integer targetDays = (openWindowDays != null && openWindowDays > 0)
                 ? openWindowDays : cfg.timeframeEndDays;
@@ -642,9 +651,11 @@ public without sharing class GuestSchedulerController {
             insert evt;
         } catch (Exception evtEx) { }
 
-        ServiceResource pdSr = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id = :assignment.resourceId LIMIT 1];
-        pdSr.Appointment_Count__c = (pdSr.Appointment_Count__c != null) ? pdSr.Appointment_Count__c + 1 : 1;
-        update pdSr;
+        try {
+            ServiceResource pdSr = [SELECT Appointment_Count__c FROM ServiceResource WHERE Id = :assignment.resourceId LIMIT 1];
+            pdSr.Appointment_Count__c = (pdSr.Appointment_Count__c != null) ? pdSr.Appointment_Count__c + 1 : 1;
+            update pdSr;
+        } catch (Exception srEx) { }
 
         if (bType == 'PD' && String.isNotBlank(opportunityId)) {
             try {

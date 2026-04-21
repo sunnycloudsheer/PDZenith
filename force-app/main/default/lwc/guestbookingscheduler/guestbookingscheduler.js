@@ -26,6 +26,7 @@ export default class GuestBookingScheduler extends LightningElement {
     _contactId = '';
     _opportunityId = '';
     _resolvedType = '';
+    _token = '';
 
     @track calYear = 0;
     @track calMonth = 0;
@@ -74,6 +75,8 @@ export default class GuestBookingScheduler extends LightningElement {
         this.utmCampaign = this._getUrlParam('utm_campaign');
         this.utmMedium = this._getUrlParam('utm_medium');
         this.leadSource = this._getUrlParam('lead_source') || 'Website';
+
+        this._token = this._getUrlParam('token') || '';
         this._init();
     }
 
@@ -138,8 +141,11 @@ export default class GuestBookingScheduler extends LightningElement {
             const windowDays = this.isICMode ? this.openWindowDays : 0;
             const cfg = await getBookingConfig({
                 openWindowDays: windowDays, bookingType: this._resolvedType,
-                contactId: this._contactId, opportunityId: this._opportunityId
+                contactId: this._contactId, opportunityId: this._opportunityId,
+                token: this._token
             });
+            if (cfg.contactId && !this._contactId) this._contactId = cfg.contactId;
+            if (cfg.opportunityId && !this._opportunityId) this._opportunityId = cfg.opportunityId;
             if (!cfg.success) {
                 this.fatalErrorDetail = cfg.error || 'Configuration error';
                 this.hasFatalError = true;

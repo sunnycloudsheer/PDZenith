@@ -170,23 +170,42 @@ public without sharing class PDPostBookingHandler {
                     System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
                 }
 
-                pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
-                    ? pd.Appointment_Count__c + 1 : 1;
-                update pd;
+                try {
+                    pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
+                        ? pd.Appointment_Count__c + 1 : 1;
+                    update pd;
+                } catch (Exception countEx) {
+                    System.debug(LoggingLevel.WARN, 'Appointment count update failed: ' + countEx.getMessage());
+                }
 
                 Id pdUserIdForStamp = pd.RelatedRecordId;
 
-                Opportunity oppForPD = [SELECT Id, Program_Director__c, StageName FROM Opportunity WHERE Id = :opp.Id FOR UPDATE];
-                oppForPD.Program_Director__c = pdUserIdForStamp;
-                if (oppForPD.StageName != 'SOM Scheduled') {
-                    oppForPD.StageName = 'SOM Scheduled';
+                try {
+                    Opportunity oppForPD = new Opportunity(Id = opp.Id);
+                    oppForPD.Program_Director__c = pdUserIdForStamp;
+                    update oppForPD;
+                } catch (Exception oppEx) {
+                    System.debug(LoggingLevel.WARN, 'Opportunity PD update failed: ' + oppEx.getMessage());
                 }
-                update oppForPD;
+
+                try {
+                    Opportunity oppStage = [SELECT Id, StageName FROM Opportunity WHERE Id = :opp.Id LIMIT 1];
+                    if (oppStage.StageName != 'SOM Scheduled') {
+                        oppStage.StageName = 'SOM Scheduled';
+                        update oppStage;
+                    }
+                } catch (Exception stageEx) {
+                    System.debug(LoggingLevel.WARN, 'Opportunity stage update failed: ' + stageEx.getMessage());
+                }
 
                 if (contactId != null) {
-                    Contact conForPD = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :contactId FOR UPDATE];
-                    conForPD.Program_Director__c = pdUserIdForStamp;
-                    update conForPD;
+                    try {
+                        Contact conForPD = new Contact(Id = contactId);
+                        conForPD.Program_Director__c = pdUserIdForStamp;
+                        update conForPD;
+                    } catch (Exception conEx) {
+                        System.debug(LoggingLevel.WARN, 'Contact PD update failed: ' + conEx.getMessage());
+                    }
                 }
 
                 res.success           = true;
