@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<QuickAction xmlns="http://soap.sforce.com/2006/04/metadata">
-    <flowDefinition>PD_Book_SOM_Call</flowDefinition>
-    <label>Book PD Call</label>
-    <optionsCreateFeedItem>false</optionsCreateFeedItem>
-    <type>Flow</type>
-    <description>Books PD SOM or Follow-up call. Auto-selects PD via weighted round-robin or sticky assignment.</description>
-</QuickAction>
