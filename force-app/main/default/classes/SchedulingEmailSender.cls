@@ -32,14 +32,21 @@ public without sharing class SchedulingEmailSender {
     public static List<EmailResult> sendSchedulingEmail(List<EmailRequest> requests) {
         List<EmailResult> results = new List<EmailResult>();
 
-        // Bulk-collect Contact and Opportunity IDs
+        // ── 1. Bulk-collect IDs ──────────────────────────────────────────
         Set<Id> contactIds = new Set<Id>();
         Set<Id> oppIds     = new Set<Id>();
+        Set<String> templateDevNames = new Set<String>();
         for (EmailRequest req : requests) {
             contactIds.add(req.contactId);
             oppIds.add(req.opportunityId);
+            String bType = (req.emailType != null) ? req.emailType.toUpperCase() : 'PD';
+            String devName = TEMPLATE_MAP.get(bType);
+            if (devName != null) {
+                templateDevNames.add(devName);
+            }
         }
 
+        // ── 2. Pre-query ALL shared data OUTSIDE the loop ────────────────
         Map<Id, Contact> contactMap = new Map<Id, Contact>([
             SELECT Id, FirstName, LastName, Name, Email
             FROM Contact WHERE Id IN :contactIds
@@ -49,7 +56,24 @@ public without sharing class SchedulingEmailSender {
             FROM Opportunity WHERE Id IN :oppIds
         ]);
 
-        for (EmailRequest req : requests) {
+        // Pre-query ALL email templates at once (no SOQL in loop)
+        Map<String, EmailTemplate> templateCache = new Map<String, EmailTemplate>();
+        for (EmailTemplate et : [
+            SELECT Id, DeveloperName, Subject, HtmlValue, Body
+            FROM EmailTemplate
+            WHERE DeveloperName IN :templateDevNames
+        ]) {
+            templateCache.put(et.DeveloperName, et);
+        }
+
+        // ── 3. Build emails and collect DML ──────────────────────────────
+        List<Messaging.SingleEmailMessage> emailsToSend = new List<Messaging.SingleEmailMessage>();
+        List<Opportunity> oppsToUpdate = new List<Opportunity>();
+        // Track which index maps to which request for result assembly
+        List<Integer> emailToResultIndex = new List<Integer>();
+
+        for (Integer i = 0; i < requests.size(); i++) {
+            EmailRequest req = requests[i];
             EmailResult res = new EmailResult();
             try {
                 String bType = (req.emailType != null) ? req.emailType.toUpperCase() : 'PD';
@@ -58,13 +82,8 @@ public without sharing class SchedulingEmailSender {
                     throw new AuraHandledException('Unknown email type: ' + req.emailType);
                 }
 
-                List<EmailTemplate> templates = [
-                    SELECT Id, Subject, HtmlValue, Body
-                    FROM EmailTemplate
-                    WHERE DeveloperName = :templateDevName
-                    LIMIT 1
-                ];
-                if (templates.isEmpty()) {
+                EmailTemplate tmpl = templateCache.get(templateDevName);
+                if (tmpl == null) {
                     throw new AuraHandledException(
                         'Email template "' + templateDevName + '" not found. '
                         + 'Please create it in Setup > Email Templates.');
@@ -80,18 +99,18 @@ public without sharing class SchedulingEmailSender {
                     + '&token=' + token;
 
                 // Start from the raw template HTML and subject
-                String htmlBody = templates[0].HtmlValue;
-                String subject  = templates[0].Subject;
-                String plainBody = templates[0].Body;
+                String htmlBody  = tmpl.HtmlValue;
+                String subject   = tmpl.Subject;
+                String plainBody = tmpl.Body;
 
-                // Replace merge fields manually
+                // Replace merge fields
                 if (con != null) {
-                    htmlBody = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
-                    htmlBody = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
-                    htmlBody = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
-                    subject  = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
-                    subject  = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
-                    subject  = replaceMerge(subject, '{!Contact.Name}', con.Name);
+                    htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
+                    htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
+                    htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
+                    subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
+                    subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
+                    subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
                     if (plainBody != null) {
                         plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
                         plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
@@ -112,7 +131,7 @@ public without sharing class SchedulingEmailSender {
                     plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
                 }
 
-                // Build and send
+                // Build email message
                 Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
                 mail.setTargetObjectId(req.contactId);
                 mail.setWhatId(req.opportunityId);
@@ -128,34 +147,19 @@ public without sharing class SchedulingEmailSender {
                     mail.setCcAddresses(new List<String>{ 'fss@zenithprepacademy.com' });
                 }
 
-                Messaging.SendEmailResult[] sendResults = Messaging.sendEmail(
-                    new List<Messaging.SingleEmailMessage>{ mail }
-                );
+                emailsToSend.add(mail);
+                emailToResultIndex.add(i);
 
-                if (sendResults[0].isSuccess()) {
-                    res.success = true;
-
-                    // Stamp the scheduling link URL on the Opportunity
-                    try {
-                        Opportunity oppUpd = new Opportunity(Id = req.opportunityId);
-                        if (bType == 'PD') {
-                            oppUpd.PD_Scheduling_Link__c = bookingLink;
-                        } else if (bType == 'FSS') {
-                            oppUpd.FSS_Scheduling_Link__c = bookingLink;
-                        }
-                        update oppUpd;
-                    } catch (Exception updEx) {
-                        System.debug(LoggingLevel.WARN,
-                            'Opportunity link update failed: ' + updEx.getMessage());
-                    }
-                } else {
-                    res.success = false;
-                    String errMsg = '';
-                    for (Messaging.SendEmailError err : sendResults[0].getErrors()) {
-                        errMsg += err.getMessage() + ' ';
-                    }
-                    res.errorMessage = errMsg.trim();
+                // Pre-build Opportunity link update
+                Opportunity oppUpd = new Opportunity(Id = req.opportunityId);
+                if (bType == 'PD') {
+                    oppUpd.PD_Scheduling_Link__c = bookingLink;
+                } else if (bType == 'FSS') {
+                    oppUpd.FSS_Scheduling_Link__c = bookingLink;
                 }
+                oppsToUpdate.add(oppUpd);
+
+                res.success = true;
 
             } catch (Exception e) {
                 res.success = false;
@@ -163,6 +167,48 @@ public without sharing class SchedulingEmailSender {
             }
             results.add(res);
         }
+
+        // ── 4. Batch send all emails at once ─────────────────────────────
+        if (!emailsToSend.isEmpty()) {
+            try {
+                Messaging.SendEmailResult[] sendResults = Messaging.sendEmail(emailsToSend);
+                for (Integer j = 0; j < sendResults.size(); j++) {
+                    Integer resultIdx = emailToResultIndex[j];
+                    if (!sendResults[j].isSuccess()) {
+                        results[resultIdx].success = false;
+                        String errMsg = '';
+                        for (Messaging.SendEmailError err : sendResults[j].getErrors()) {
+                            errMsg += err.getMessage() + ' ';
+                        }
+                        results[resultIdx].errorMessage = errMsg.trim();
+                        // Remove the corresponding Opportunity update since email failed
+                        oppsToUpdate[j] = null;
+                    }
+                }
+            } catch (Exception ex) {
+                // If batch send fails entirely, mark all email results as failed
+                for (Integer idx : emailToResultIndex) {
+                    results[idx].success = false;
+                    results[idx].errorMessage = 'Email send failed: ' + ex.getMessage();
+                }
+                oppsToUpdate.clear();
+            }
+        }
+
+        // ── 5. Batch update Opportunity links ────────────────────────────
+        List<Opportunity> validOppUpdates = new List<Opportunity>();
+        for (Opportunity o : oppsToUpdate) {
+            if (o != null) validOppUpdates.add(o);
+        }
+        if (!validOppUpdates.isEmpty()) {
+            try {
+                update validOppUpdates;
+            } catch (Exception updEx) {
+                System.debug(LoggingLevel.WARN,
+                    'Opportunity link batch update failed: ' + updEx.getMessage());
+            }
+        }
+
         return results;
     }
 

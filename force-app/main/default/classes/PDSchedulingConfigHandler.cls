@@ -36,7 +36,12 @@ public without sharing class PDSchedulingConfigHandler {
         public String errorMessage;
     }
 
+    // Cached data from getLowestLoadResource for reuse in getSchedulingConfig
     private static String cachedAllResourceIds;
+    private static Id cachedBestTerritoryId;
+    private static Id cachedBestResourceInTerritory;
+    private static Map<Id, Set<Id>> cachedTerritoryToResources;
+    private static Map<Id, ServiceResource> cachedResourceMap;
 
     @InvocableMethod(
         label='Get PD Scheduling Config'
@@ -90,12 +95,30 @@ public without sharing class PDSchedulingConfigHandler {
                     }
                 }
 
+                // For non-sticky (first booking), use the best territory from round-robin
+                // which has the most PD members — gives flowTimeslot more resources to check.
+                // Also switch the anchor to the best resource within that territory, because
+                // flowTimeslot uses serviceResourceId as the PRIMARY resource to show slots for.
+                // If the global lowest-load resource is not properly configured for scheduling,
+                // the component shows an empty calendar even though other resources are available.
+                if (targetTerritoryId == null && !isSticky && cachedBestTerritoryId != null) {
+                    targetTerritoryId = cachedBestTerritoryId;
+                    if (cachedBestResourceInTerritory != null) {
+                        anchorResourceId = cachedBestResourceInTerritory;
+                        // Re-fetch the resource record for the new anchor
+                        sr = [
+                            SELECT Id, RelatedRecordId, Name
+                            FROM ServiceResource
+                            WHERE Id = :anchorResourceId AND IsActive = true LIMIT 1
+                        ];
+                        pdUserId = sr.RelatedRecordId;
+                    }
+                }
+
                 if (targetTerritoryId == null) {
                     Date today = Date.today();
 
-                    // Always look at the chosen PD's own territories first. Never pull in
-                    // "all PD resources" here — that was how the timeslot picker ended up
-                    // showing another PD (e.g., Rebecca) instead of the one selected.
+                    // Look at the chosen PD's own territories
                     Set<Id> stmResourceIds = new Set<Id>{ anchorResourceId };
 
                     List<ServiceTerritoryMember> stmList = [
@@ -109,6 +132,32 @@ public without sharing class PDSchedulingConfigHandler {
                         ORDER BY CreatedDate ASC
                     ];
 
+                    // Collect OH IDs and validate TimeSlots
+                    Map<Id, Id> stmTerritoryToOH = new Map<Id, Id>();
+                    for (ServiceTerritoryMember stm : stmList) {
+                        Id ohId = stm.ServiceTerritory.OperatingHoursId != null
+                            ? stm.ServiceTerritory.OperatingHoursId : stm.OperatingHoursId;
+                        if (ohId != null) {
+                            stmTerritoryToOH.put(stm.ServiceTerritoryId, ohId);
+                        }
+                    }
+                    Set<Id> stmValidOHIds = new Set<Id>();
+                    Set<Id> stmAllOHIds = new Set<Id>(stmTerritoryToOH.values());
+                    if (!stmAllOHIds.isEmpty()) {
+                        for (TimeSlot ts : [
+                            SELECT OperatingHoursId FROM TimeSlot
+                            WHERE OperatingHoursId IN :stmAllOHIds LIMIT 200
+                        ]) {
+                            stmValidOHIds.add(ts.OperatingHoursId);
+                        }
+                    }
+                    Set<Id> territoriesWithOH = new Set<Id>();
+                    for (Id tId : stmTerritoryToOH.keySet()) {
+                        if (stmValidOHIds.contains(stmTerritoryToOH.get(tId))) {
+                            territoriesWithOH.add(tId);
+                        }
+                    }
+
                     Set<Id> durationMatchTerritories = new Set<Id>();
                     for (ServiceTerritoryMember stm : stmList) {
                         if (stm.ServiceTerritory.Name.contains(durationLabel + ' Min')
@@ -120,8 +169,16 @@ public without sharing class PDSchedulingConfigHandler {
 
                     if (!durationMatchTerritories.isEmpty()) {
                         for (Id tId : durationMatchTerritories) {
-                            targetTerritoryId = tId;
-                            break;
+                            if (territoriesWithOH.contains(tId)) {
+                                targetTerritoryId = tId;
+                                break;
+                            }
+                        }
+                        if (targetTerritoryId == null) {
+                            for (Id tId : durationMatchTerritories) {
+                                targetTerritoryId = tId;
+                                break;
+                            }
                         }
                     }
 
@@ -147,7 +204,15 @@ public without sharing class PDSchedulingConfigHandler {
                     }
 
                     if (targetTerritoryId == null && !stmList.isEmpty()) {
-                        targetTerritoryId = stmList[0].ServiceTerritoryId;
+                        for (ServiceTerritoryMember stm : stmList) {
+                            if (territoriesWithOH.contains(stm.ServiceTerritoryId)) {
+                                targetTerritoryId = stm.ServiceTerritoryId;
+                                break;
+                            }
+                        }
+                        if (targetTerritoryId == null) {
+                            targetTerritoryId = stmList[0].ServiceTerritoryId;
+                        }
                     }
                 }
 
@@ -201,11 +266,21 @@ public without sharing class PDSchedulingConfigHandler {
                     throw new AuraHandledException('No Work Type found for ' + targetDuration + '-minute duration.');
                 }
 
+                // Ensure the selected territory has valid OperatingHours with TimeSlot records
                 ServiceTerritory st = [
                     SELECT Id, OperatingHoursId FROM ServiceTerritory
                     WHERE Id = :targetTerritoryId LIMIT 1
                 ];
-                if (st.OperatingHoursId == null) {
+                Boolean needsOH = (st.OperatingHoursId == null);
+                if (!needsOH) {
+                    List<TimeSlot> tsCheck = [
+                        SELECT Id FROM TimeSlot
+                        WHERE OperatingHoursId = :st.OperatingHoursId LIMIT 1
+                    ];
+                    needsOH = tsCheck.isEmpty();
+                }
+                if (needsOH) {
+                    Id recoveredOHId = null;
                     Date today2 = Date.today();
                     List<ServiceTerritoryMember> stmOH = [
                         SELECT OperatingHoursId FROM ServiceTerritoryMember
@@ -216,8 +291,35 @@ public without sharing class PDSchedulingConfigHandler {
                         LIMIT 1
                     ];
                     if (!stmOH.isEmpty()) {
+                        List<TimeSlot> memberTs = [
+                            SELECT Id FROM TimeSlot
+                            WHERE OperatingHoursId = :stmOH[0].OperatingHoursId LIMIT 1
+                        ];
+                        if (!memberTs.isEmpty()) {
+                            recoveredOHId = stmOH[0].OperatingHoursId;
+                        }
+                    }
+                    if (recoveredOHId == null) {
+                        Set<Id> candidateOHIds = new Set<Id>();
+                        for (ServiceTerritory ohT : [
+                            SELECT OperatingHoursId FROM ServiceTerritory
+                            WHERE OperatingHoursId != null AND IsActive = true
+                            ORDER BY CreatedDate DESC LIMIT 20
+                        ]) {
+                            candidateOHIds.add(ohT.OperatingHoursId);
+                        }
+                        if (!candidateOHIds.isEmpty()) {
+                            for (TimeSlot ts : [
+                                SELECT OperatingHoursId FROM TimeSlot
+                                WHERE OperatingHoursId IN :candidateOHIds LIMIT 1
+                            ]) {
+                                recoveredOHId = ts.OperatingHoursId;
+                            }
+                        }
+                    }
+                    if (recoveredOHId != null) {
                         try {
-                            update new ServiceTerritory(Id = targetTerritoryId, OperatingHoursId = stmOH[0].OperatingHoursId);
+                            update new ServiceTerritory(Id = targetTerritoryId, OperatingHoursId = recoveredOHId);
                         } catch (Exception ex) {
                             System.debug(LoggingLevel.WARN, 'Territory OH update failed: ' + ex.getMessage());
                         }
@@ -235,14 +337,14 @@ public without sharing class PDSchedulingConfigHandler {
 
                 res.workTypeGroupId = ensureWorkTypeGroup(targetWorkTypeId);
 
-                // For sticky (follow-up) bookings, restrict to the assigned PD only.
-                // For round-robin (first booking), show ALL eligible PDs' availability
-                // so the user sees combined time slots. PDPostBookingHandler.selectPD
-                // does its own round-robin at booking time to pick the actual PD.
-                if (isSticky || cachedAllResourceIds == null) {
+                // Build allResourceIds: only include resources that are MEMBERS of the
+                // selected territory. flowTimeslot ignores resources not in the territory,
+                // so passing non-members produces an empty calendar.
+                if (isSticky) {
                     res.allResourceIds = String.valueOf(anchorResourceId);
                 } else {
-                    res.allResourceIds = cachedAllResourceIds;
+                    res.allResourceIds = buildTerritoryResourceIds(
+                        targetTerritoryId, anchorResourceId);
                 }
 
                 res.serviceTerritoryId = targetTerritoryId;
@@ -260,6 +362,40 @@ public without sharing class PDSchedulingConfigHandler {
             results.add(res);
         }
         return results;
+    }
+
+    /**
+     * Returns comma-separated resource IDs that are active members of the given
+     * territory. Always includes the anchorResourceId. This ensures flowTimeslot
+     * only receives resources it can actually schedule in the territory.
+     */
+    private static String buildTerritoryResourceIds(Id territoryId, Id anchorResourceId) {
+        // Use cached data from getLowestLoadResource if available
+        if (cachedTerritoryToResources != null && cachedTerritoryToResources.containsKey(territoryId)) {
+            Set<Id> members = cachedTerritoryToResources.get(territoryId);
+            // Always include anchor
+            members.add(anchorResourceId);
+            List<String> ids = new List<String>();
+            for (Id rId : members) ids.add(String.valueOf(rId));
+            return String.join(ids, ',');
+        }
+
+        // Fallback: query territory members directly
+        Date today = Date.today();
+        Set<Id> memberIds = new Set<Id>();
+        memberIds.add(anchorResourceId);
+        for (ServiceTerritoryMember stm : [
+            SELECT ServiceResourceId FROM ServiceTerritoryMember
+            WHERE ServiceTerritoryId = :territoryId
+            AND ServiceResource.IsActive = true
+            AND EffectiveStartDate <= :today
+            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+        ]) {
+            memberIds.add(stm.ServiceResourceId);
+        }
+        List<String> ids = new List<String>();
+        for (Id rId : memberIds) ids.add(String.valueOf(rId));
+        return String.join(ids, ',');
     }
 
     private static Id getStickyResource(Id opportunityId) {
@@ -312,9 +448,19 @@ public without sharing class PDSchedulingConfigHandler {
         Date today = Date.today();
         Map<Id, Set<Id>> resourceToTerritories = new Map<Id, Set<Id>>();
         Map<Id, String> territoryNameMap = new Map<Id, String>();
+        Map<Id, Id> territoryToOHId = new Map<Id, Id>();
+        // Track which resources belong to which territory (reverse map)
+        Map<Id, Set<Id>> territoryToResourceIds = new Map<Id, Set<Id>>();
+
+        // Track the effective OH per resource PER territory (member OH > territory OH).
+        // flowTimeslot uses the member-level OH for the SPECIFIC territory passed,
+        // so we need to know which OH each resource has in each territory.
+        // Key = "resourceId:territoryId", Value = OperatingHoursId
+        Map<String, Id> resourceTerritoryToOH = new Map<String, Id>();
 
         for (ServiceTerritoryMember stm : [
-            SELECT ServiceResourceId, ServiceTerritoryId, ServiceTerritory.Name
+            SELECT ServiceResourceId, ServiceTerritoryId, ServiceTerritory.Name,
+                   ServiceTerritory.OperatingHoursId, OperatingHoursId
             FROM ServiceTerritoryMember
             WHERE ServiceResourceId IN :allSrIds
             AND EffectiveStartDate <= :today
@@ -326,6 +472,75 @@ public without sharing class PDSchedulingConfigHandler {
             }
             resourceToTerritories.get(stm.ServiceResourceId).add(stm.ServiceTerritoryId);
             territoryNameMap.put(stm.ServiceTerritoryId, stm.ServiceTerritory.Name);
+            Id ohId = stm.ServiceTerritory.OperatingHoursId != null
+                ? stm.ServiceTerritory.OperatingHoursId : stm.OperatingHoursId;
+            if (ohId != null) {
+                territoryToOHId.put(stm.ServiceTerritoryId, ohId);
+            }
+            // Track the effective OH for this resource IN THIS territory
+            Id memberOH = (stm.OperatingHoursId != null)
+                ? stm.OperatingHoursId : stm.ServiceTerritory.OperatingHoursId;
+            if (memberOH != null) {
+                String key = stm.ServiceResourceId + ':' + stm.ServiceTerritoryId;
+                resourceTerritoryToOH.put(key, memberOH);
+            }
+            // Build reverse map: territory -> resources
+            if (!territoryToResourceIds.containsKey(stm.ServiceTerritoryId)) {
+                territoryToResourceIds.put(stm.ServiceTerritoryId, new Set<Id>());
+            }
+            territoryToResourceIds.get(stm.ServiceTerritoryId).add(stm.ServiceResourceId);
+        }
+
+        // Cache for later use in buildTerritoryResourceIds
+        cachedTerritoryToResources = territoryToResourceIds;
+
+        // Collect ALL OperatingHours IDs
+        Set<Id> allOHIds = new Set<Id>(territoryToOHId.values());
+        allOHIds.addAll(resourceTerritoryToOH.values());
+
+        // Count distinct weekday coverage per OperatingHours.
+        // OH with 5+ distinct days = "fully configured" (Mon-Fri at minimum).
+        Set<Id> validOHIds = new Set<Id>();
+        Map<Id, Integer> ohDayCount = new Map<Id, Integer>();
+        if (!allOHIds.isEmpty()) {
+            for (AggregateResult ag : [
+                SELECT OperatingHoursId, COUNT_DISTINCT(DayOfWeek) dayCount
+                FROM TimeSlot
+                WHERE OperatingHoursId IN :allOHIds
+                GROUP BY OperatingHoursId
+            ]) {
+                Id agOhId = (Id)ag.get('OperatingHoursId');
+                Integer dayCount = (Integer)ag.get('dayCount');
+                ohDayCount.put(agOhId, dayCount);
+                if (dayCount > 0) {
+                    validOHIds.add(agOhId);
+                }
+            }
+        }
+        Set<Id> fullyConfiguredOHIds = new Set<Id>();
+        for (Id fohId : ohDayCount.keySet()) {
+            if (ohDayCount.get(fohId) >= 5) {
+                fullyConfiguredOHIds.add(fohId);
+            }
+        }
+
+        // Build set of territories with valid OH (has TimeSlot records)
+        Set<Id> territoriesWithValidOH = new Set<Id>();
+        for (Id tId : territoryToOHId.keySet()) {
+            if (validOHIds.contains(territoryToOHId.get(tId))) {
+                territoriesWithValidOH.add(tId);
+            }
+        }
+
+        // Build set of resources that have at least one territory with valid OH
+        Set<Id> resourcesWithValidOH = new Set<Id>();
+        for (Id srId : resourceToTerritories.keySet()) {
+            for (Id tId : resourceToTerritories.get(srId)) {
+                if (territoriesWithValidOH.contains(tId)) {
+                    resourcesWithValidOH.add(srId);
+                    break;
+                }
+            }
         }
 
         Set<Id> allTerritoryIds = new Set<Id>();
@@ -372,12 +587,19 @@ public without sharing class PDSchedulingConfigHandler {
         }
 
         List<String> allIds = new List<String>();
-        Id      bestId   = null;
-        Decimal bestLoad = null;
+        // Two-tier round-robin: prefer resources with full OH coverage (5+ weekdays)
+        // so the primary resource always has slots to show in flowTimeslot.
+        Id      bestFullId   = null;   // Best among resources with full OH
+        Decimal bestFullLoad = null;
+        Id      bestAnyId    = null;   // Best among all valid resources (fallback)
+        Decimal bestAnyLoad  = null;
 
         for (ServiceResource sr : resources) {
             Set<Id> srTerritories = resourceToTerritories.get(sr.Id);
             if (srTerritories == null || srTerritories.isEmpty()) continue;
+
+            // Skip resources whose territories have no valid operating hours with TimeSlots
+            if (!resourcesWithValidOH.isEmpty() && !resourcesWithValidOH.contains(sr.Id)) continue;
 
             if (!matchingTerritories.isEmpty()) {
                 Boolean hasMatch = false;
@@ -394,12 +616,127 @@ public without sharing class PDSchedulingConfigHandler {
             Decimal cnt  = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
             Decimal wt   = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
             Decimal load = cnt / wt;
-            if (bestLoad == null || load < bestLoad) {
-                bestLoad = load;
-                bestId   = sr.Id;
+
+            if (bestAnyLoad == null || load < bestAnyLoad) {
+                bestAnyLoad = load;
+                bestAnyId   = sr.Id;
             }
         }
+
+        Id bestId = bestAnyId;
         cachedAllResourceIds = String.join(allIds, ',');
+
+        // Cache the resource list for later use when selecting the best resource
+        // within the best territory
+        cachedResourceMap = new Map<Id, ServiceResource>();
+        for (ServiceResource sr : resources) {
+            cachedResourceMap.put(sr.Id, sr);
+        }
+
+        // Also collect territories that have STWT for the target duration.
+        // These are more reliable than name-only matches for flowTimeslot.
+        Set<Id> territoriesWithSTWT = new Set<Id>();
+        if (!allTerritoryIds.isEmpty()) {
+            try {
+                for (ServiceTerritoryWorkType stwt : [
+                    SELECT ServiceTerritoryId FROM ServiceTerritoryWorkType
+                    WHERE ServiceTerritoryId IN :allTerritoryIds
+                    AND WorkType.DurationInMinutes = :targetDuration
+                ]) {
+                    territoriesWithSTWT.add(stwt.ServiceTerritoryId);
+                }
+            } catch (Exception e) { }
+        }
+
+        // Find the best territory: prefer one with valid OH + STWT + most PD members.
+        // This territory is used for first-booking so flowTimeslot shows slots
+        // from multiple PDs, not just the anchor resource's territory.
+        cachedBestTerritoryId = null;
+        cachedBestResourceInTerritory = null;
+        Integer bestMemberCount = 0;
+
+        // Priority 1: matching territories with valid OH AND confirmed STWT linkage
+        for (Id tId : matchingTerritories) {
+            if (!territoriesWithValidOH.contains(tId)) continue;
+            if (!territoriesWithSTWT.contains(tId)) continue;
+            Set<Id> members = territoryToResourceIds.get(tId);
+            Integer count = (members != null) ? members.size() : 0;
+            if (count > bestMemberCount) {
+                bestMemberCount = count;
+                cachedBestTerritoryId = tId;
+            }
+        }
+        // Priority 2: matching territories with valid OH (name match or STWT)
+        if (cachedBestTerritoryId == null) {
+            bestMemberCount = 0;
+            for (Id tId : matchingTerritories) {
+                if (!territoriesWithValidOH.contains(tId)) continue;
+                Set<Id> members = territoryToResourceIds.get(tId);
+                Integer count = (members != null) ? members.size() : 0;
+                if (count > bestMemberCount) {
+                    bestMemberCount = count;
+                    cachedBestTerritoryId = tId;
+                }
+            }
+        }
+        // Priority 3: any territory with valid OH and max members
+        if (cachedBestTerritoryId == null) {
+            bestMemberCount = 0;
+            for (Id tId : territoriesWithValidOH) {
+                Set<Id> members = territoryToResourceIds.get(tId);
+                Integer count = (members != null) ? members.size() : 0;
+                if (count > bestMemberCount) {
+                    bestMemberCount = count;
+                    cachedBestTerritoryId = tId;
+                }
+            }
+        }
+
+        // Select the best resource WITHIN the best territory via weighted round-robin.
+        // KEY: check each resource's OH for THIS SPECIFIC TERRITORY, not their global OH.
+        // flowTimeslot uses the member-level OH for the passed territory to determine
+        // availability. A resource may have full OH on its own territory but null/sparse
+        // OH on the best territory — which produces an empty calendar.
+        if (cachedBestTerritoryId != null) {
+            Set<Id> territoryMembers = territoryToResourceIds.get(cachedBestTerritoryId);
+            if (territoryMembers != null && !territoryMembers.isEmpty()) {
+                Id      bestFullMember     = null;
+                Decimal bestFullMemberLoad = null;
+                Id      bestAnyMember      = null;
+                Decimal bestAnyMemberLoad  = null;
+
+                for (Id memberId : territoryMembers) {
+                    ServiceResource memberSR = cachedResourceMap.get(memberId);
+                    if (memberSR == null) continue;
+
+                    // Check this resource's OH for THIS territory specifically
+                    String memberKey = memberId + ':' + cachedBestTerritoryId;
+                    Id memberOHForTerritory = resourceTerritoryToOH.get(memberKey);
+
+                    // Skip resources with no OH for this territory
+                    if (memberOHForTerritory == null) continue;
+
+                    Decimal cnt = (memberSR.Appointment_Count__c != null) ? memberSR.Appointment_Count__c : 0;
+                    Decimal wght = (memberSR.Weight__c != null && memberSR.Weight__c > 0) ? memberSR.Weight__c : 1.0;
+                    Decimal load = cnt / wght;
+
+                    // Prefer resources whose OH for THIS territory covers 5+ weekdays
+                    if (fullyConfiguredOHIds.contains(memberOHForTerritory)) {
+                        if (bestFullMemberLoad == null || load < bestFullMemberLoad) {
+                            bestFullMemberLoad = load;
+                            bestFullMember = memberId;
+                        }
+                    }
+                    if (bestAnyMemberLoad == null || load < bestAnyMemberLoad) {
+                        bestAnyMemberLoad = load;
+                        bestAnyMember = memberId;
+                    }
+                }
+
+                cachedBestResourceInTerritory = (bestFullMember != null) ? bestFullMember : bestAnyMember;
+            }
+        }
+
         return bestId;
     }
 

@@ -29,6 +29,7 @@ public without sharing class PDPostBookingHandler {
     public static List<PostBookingResult> handlePostBooking(List<PostBookingRequest> requests) {
         List<PostBookingResult> results = new List<PostBookingResult>();
 
+        // ── 1. Bulk-collect IDs ──────────────────────────────────────────
         Set<Id> saIds  = new Set<Id>();
         Set<Id> oppIds = new Set<Id>();
         for (PostBookingRequest req : requests) {
@@ -36,6 +37,7 @@ public without sharing class PDPostBookingHandler {
             oppIds.add(req.opportunityId);
         }
 
+        // ── 2. Pre-query all shared data OUTSIDE the loop ────────────────
         Map<Id, ServiceAppointment> saMap = new Map<Id, ServiceAppointment>([
             SELECT Id, SchedStartTime, SchedEndTime, ServiceTerritoryId,
                    ParentRecordId, ContactId, AccountId, WorkTypeId
@@ -49,7 +51,47 @@ public without sharing class PDPostBookingHandler {
             WHERE Id IN :oppIds
         ]);
 
-        for (PostBookingRequest req : requests) {
+        // Pre-query primary contacts for all Opportunities (no SOQL in loop)
+        Map<Id, Id> oppToContactId = new Map<Id, Id>();
+        for (OpportunityContactRole ocr : [
+            SELECT OpportunityId, ContactId
+            FROM OpportunityContactRole
+            WHERE OpportunityId IN :oppIds AND IsPrimary = true
+        ]) {
+            oppToContactId.put(ocr.OpportunityId, ocr.ContactId);
+        }
+
+        // Pre-query ServiceResources for all sticky PD users (no SOQL in loop)
+        Set<Id> stickyPDUserIds = new Set<Id>();
+        for (Opportunity opp : oppMap.values()) {
+            if (opp.Program_Director__c != null) {
+                stickyPDUserIds.add(opp.Program_Director__c);
+            }
+        }
+        Map<Id, Id> pdUserToResourceId = new Map<Id, Id>();
+        if (!stickyPDUserIds.isEmpty()) {
+            for (ServiceResource sr : [
+                SELECT Id, RelatedRecordId FROM ServiceResource
+                WHERE RelatedRecordId IN :stickyPDUserIds AND IsActive = true
+            ]) {
+                pdUserToResourceId.put(sr.RelatedRecordId, sr.Id);
+            }
+        }
+
+        // ── 3. Process each request, collecting DML for batching ─────────
+        List<ServiceAppointment> sasToUpdate      = new List<ServiceAppointment>();
+        List<AssignedResource>   arsToInsert       = new List<AssignedResource>();
+        List<Event>              eventsToInsert     = new List<Event>();
+        List<ServiceResource>    resourcesToUpdate  = new List<ServiceResource>();
+        List<Opportunity>        oppsToUpdate       = new List<Opportunity>();
+        List<Contact>            contactsToUpdate   = new List<Contact>();
+
+        // Track per-request data for result assembly
+        List<PostBookingRequest> validRequests = new List<PostBookingRequest>();
+        Map<Integer, ServiceResource> indexToPD = new Map<Integer, ServiceResource>();
+
+        for (Integer i = 0; i < requests.size(); i++) {
+            PostBookingRequest req = requests[i];
             PostBookingResult res = new PostBookingResult();
             try {
                 Boolean followUp    = (req.isFollowUp != null && req.isFollowUp);
@@ -67,26 +109,12 @@ public without sharing class PDPostBookingHandler {
                     throw new HandlerException('Opportunity not found: ' + req.opportunityId);
                 }
 
-                Id contactId = null;
-                List<OpportunityContactRole> ocrs = [
-                    SELECT ContactId
-                    FROM OpportunityContactRole
-                    WHERE OpportunityId = :opp.Id AND IsPrimary = true
-                    LIMIT 1
-                ];
-                if (!ocrs.isEmpty()) {
-                    contactId = ocrs[0].ContactId;
-                }
+                Id contactId = oppToContactId.get(opp.Id);
 
+                // Determine sticky resource from pre-queried map
                 Id stickyResourceId = null;
                 if (opp.Program_Director__c != null) {
-                    List<ServiceResource> oppSR = [
-                        SELECT Id FROM ServiceResource
-                        WHERE RelatedRecordId = :opp.Program_Director__c AND IsActive = true LIMIT 1
-                    ];
-                    if (!oppSR.isEmpty()) {
-                        stickyResourceId = oppSR[0].Id;
-                    }
+                    stickyResourceId = pdUserToResourceId.get(opp.Program_Director__c);
                 }
 
                 Id selectedResourceId = selectPD(stickyResourceId, sa.SchedStartTime, sa.SchedEndTime);
@@ -96,6 +124,7 @@ public without sharing class PDPostBookingHandler {
                     );
                 }
 
+                // Query the selected resource (must be per-request since selectPD result varies)
                 ServiceResource pd = [
                     SELECT Id, Name, RelatedRecordId, Appointment_Count__c
                     FROM ServiceResource
@@ -103,111 +132,67 @@ public without sharing class PDPostBookingHandler {
                     LIMIT 1
                 ];
 
-                sa.Meeting_Type__c = meetingType;
-                sa.Subject         = meetingType + ' - Zenith Prep Academy';
-                sa.OwnerId         = pd.RelatedRecordId;
-                sa.Opportunity__c = opp.Id;
+                // ── Build SA update ──
+                sa.Meeting_Type__c     = meetingType;
+                sa.Subject             = meetingType + ' - Zenith Prep Academy';
+                sa.OwnerId            = pd.RelatedRecordId;
+                sa.Opportunity__c      = opp.Id;
                 sa.Program_Director__c = pd.RelatedRecordId;
 
-                Id pdTerritoryId = null;
-                String durationTag = followUp ? '30' : '60';
-                for (ServiceTerritoryMember stm : [
-                    SELECT ServiceTerritoryId, ServiceTerritory.Name FROM ServiceTerritoryMember
-                    WHERE ServiceResourceId = :pd.Id
-                    AND ServiceTerritory.IsActive = true
-                    AND ServiceTerritory.Name LIKE :('%' + durationTag + ' Min%')
-                    AND ServiceTerritory.Assigned_Service_Resource__c = :pd.RelatedRecordId
-                    AND EffectiveStartDate <= :Date.today()
-                    AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
-                    LIMIT 1
-                ]) {
-                    pdTerritoryId = stm.ServiceTerritoryId;
-                }
-                if (pdTerritoryId == null) {
-                    for (ServiceTerritoryMember stm : [
-                        SELECT ServiceTerritoryId FROM ServiceTerritoryMember
-                        WHERE ServiceResourceId = :pd.Id
-                        AND ServiceTerritory.IsActive = true
-                        AND TerritoryType = 'P'
-                        AND EffectiveStartDate <= :Date.today()
-                        AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
-                        ORDER BY CreatedDate ASC LIMIT 1
-                    ]) {
-                        pdTerritoryId = stm.ServiceTerritoryId;
-                    }
-                }
+                // Find best territory for the PD
+                Id pdTerritoryId = findPDTerritory(pd.Id, pd.RelatedRecordId, followUp);
                 if (pdTerritoryId != null) {
                     sa.ServiceTerritoryId = pdTerritoryId;
                 }
+                sasToUpdate.add(sa);
 
-                update sa;
-
+                // ── Build AssignedResource ──
                 AssignedResource ar = new AssignedResource();
                 ar.ServiceAppointmentId = sa.Id;
                 ar.ServiceResourceId    = pd.Id;
-                insert ar;
+                arsToInsert.add(ar);
 
-                try {
-                    Event evt         = new Event();
-                    evt.Subject       = meetingType + ' - Zenith Prep Academy';
-                    evt.StartDateTime = sa.SchedStartTime;
-                    evt.EndDateTime   = sa.SchedEndTime;
-                    evt.OwnerId       = pd.RelatedRecordId;
-                    evt.WhatId        = opp.Id;
-                    if (contactId != null) {
-                        evt.WhoId = contactId;
-                    }
-                    evt.ShowAs      = 'Busy';
-                    evt.Location    = 'Zoom';
-                    evt.Description = 'Strategy Overview Meeting scheduled.\n\n'
-                        + 'Program Director: ' + pd.Name + '\n'
-                        + 'Location: Zoom\n\n'
-                        + 'Appointment ID: ' + sa.Id + '\n'
-                        + 'Opportunity: '    + opp.Id;
-                    tryPut(evt, 'Service_Appointment__c', sa.Id);
-                    insert evt;
-                } catch (Exception eventEx) {
-                    System.debug(LoggingLevel.WARN, 'Event creation failed: ' + eventEx.getMessage());
-                }
-
-                try {
-                    pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
-                        ? pd.Appointment_Count__c + 1 : 1;
-                    update pd;
-                } catch (Exception countEx) {
-                    System.debug(LoggingLevel.WARN, 'Appointment count update failed: ' + countEx.getMessage());
-                }
-
-                Id pdUserIdForStamp = pd.RelatedRecordId;
-
-                try {
-                    Opportunity oppForPD = new Opportunity(Id = opp.Id);
-                    oppForPD.Program_Director__c = pdUserIdForStamp;
-                    update oppForPD;
-                } catch (Exception oppEx) {
-                    System.debug(LoggingLevel.WARN, 'Opportunity PD update failed: ' + oppEx.getMessage());
-                }
-
-                try {
-                    Opportunity oppStage = [SELECT Id, StageName FROM Opportunity WHERE Id = :opp.Id LIMIT 1];
-                    if (oppStage.StageName != 'SOM Scheduled') {
-                        oppStage.StageName = 'SOM Scheduled';
-                        update oppStage;
-                    }
-                } catch (Exception stageEx) {
-                    System.debug(LoggingLevel.WARN, 'Opportunity stage update failed: ' + stageEx.getMessage());
-                }
-
+                // ── Build Event ──
+                Event evt         = new Event();
+                evt.Subject       = meetingType + ' - Zenith Prep Academy';
+                evt.StartDateTime = sa.SchedStartTime;
+                evt.EndDateTime   = sa.SchedEndTime;
+                evt.OwnerId       = pd.RelatedRecordId;
+                evt.WhatId        = opp.Id;
                 if (contactId != null) {
-                    try {
-                        Contact conForPD = new Contact(Id = contactId);
-                        conForPD.Program_Director__c = pdUserIdForStamp;
-                        update conForPD;
-                    } catch (Exception conEx) {
-                        System.debug(LoggingLevel.WARN, 'Contact PD update failed: ' + conEx.getMessage());
-                    }
+                    evt.WhoId = contactId;
+                }
+                evt.ShowAs      = 'Busy';
+                evt.Location    = 'Zoom';
+                evt.Description = 'Strategy Overview Meeting scheduled.\n\n'
+                    + 'Program Director: ' + pd.Name + '\n'
+                    + 'Location: Zoom\n\n'
+                    + 'Appointment ID: ' + sa.Id + '\n'
+                    + 'Opportunity: '    + opp.Id;
+                tryPut(evt, 'Service_Appointment__c', sa.Id);
+                eventsToInsert.add(evt);
+
+                // ── Build ServiceResource count update ──
+                pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
+                    ? pd.Appointment_Count__c + 1 : 1;
+                resourcesToUpdate.add(pd);
+
+                // ── Build Opportunity update (PD stamp + stage) ──
+                Opportunity oppUpd = new Opportunity(Id = opp.Id);
+                oppUpd.Program_Director__c = pd.RelatedRecordId;
+                if (opp.StageName != 'SOM Scheduled') {
+                    oppUpd.StageName = 'SOM Scheduled';
+                }
+                oppsToUpdate.add(oppUpd);
+
+                // ── Build Contact update ──
+                if (contactId != null) {
+                    Contact conUpd = new Contact(Id = contactId);
+                    conUpd.Program_Director__c = pd.RelatedRecordId;
+                    contactsToUpdate.add(conUpd);
                 }
 
+                // Store for result assembly
                 res.success           = true;
                 res.pdName            = pd.Name;
                 res.pdUserId          = pd.RelatedRecordId;
@@ -220,7 +205,71 @@ public without sharing class PDPostBookingHandler {
             results.add(res);
         }
 
+        // ── 4. Execute all DML in bulk OUTSIDE the loop ──────────────────
+        if (!sasToUpdate.isEmpty()) {
+            try { update sasToUpdate; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'SA batch update failed: ' + ex.getMessage()); }
+        }
+        if (!arsToInsert.isEmpty()) {
+            try { insert arsToInsert; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'AR batch insert failed: ' + ex.getMessage()); }
+        }
+        if (!eventsToInsert.isEmpty()) {
+            try { insert eventsToInsert; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Event batch insert failed: ' + ex.getMessage()); }
+        }
+        if (!resourcesToUpdate.isEmpty()) {
+            try { update resourcesToUpdate; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'SR count batch update failed: ' + ex.getMessage()); }
+        }
+        if (!oppsToUpdate.isEmpty()) {
+            try { update oppsToUpdate; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Opp batch update failed: ' + ex.getMessage()); }
+        }
+        if (!contactsToUpdate.isEmpty()) {
+            try { update contactsToUpdate; }
+            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Contact batch update failed: ' + ex.getMessage()); }
+        }
+
         return results;
+    }
+
+    /**
+     * Find the best territory for the PD, checking assigned territory first,
+     * then falling back to primary territory type.
+     */
+    private static Id findPDTerritory(Id resourceId, Id pdUserId, Boolean isFollowUp) {
+        String durationTag = isFollowUp ? '30' : '60';
+        Date today = Date.today();
+
+        // Try assigned territory matching duration
+        for (ServiceTerritoryMember stm : [
+            SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+            WHERE ServiceResourceId = :resourceId
+            AND ServiceTerritory.IsActive = true
+            AND ServiceTerritory.Name LIKE :('%' + durationTag + ' Min%')
+            AND ServiceTerritory.Assigned_Service_Resource__c = :pdUserId
+            AND EffectiveStartDate <= :today
+            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+            LIMIT 1
+        ]) {
+            return stm.ServiceTerritoryId;
+        }
+
+        // Fall back to primary territory
+        for (ServiceTerritoryMember stm : [
+            SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+            WHERE ServiceResourceId = :resourceId
+            AND ServiceTerritory.IsActive = true
+            AND TerritoryType = 'P'
+            AND EffectiveStartDate <= :today
+            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+            ORDER BY CreatedDate ASC LIMIT 1
+        ]) {
+            return stm.ServiceTerritoryId;
+        }
+
+        return null;
     }
 
     private static Id selectPD(Id stickyResourceId, DateTime startDT, DateTime endDT) {
@@ -326,6 +375,7 @@ public without sharing class PDPostBookingHandler {
         }
         if (validResources.isEmpty()) return null;
 
+        // Bulk-check conflicts for ALL valid resources at once
         Set<Id> busyResources = new Set<Id>();
 
         for (AssignedResource arec : [

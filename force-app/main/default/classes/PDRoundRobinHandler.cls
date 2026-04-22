@@ -54,40 +54,71 @@ public with sharing class PDRoundRobinHandler {
     public static List<PDResult> getAssignedPD(List<PDRequest> requests) {
         List<PDResult> results = new List<PDResult>();
 
+        // ── 1. Bulk-collect all Opportunity IDs ──────────────────────────
+        Set<Id> oppIds = new Set<Id>();
+        for (PDRequest req : requests) {
+            oppIds.add(req.opportunityId);
+        }
+
+        // ── 2. Pre-query all Opportunities OUTSIDE the loop ──────────────
+        Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
+            SELECT Id, Program_Director__c
+            FROM Opportunity
+            WHERE Id IN :oppIds
+        ]);
+
+        // ── 3. Pre-query PD Users and ServiceResources for sticky check ──
+        Set<Id> stickyPDUserIds = new Set<Id>();
+        for (Opportunity opp : oppMap.values()) {
+            if (opp.Program_Director__c != null) {
+                stickyPDUserIds.add(opp.Program_Director__c);
+            }
+        }
+
+        // Validate which sticky PD users have the correct profile
+        Set<Id> validPDUserIds = new Set<Id>();
+        if (!stickyPDUserIds.isEmpty()) {
+            for (User u : [
+                SELECT Id FROM User
+                WHERE Id IN :stickyPDUserIds
+                AND Profile.Name = :PD_PROFILE_NAME
+                AND IsActive = true
+            ]) {
+                validPDUserIds.add(u.Id);
+            }
+        }
+
+        // Map PD user -> ServiceResource for sticky assignments
+        Map<Id, Id> pdUserToResourceId = new Map<Id, Id>();
+        if (!validPDUserIds.isEmpty()) {
+            for (ServiceResource sr : [
+                SELECT Id, RelatedRecordId FROM ServiceResource
+                WHERE RelatedRecordId IN :validPDUserIds AND IsActive = true
+            ]) {
+                pdUserToResourceId.put(sr.RelatedRecordId, sr.Id);
+            }
+        }
+
+        // ── 4. Process each request using pre-queried data ───────────────
         for (PDRequest req : requests) {
             PDResult res = new PDResult();
             try {
-                List<Opportunity> oppList = [
-                    SELECT Id, Program_Director__c
-                    FROM Opportunity
-                    WHERE Id = :req.opportunityId LIMIT 1
-                ];
-                if (oppList.isEmpty()) {
+                Opportunity opp = oppMap.get(req.opportunityId);
+                if (opp == null) {
                     throw new AuraHandledException('Opportunity not found: ' + req.opportunityId);
                 }
-                Opportunity opp = oppList[0];
                 Boolean followUp = (req.isFollowUp != null && req.isFollowUp);
 
                 Id selectedResourceId;
                 Boolean isSticky = false;
 
-                if (opp.Program_Director__c != null) {
-                    List<User> pdUser = [
-                        SELECT Id FROM User
-                        WHERE Id = :opp.Program_Director__c
-                        AND Profile.Name = :PD_PROFILE_NAME
-                        AND IsActive = true LIMIT 1
-                    ];
-                    if (!pdUser.isEmpty()) {
-                        List<ServiceResource> stickyCheck = [
-                            SELECT Id FROM ServiceResource
-                            WHERE RelatedRecordId = :opp.Program_Director__c
-                            AND IsActive = true LIMIT 1
-                        ];
-                        if (!stickyCheck.isEmpty()) {
-                            selectedResourceId = stickyCheck[0].Id;
-                            isSticky = true;
-                        }
+                // Check sticky assignment from pre-queried maps (no SOQL in loop)
+                if (opp.Program_Director__c != null
+                    && validPDUserIds.contains(opp.Program_Director__c)) {
+                    Id stickyResId = pdUserToResourceId.get(opp.Program_Director__c);
+                    if (stickyResId != null) {
+                        selectedResourceId = stickyResId;
+                        isSticky = true;
                     }
                 }
 
@@ -187,18 +218,36 @@ public with sharing class PDRoundRobinHandler {
             }
         } catch (Exception e) { }
 
+        // Validate which OH actually have TimeSlot records
+        Set<Id> allOHIds = new Set<Id>();
+        for (ServiceTerritoryMember stm : stmList) {
+            if (stm.ServiceTerritory.OperatingHoursId != null) allOHIds.add(stm.ServiceTerritory.OperatingHoursId);
+            if (stm.OperatingHoursId != null) allOHIds.add(stm.OperatingHoursId);
+        }
+        Set<Id> validOHIds = new Set<Id>();
+        if (!allOHIds.isEmpty()) {
+            for (TimeSlot ts : [
+                SELECT OperatingHoursId FROM TimeSlot
+                WHERE OperatingHoursId IN :allOHIds LIMIT 200
+            ]) {
+                validOHIds.add(ts.OperatingHoursId);
+            }
+        }
+
         ServiceTerritoryMember bestStm = null;
         Id matchedWorkTypeId = null;
 
+        // Priority 1: territory with matching WorkType AND valid operating hours
         for (ServiceTerritoryMember stm : stmList) {
             if (territoryToWorkType.containsKey(stm.ServiceTerritoryId)
-                && (stm.ServiceTerritory.OperatingHoursId != null || stm.OperatingHoursId != null)) {
+                && hasValidOH(stm, validOHIds)) {
                 bestStm = stm;
                 matchedWorkTypeId = territoryToWorkType.get(stm.ServiceTerritoryId);
                 break;
             }
         }
 
+        // Priority 2: territory with matching WorkType (any OH)
         if (bestStm == null) {
             for (ServiceTerritoryMember stm : stmList) {
                 if (territoryToWorkType.containsKey(stm.ServiceTerritoryId)) {
@@ -209,15 +258,17 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
+        // Priority 3: territory with valid operating hours
         if (bestStm == null) {
             for (ServiceTerritoryMember stm : stmList) {
-                if (stm.ServiceTerritory.OperatingHoursId != null || stm.OperatingHoursId != null) {
+                if (hasValidOH(stm, validOHIds)) {
                     bestStm = stm;
                     break;
                 }
             }
         }
 
+        // Priority 4: any territory
         if (bestStm == null) {
             bestStm = stmList[0];
         }
@@ -243,6 +294,11 @@ public with sharing class PDRoundRobinHandler {
         }
 
         return cfg;
+    }
+
+    private static Boolean hasValidOH(ServiceTerritoryMember stm, Set<Id> validOHIds) {
+        return (stm.ServiceTerritory.OperatingHoursId != null && validOHIds.contains(stm.ServiceTerritory.OperatingHoursId))
+            || (stm.OperatingHoursId != null && validOHIds.contains(stm.OperatingHoursId));
     }
 
     private static Id discoverWorkType(Boolean isFollowUp, Id territoryId, Id operatingHoursId) {
