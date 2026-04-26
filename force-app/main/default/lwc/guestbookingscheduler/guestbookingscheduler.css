@@ -40,7 +40,11 @@
 
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    /* `safe center` keeps the widget vertically centered when there's room,
+       and falls back to top-aligned when content is taller than the viewport
+       (Step 2 form on small screens) — prevents clipping the header. */
+    align-items: safe center;
+    min-height: 85vh;
     width: 100%;
     padding: 1.5rem 1rem;
     font-family: var(--zen-font);
@@ -656,32 +660,45 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 16px;
+    gap: 12px;
+    padding-top: 20px;
     border-top: 1px solid var(--zen-border);
     margin-top: 8px;
 }
-.back-btn {
-    background: none;
-    border: none;
-    color: var(--zen-text-muted);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 8px 4px;
-}
-.back-btn:hover { color: var(--zen-navy); }
+/* Footer buttons share shape + size for equal visual weight ─── */
+.back-btn,
 .confirm-btn {
-    padding: 10px 28px;
-    background: var(--zen-navy);
-    color: white;
-    border: 1px solid var(--zen-navy);
-    border-radius: var(--zen-radius);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 26px;
+    border-radius: var(--zen-radius-lg);
+    font-family: inherit;
+    font-size: 14px;
     font-weight: 600;
-    font-size: 13.5px;
     cursor: pointer;
     transition: var(--zen-trans);
-    font-family: inherit;
+    line-height: 1;
+}
+.back-btn svg,
+.confirm-btn svg { display: block; }
+
+/* A · Outlined navy ----------------------------------------- */
+.back-btn {
+    background: var(--zen-bg-card);
+    color: var(--zen-navy);
+    border: 1.5px solid var(--zen-navy);
+}
+.back-btn:hover {
+    background: var(--zen-navy-tint);
+}
+
+/* B · Solid navy -------------------------------------------- */
+.confirm-btn {
+    background: var(--zen-navy);
+    color: white;
+    border: 1.5px solid var(--zen-navy);
 }
 .confirm-btn:hover:not(:disabled) {
     background: var(--zen-navy-hover);
@@ -979,6 +996,96 @@
     font-family: inherit;
 }
 
+/* Inline field error -------------------------------------- */
+.field-error {
+    margin: 6px 0 0;
+    color: var(--zen-danger);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Guest chip list ----------------------------------------- */
+.guests-help {
+    margin: 0 0 8px;
+    font-size: 12.5px;
+    color: var(--zen-text-muted);
+}
+.guests-help--empty {
+    margin-top: 10px;
+    font-style: italic;
+}
+.guests-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.guests-input { flex: 1; min-width: 0; }
+.guests-add-btn {
+    flex-shrink: 0;
+    padding: 9px 18px;
+    background: var(--zen-navy);
+    color: white;
+    border: 1px solid var(--zen-navy);
+    border-radius: var(--zen-radius);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: var(--zen-trans);
+}
+.guests-add-btn:hover:not(:disabled) {
+    background: var(--zen-navy-hover);
+    border-color: var(--zen-navy-hover);
+}
+.guests-add-btn:disabled {
+    background: var(--zen-text-disabled);
+    border-color: var(--zen-text-disabled);
+    cursor: not-allowed;
+}
+.guests-counter {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--zen-text-muted);
+    font-weight: 500;
+}
+.guests-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+.guest-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px 4px 10px;
+    background: var(--zen-navy-tint);
+    color: var(--zen-navy);
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 500;
+}
+.guest-chip-text { line-height: 1; }
+.guest-chip-remove {
+    width: 18px; height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--zen-navy);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: var(--zen-trans);
+}
+.guest-chip-remove:hover {
+    background: var(--zen-navy);
+    color: white;
+}
+
 /* Optional / helper-text after a field label --------------- */
 .field-lbl-optional {
     font-weight: 400;
@@ -987,6 +1094,58 @@
     margin-left: 6px;
     text-transform: none;
     letter-spacing: 0;
+}
+
+/* Agreements info-card grid ------------------------------- */
+.agreements-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    background: var(--zen-navy-tint);
+    padding: 16px;
+    border-radius: var(--zen-radius-lg);
+    margin-bottom: 14px;
+}
+.agreement-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 6px 4px;
+}
+.agreement-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--zen-bg-card);
+    color: var(--zen-navy);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(26, 40, 73, 0.06);
+}
+.agreement-icon svg { display: block; }
+.agreement-text {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--zen-navy);
+    line-height: 1.4;
+    font-weight: 500;
+}
+.agreement-text strong { font-weight: 700; }
+
+/* Data privacy consent card ------------------------------- */
+.privacy-consent-card {
+    border: 1px solid var(--zen-border-strong);
+    border-radius: var(--zen-radius);
+    padding: 12px 14px;
+    margin: 12px 0;
+    background: var(--zen-bg-card);
+}
+
+@media (max-width: 600px) {
+    .agreements-grid { grid-template-columns: 1fr; }
+    .agreement-card { flex-direction: row; text-align: left; }
 }
 
 /* Native select polish (Student grade dropdown) ------------ */

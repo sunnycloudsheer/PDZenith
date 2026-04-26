@@ -54,8 +54,11 @@ export default class GuestBookingScheduler extends LightningElement {
     @track studentGrade = '';
     @track confirm1 = '';
     @track confirm2 = '';
-    @track guestEmails = '';
+    @track guestEmailList = [];
+    @track newGuestEmail = '';
+    @track guestError = '';
     @track notes = '';
+    @track notesTouched = false;
     @track consentChecked = false;
     @track validationError = '';
     @track rescheduleUrl = '';
@@ -232,6 +235,23 @@ export default class GuestBookingScheduler extends LightningElement {
             ...o,
             cssClass: this.studentGrade === o.value ? 'grade-btn selected' : 'grade-btn'
         }));
+    }
+
+    // ── Step-2 form: guest email chip list ────────────────────
+    // The Apex contract still expects a comma-separated string named
+    // `guestEmails`. We build it from the array on submit.
+    get guestEmails() { return this.guestEmailList.join(', '); }
+    get hasGuestEmails() { return this.guestEmailList.length > 0; }
+    get noGuestsHelper() { return this.guestEmailList.length === 0; }
+    get guestCounterText() { return `${this.guestEmailList.length}/10 guests`; }
+    get addGuestDisabled() {
+        return this.guestEmailList.length >= 10
+            || !(this.newGuestEmail || '').trim();
+    }
+
+    // Notes field: required after the user has tried to submit (notesTouched).
+    get notesError() {
+        return this.notesTouched && !(this.notes || '').trim();
     }
 
     // ── Step-2 form: confirmation checkboxes ──────────────────
@@ -508,6 +528,42 @@ export default class GuestBookingScheduler extends LightningElement {
         this.confirm2 = event.currentTarget.checked ? 'I confirm' : '';
     }
 
+    // Guest chip list handlers.
+    handleNewGuestInput(event) {
+        this.newGuestEmail = event.target.value;
+        if (this.guestError) this.guestError = '';
+    }
+    handleGuestKeydown(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            this.handleAddGuest();
+        }
+    }
+    handleAddGuest() {
+        const raw = (this.newGuestEmail || '').trim().toLowerCase();
+        if (!raw) return;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+            this.guestError = 'Please enter a valid email address.';
+            return;
+        }
+        if (this.guestEmailList.includes(raw)) {
+            this.guestError = 'That guest is already on the list.';
+            return;
+        }
+        if (this.guestEmailList.length >= 10) {
+            this.guestError = 'You can invite up to 10 guests.';
+            return;
+        }
+        this.guestEmailList = [...this.guestEmailList, raw];
+        this.newGuestEmail = '';
+        this.guestError = '';
+    }
+    handleRemoveGuest(event) {
+        const target = event.currentTarget.dataset.email;
+        this.guestEmailList = this.guestEmailList.filter(g => g !== target);
+        this.guestError = '';
+    }
+
     _validate() {
         if (!this.firstName.trim()) return 'First name is required.';
         if (!this.lastName.trim()) return 'Last name is required.';
@@ -521,6 +577,8 @@ export default class GuestBookingScheduler extends LightningElement {
             return "First confirmation must say exactly: I confirm";
         if (this.confirm2.trim().toLowerCase() !== 'i confirm')
             return "Second confirmation must say exactly: I confirm";
+        if (!(this.notes || '').trim())
+            return 'This field is required. Please enter a value.';
         if (!this.consentChecked)
             return 'You must agree to receive communications.';
         return '';
@@ -528,6 +586,7 @@ export default class GuestBookingScheduler extends LightningElement {
 
     async handleSubmit() {
         if (this.isICMode && !this.isRescheduling) {
+            this.notesTouched = true; // surface inline notes error after submit
             const err = this._validate();
             if (err) { this.validationError = err; return; }
         }

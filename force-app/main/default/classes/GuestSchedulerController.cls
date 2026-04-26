@@ -679,6 +679,9 @@ public without sharing class GuestSchedulerController {
             sa.Student_Grade__c = studentGrade;
             sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
             tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
+            // Populate Lead lookup so Meeting_After_RTF can resolve
+            // $Record.Lead__r.Email and fire the IC confirmation email.
+            tryPut(sa, 'Lead__c', mktLead.Id);
             insert sa;
 
             AssignedResource ar = new AssignedResource();
@@ -702,6 +705,14 @@ public without sharing class GuestSchedulerController {
                 tryPut(upd, 'Service_Appointment__c', res.get('appointmentId'));
             update upd;
         } catch (Exception ex) { }
+
+        // Best-effort: invite the guests via email so they get the meeting in
+        // their inbox. Wrapped in its own try/catch — guest-user contexts may
+        // lack send-email permission and we don't want to block the booking.
+        try {
+            sendGuestInvitations(guestList, startDT, endDT, cleanFirst, cleanLast,
+                                 cleanEmail, clientTimezone);
+        } catch (Exception emailEx) { /* booking already succeeded */ }
     }
 
     private static void bookPDorFSS(
@@ -1293,6 +1304,42 @@ public without sharing class GuestSchedulerController {
             parts.add('Guests invited: ' + String.join(guestList, ', '));
         }
         return String.join(parts, '\n');
+    }
+
+    // Send a simple invitation email to each guest with the meeting time so
+    // they receive the IC consultation in their inbox. The detailed Zoom link
+    // is delivered separately by the existing Zoom email service to the primary
+    // attendee — this keeps guests in the loop without depending on it.
+    private static void sendGuestInvitations(
+        List<String> guests, DateTime startDT, DateTime endDT,
+        String firstName, String lastName, String primaryEmail, String tz
+    ) {
+        if (guests == null || guests.isEmpty()) return;
+        String tzDisplay = String.isNotBlank(tz) ? tz : 'America/Chicago';
+        String meetingTime = startDT.format('EEEE, MMMM d, yyyy h:mm a', tzDisplay)
+            + ' (' + tzDisplay + ')';
+        String subject = 'You\'re invited: Initial Consultation with Zenith Prep Academy';
+        String body =
+            'Hello,\n\n'
+            + (firstName + ' ' + lastName).trim()
+            + ' has invited you to attend an Initial Consultation with Zenith Prep Academy.\n\n'
+            + 'When: ' + meetingTime + '\n'
+            + 'Where: Zoom (the join link will arrive in a follow-up email)\n\n'
+            + 'If you have questions, please reply to ' + primaryEmail + '.\n\n'
+            + 'Thank you,\nZenith Prep Academy';
+
+        List<Messaging.SingleEmailMessage> msgs = new List<Messaging.SingleEmailMessage>();
+        for (String guestAddr : guests) {
+            Messaging.SingleEmailMessage m = new Messaging.SingleEmailMessage();
+            m.setToAddresses(new List<String>{ guestAddr });
+            m.setSubject(subject);
+            m.setPlainTextBody(body);
+            m.setSaveAsActivity(false);
+            msgs.add(m);
+        }
+        if (!msgs.isEmpty()) {
+            Messaging.sendEmail(msgs, false);
+        }
     }
 
     // Event/SA Description: notes + invited guests. Returns null when nothing
