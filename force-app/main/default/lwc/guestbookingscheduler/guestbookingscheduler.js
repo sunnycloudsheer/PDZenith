@@ -27,7 +27,8 @@ export default class GuestBookingScheduler extends LightningElement {
 
     config = {};
     clientTimezone = 'America/Chicago';
-    utmSource = ''; utmCampaign = ''; utmMedium = ''; leadSource = '';
+    utmSource = ''; utmCampaign = ''; utmMedium = ''; utmAd = ''; utmAdSet = '';
+    leadSource = '';
     _contactId = '';
     _opportunityId = '';
     _resolvedType = '';
@@ -54,6 +55,7 @@ export default class GuestBookingScheduler extends LightningElement {
     @track confirm1 = '';
     @track confirm2 = '';
     @track guestEmails = '';
+    @track notes = '';
     @track consentChecked = false;
     @track validationError = '';
     @track rescheduleUrl = '';
@@ -105,6 +107,9 @@ export default class GuestBookingScheduler extends LightningElement {
         this.utmSource = this._getUrlParam('utm_source');
         this.utmCampaign = this._getUrlParam('utm_campaign');
         this.utmMedium = this._getUrlParam('utm_medium');
+        this.utmAd = this._getUrlParam('utm_ad');
+        // Accept both common spellings for the ad-set param.
+        this.utmAdSet = this._getUrlParam('utm_adset') || this._getUrlParam('utm_ad_set');
         this.leadSource = this._getUrlParam('lead_source') || 'Website';
 
         this._init();
@@ -192,7 +197,25 @@ export default class GuestBookingScheduler extends LightningElement {
     get showAssignedPdBanner() { return false; }
     get assignedPdDisplay() { return ''; }
 
-    // ── Step-2 form: grade button group ───────────────────────
+    // ── Step-2 form: grade dropdown ───────────────────────────
+    // LWC doesn't allow `value` on <select>; mark the chosen <option> with
+    // `selected` instead. Preserves existing picklist values (5th–12th).
+    get gradeSelectOptions() {
+        const all = [
+            { value: '',     label: '-- Select grade --' },
+            { value: '5th',  label: '5th'  },
+            { value: '6th',  label: '6th'  },
+            { value: '7th',  label: '7th'  },
+            { value: '8th',  label: '8th'  },
+            { value: '9th',  label: '9th'  },
+            { value: '10th', label: '10th' },
+            { value: '11th', label: '11th' },
+            { value: '12th', label: '12th' }
+        ];
+        return all.map(o => ({ ...o, isSelected: this.studentGrade === o.value }));
+    }
+
+    // ── Step-2 form: grade button group (legacy chip layout, kept for reuse) ──
     // Display labels match the design (5–6, 7–8, 9, 10, 11, 12) but the
     // submitted value uses an existing picklist entry to avoid breaking the
     // Lead.Student_Grade__c field.
@@ -518,8 +541,10 @@ export default class GuestBookingScheduler extends LightningElement {
                 studentGrade: this.studentGrade, leadSource: this.leadSource,
                 guestEmails: this.guestEmails.trim(), clientTimezone: this.clientTimezone,
                 utmSource: this.utmSource, utmCampaign: this.utmCampaign, utmMedium: this.utmMedium,
+                utmAd: this.utmAd, utmAdSet: this.utmAdSet,
                 bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId,
-                rescheduleToken: this._rescheduleToken || null
+                rescheduleToken: this._rescheduleToken || null,
+                notes: (this.notes || '').trim()
             });
             if (result && result.success === 'true') {
                 this.timeSlots = this.timeSlots.filter(s => s.startUtc !== this.selectedStart);

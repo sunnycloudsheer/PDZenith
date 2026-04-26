@@ -481,8 +481,9 @@ public without sharing class GuestSchedulerController {
         String firstName, String lastName, String email, String phone,
         String studentGrade, String leadSource, String guestEmails,
         String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
+        String utmAd, String utmAdSet,
         String bookingType, String contactId, String opportunityId,
-        String rescheduleToken
+        String rescheduleToken, String notes
     ) {
         Map<String, String> res = new Map<String, String>();
         Savepoint sp = Database.setSavepoint();
@@ -561,10 +562,12 @@ public without sharing class GuestSchedulerController {
                 bookIC(res, cfg, assignment, startDT, endDT,
                        firstName, lastName, email, phone, studentGrade,
                        leadSource, guestEmails, clientTimezone,
-                       utmSource, utmCampaign, utmMedium);
+                       utmSource, utmCampaign, utmMedium,
+                       utmAd, utmAdSet, notes);
             } else {
                 bookPDorFSS(res, cfg, assignment, bType, startDT, endDT,
-                            contactId, opportunityId, clientTimezone);
+                            contactId, opportunityId, clientTimezone,
+                            guestEmails, notes);
             }
 
             if (isReschedule && originalSA != null && 'true'.equals(res.get('success'))) {
@@ -597,13 +600,15 @@ public without sharing class GuestSchedulerController {
         DateTime startDT, DateTime endDT,
         String firstName, String lastName, String email, String phone,
         String studentGrade, String leadSource, String guestEmails,
-        String clientTimezone, String utmSource, String utmCampaign, String utmMedium
+        String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
+        String utmAd, String utmAdSet, String notes
     ) {
         String cleanEmail = email.trim().toLowerCase();
         String cleanFirst = firstName.trim();
         String cleanLast = lastName.trim();
         String cleanPhone = phone.trim();
         Database.DMLOptions dmlOpts = dmlAllowDupes();
+        List<String> guestList = parseGuestEmails(guestEmails);
 
         Lead mktLead = new Lead(
             FirstName = cleanFirst, LastName = cleanLast, Email = cleanEmail,
@@ -615,6 +620,9 @@ public without sharing class GuestSchedulerController {
         tryPut(mktLead, 'UTM_Source__c', utmSource);
         tryPut(mktLead, 'UTM_Campaign__c', utmCampaign);
         tryPut(mktLead, 'UTM_Medium__c', utmMedium);
+        tryPut(mktLead, 'UTM_Ad__c', utmAd);
+        tryPut(mktLead, 'UTM_AdSet__c', utmAdSet);
+        mktLead.Description = buildLeadDescription(notes, studentGrade, guestList);
         mktLead.setOptions(dmlOpts);
         Database.SaveResult leadSr = Database.insert(mktLead, dmlOpts);
         if (!leadSr.isSuccess()) {
@@ -635,6 +643,7 @@ public without sharing class GuestSchedulerController {
         booking.WhoId = mktLead.Id;
         if (assignment.userId != null) booking.OwnerId = assignment.userId;
         booking.Location = 'Zoom';
+        booking.Description = buildEventDescription(notes, guestList);
         insert booking;
 
         res.put('leadId', mktLead.Id);
@@ -698,8 +707,10 @@ public without sharing class GuestSchedulerController {
     private static void bookPDorFSS(
         Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
         String bType, DateTime startDT, DateTime endDT,
-        String contactId, String opportunityId, String clientTimezone
+        String contactId, String opportunityId, String clientTimezone,
+        String guestEmails, String notes
     ) {
+        List<String> guestList = parseGuestEmails(guestEmails);
         String meetingType = MEETING_TYPE_MAP.get(bType);
         String subject = SUBJECT_MAP.get(bType);
         Integer duration = cfg.durationMinutes;
@@ -784,6 +795,8 @@ public without sharing class GuestSchedulerController {
                 tryPut(sa, 'Customer_Name__c', con.Name);
             }
         }
+        String saDesc = buildEventDescription(notes, guestList);
+        if (String.isNotBlank(saDesc)) sa.Description = saDesc;
         insert sa;
 
         AssignedResource ar = new AssignedResource();
@@ -802,6 +815,8 @@ public without sharing class GuestSchedulerController {
             if (conId != null) evt.WhoId = conId;
             if (String.isNotBlank(opportunityId)) evt.WhatId = (Id) opportunityId;
             tryPut(evt, 'Service_Appointment__c', sa.Id);
+            String evtDesc = buildEventDescription(notes, guestList);
+            if (String.isNotBlank(evtDesc)) evt.Description = evtDesc;
             insert evt;
         } catch (Exception evtEx) { }
 
@@ -1244,5 +1259,54 @@ public without sharing class GuestSchedulerController {
 
     private static void tryPut(SObject rec, String f, Object v) {
         try { rec.put(f, v); } catch (Exception ex) { }
+    }
+
+    // ── Notes + guest-email helpers ──────────────────────────────
+    // Comma-separated guest emails → cleaned, deduped, lower-cased list.
+    private static List<String> parseGuestEmails(String guestEmails) {
+        List<String> out = new List<String>();
+        if (String.isBlank(guestEmails)) return out;
+        Set<String> seen = new Set<String>();
+        for (String raw : guestEmails.split(',')) {
+            String cleaned = (raw == null) ? '' : raw.trim().toLowerCase();
+            if (String.isBlank(cleaned)) continue;
+            if (!cleaned.contains('@') || !cleaned.contains('.')) continue;
+            if (seen.contains(cleaned)) continue;
+            seen.add(cleaned);
+            out.add(cleaned);
+        }
+        return out;
+    }
+
+    // Lead.Description = user notes + acknowledgement summary + grade + guests.
+    private static String buildLeadDescription(String notes, String studentGrade, List<String> guestList) {
+        List<String> parts = new List<String>();
+        if (String.isNotBlank(notes)) {
+            parts.add('Notes from attendee:');
+            parts.add(notes.trim());
+            parts.add('---');
+        }
+        parts.add('Booked via guest scheduler.');
+        parts.add('Confirmed: will attend consultation; acknowledged 3-day rescheduling policy.');
+        if (String.isNotBlank(studentGrade)) parts.add('Student grade: ' + studentGrade);
+        if (guestList != null && !guestList.isEmpty()) {
+            parts.add('Guests invited: ' + String.join(guestList, ', '));
+        }
+        return String.join(parts, '\n');
+    }
+
+    // Event/SA Description: notes + invited guests. Returns null when nothing
+    // worth writing, so existing append-on-update logic stays unchanged.
+    private static String buildEventDescription(String notes, List<String> guestList) {
+        List<String> parts = new List<String>();
+        if (String.isNotBlank(notes)) {
+            parts.add('Notes from attendee:');
+            parts.add(notes.trim());
+        }
+        if (guestList != null && !guestList.isEmpty()) {
+            if (!parts.isEmpty()) parts.add('');
+            parts.add('Guests invited: ' + String.join(guestList, ', '));
+        }
+        return parts.isEmpty() ? null : String.join(parts, '\n');
     }
 }

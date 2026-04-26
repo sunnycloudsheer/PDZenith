@@ -628,6 +628,8 @@
     line-height: 1.55;
     margin: 0 0 10px;
 }
+.privacy-body--secondary { margin-top: 12px; }
+.privacy-body a { color: var(--zen-navy); font-weight: 600; }
 .check-row {
     display: flex;
     align-items: flex-start;
@@ -968,6 +970,37 @@
 /* ============================================================
    STEP-2 NEW CONTROLS
    ============================================================ */
+
+/* Textarea variant (Notes field) --------------------------- */
+.field-inp--area {
+    min-height: 84px;
+    resize: vertical;
+    line-height: 1.5;
+    font-family: inherit;
+}
+
+/* Optional / helper-text after a field label --------------- */
+.field-lbl-optional {
+    font-weight: 400;
+    color: var(--zen-text-muted);
+    font-size: 11.5px;
+    margin-left: 6px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Native select polish (Student grade dropdown) ------------ */
+.field-inp--select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231A2849' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 12px;
+    cursor: pointer;
+}
 
 /* Grade chip group ----------------------------------------- */
 .grade-btn-group {

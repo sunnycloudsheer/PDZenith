@@ -348,14 +348,12 @@
 
                     <div class="field-group">
                         <label class="field-lbl">Student grade <span class="req">*</span></label>
-                        <div class="grade-btn-group">
-                            <template for:each={gradeOptions} for:item="g">
-                                <button key={g.value} class={g.cssClass} type="button"
-                                        data-grade={g.value} onclick={handleGradeClick}>
-                                    {g.label}
-                                </button>
+                        <select class="field-inp field-inp--select"
+                                data-field="studentGrade" onchange={handleInput}>
+                            <template for:each={gradeSelectOptions} for:item="g">
+                                <option key={g.value} value={g.value} selected={g.isSelected}>{g.label}</option>
                             </template>
-                        </div>
+                        </select>
                     </div>
 
                     <p class="form-section-label">Acknowledgements</p>
@@ -377,17 +375,43 @@
                     <p class="form-section-label">Optional</p>
 
                     <div class="field-group">
-                        <label class="field-lbl">Add guest emails</label>
+                        <label class="field-lbl">
+                            Anything you'd like us to know?
+                            <span class="field-lbl-optional">(saved to your record)</span>
+                        </label>
+                        <textarea class="field-inp field-inp--area"
+                                  data-field="notes" oninput={handleInput}
+                                  rows="3"
+                                  placeholder="Share questions, goals, or context for the call...">{notes}</textarea>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-lbl">
+                            Add guest emails
+                            <span class="field-lbl-optional">(comma-separated, will be invited to the meeting)</span>
+                        </label>
                         <input type="text" class="field-inp" value={guestEmails}
-                               placeholder="comma-separated emails"
+                               placeholder="parent@example.com, student@example.com"
                                data-field="guestEmails" oninput={handleInput} />
                     </div>
 
-                    <label class="check-row check-row--marketing">
-                        <input type="checkbox" checked={consentChecked}
-                               onchange={handleConsent} />
-                        <span>I'd like to receive other communications from Zenith Prep Academy. <a href="https://www.zenithprepacademy.com/privacy-policy" target="_blank" rel="noopener">Privacy policy</a></span>
-                    </label>
+                    <p class="form-section-label">Data privacy</p>
+                    <div class="privacy-box">
+                        <p class="privacy-body">
+                            Zenith Prep Academy is committed to protecting and respecting your privacy, and we'll only use your personal information to administer your account and to provide the products and services you requested from us. From time to time, we would like to contact you about our products and services, as well as other content that may be of interest to you. If you consent to us contacting you for this purpose, please tick below to say how you would like us to contact you:
+                        </p>
+                        <label class="check-row">
+                            <input type="checkbox" checked={consentChecked}
+                                   onchange={handleConsent} />
+                            <span>I agree to receive other communications from Zenith Prep Academy.</span>
+                        </label>
+                        <p class="privacy-body privacy-body--secondary">
+                            You can unsubscribe from these communications at any time. For more information on how to unsubscribe, our privacy practices, and how we are committed to protecting and respecting your privacy, please review our <a href="https://www.zenithprepacademy.com/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a>.
+                        </p>
+                        <p class="privacy-body privacy-body--secondary">
+                            By clicking submit below, you consent to allow Zenith Prep Academy to store and process the personal information submitted above to provide you the content requested.
+                        </p>
+                    </div>
 
                     <template lwc:if={validationError}>
                         <div class="val-error">{validationError}</div>
