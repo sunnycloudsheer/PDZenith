@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cancel_URL__c</fullName>
+    <externalId>false</externalId>
+    <formula>IF(ISBLANK(Reschedule_Token__c), &quot;&quot;, &quot;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?token=&quot; &amp; Reschedule_Token__c &amp; &quot;&amp;action=cancel&quot;)</formula>
+    <label>Cancel URL</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

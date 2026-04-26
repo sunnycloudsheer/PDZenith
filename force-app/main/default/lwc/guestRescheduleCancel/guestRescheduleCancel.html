@@ -17,7 +17,7 @@
                 <p class="error-heading">{errorTitle}</p>
                 <p class="error-body">{errorMessage}</p>
                 <p class="error-contact">
-                    Need help? Contact us at
+                    Need help? Contact us at 
                     <a href="mailto:info@zenithprepacademy.com">info@zenithprepacademy.com</a>
                 </p>
             </div>
@@ -27,50 +27,60 @@
     <!-- Main content -->
     <template lwc:elseif={isReady}>
         <div class="widget-shell">
-            <!-- Appointment details header -->
+
+            <!-- Brand header strip -->
             <div class="appt-header">
-                <div class="brand-logo-placeholder">Z</div>
-                <h2 class="appt-title">Your Consultation with Zenith Prep Academy</h2>
+                <div class="brand-logo-placeholder">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-label="Zenith Prep Academy">
+                        <path d="M3 21 L11 4 L19 21 Z" fill="#1A2849" opacity="0.35"/>
+                        <path d="M7 21 L14 6 L21 21 Z" fill="#1A2849"/>
+                    </svg>
+                </div>
+                <p class="appt-title">Zenith Prep Academy</p>
             </div>
 
-            <!-- Current appointment info -->
+            <!-- Appointment details + actions (when not in cancel form) -->
             <template lwc:if={showAppointmentDetails}>
+                <div class="cancel-form-header">
+                    <div class="cancel-form-heading-block">
+                        <h2 class="cancel-title">Manage your appointment</h2>
+                        <p class="cancel-subtitle">Choose what you'd like to do with this consultation.</p>
+                    </div>
+                </div>
+
                 <div class="appt-details">
-                    <div class="detail-row">
-                        <span class="detail-icon">&#x1F4C5;</span>
-                        <div>
-                            <p class="detail-label">Scheduled Date & Time</p>
-                            <p class="detail-value">{formattedDateTime}</p>
+                    <div class="appt-summary-row">
+                        <template lwc:if={counselorName}>
+                            <div class="appt-avatar">{counselorInitials}</div>
+                        </template>
+                        <div class="appt-summary-text">
+                            <p class="appt-summary-name">Initial consultation</p>
+                            <template lwc:if={counselorName}>
+                                <p class="appt-summary-counselor">with {counselorName}</p>
+                            </template>
                         </div>
                     </div>
-                    <template lwc:if={counselorName}>
+                    <div class="detail-grid">
                         <div class="detail-row">
-                            <span class="detail-icon">&#x1F464;</span>
-                            <div>
-                                <p class="detail-label">Your Counselor</p>
-                                <p class="detail-value">{counselorName}</p>
-                            </div>
+                            <span class="detail-icon">&#x1F4C5;</span>
+                            <p class="detail-value">{formattedDateTime}</p>
                         </div>
-                    </template>
-                    <div class="detail-row">
-                        <span class="detail-icon">&#x1F4CD;</span>
-                        <div>
-                            <p class="detail-label">Location</p>
-                            <p class="detail-value">Zoom (link will be sent separately)</p>
+                        <div class="detail-row">
+                            <span class="detail-icon">&#x1F4F9;</span>
+                            <p class="detail-value">Zoom</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Action buttons -->
                 <template lwc:if={showActions}>
                     <div class="action-buttons">
                         <template lwc:if={rescheduleBookingUrl}>
                             <a href={rescheduleBookingUrl} class="action-btn reschedule-btn">
-                                &#x1F504; Reschedule This Appointment
+                                Reschedule this appointment
                             </a>
                         </template>
                         <button class="action-btn cancel-btn" onclick={handleCancelClick}>
-                            &#x2716; Cancel This Appointment
+                            Cancel this appointment
                         </button>
                     </div>
                 </template>
@@ -78,13 +88,45 @@
 
             <!-- Cancel confirmation form -->
             <template lwc:if={showCancelForm}>
-                <div class="cancel-form">
-                    <h3 class="cancel-title">Cancel Your Appointment</h3>
-                    <p class="cancel-subtitle">We're sorry to see you go. Please let us know why:</p>
+                <div class="cancel-form-header">
+                    <div class="cancel-icon-circle">&#x2716;</div>
+                    <div class="cancel-form-heading-block">
+                        <h2 class="cancel-title">Cancel this meeting?</h2>
+                        <p class="cancel-subtitle">Your counselor will be notified and the slot will reopen.</p>
+                    </div>
+                </div>
 
+                <div class="appt-details">
+                    <div class="appt-summary-row">
+                        <template lwc:if={counselorName}>
+                            <div class="appt-avatar">{counselorInitials}</div>
+                        </template>
+                        <div class="appt-summary-text">
+                            <p class="appt-summary-name">Initial consultation</p>
+                            <template lwc:if={counselorName}>
+                                <p class="appt-summary-counselor">with {counselorName}</p>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="detail-grid">
+                        <div class="detail-row">
+                            <span class="detail-icon">&#x1F4C5;</span>
+                            <p class="detail-value">{formattedDateTime}</p>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-icon">&#x1F4F9;</span>
+                            <p class="detail-value">Zoom</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cancel-form">
                     <div class="field-group">
-                        <label class="field-lbl">Reason for cancellation</label>
-                        <select class="field-inp" value={cancelReason} onchange={handleReasonChange}>
+                        <label class="field-lbl">
+                            Reason for cancellation
+                            <span class="field-lbl-optional">(optional)</span>
+                        </label>
+                        <select class="field-inp" onchange={handleReasonChange}>
                             <option value="">-- Select a reason --</option>
                             <option value="Schedule conflict">Schedule conflict</option>
                             <option value="No longer interested">No longer interested</option>
@@ -99,28 +141,27 @@
                             <label class="field-lbl">Please specify</label>
                             <textarea class="field-inp" value={otherReason}
                                       onchange={handleOtherReasonChange}
-                                      rows="3"></textarea>
+                                      rows="3"
+                                      placeholder="Let us know why you're cancelling..."></textarea>
                         </div>
                     </template>
 
                     <div class="policy-banner">
-                        <strong>Cancellation Policy:</strong> Appointments must be cancelled at least
-                        3 days in advance. Late cancellations may affect your ability to schedule
-                        future free consultations.
+                        <span>Cancellations within 24 hours of the meeting may affect rescheduling availability. Appointments must be cancelled at least 3 days in advance.</span>
                     </div>
 
                     <template lwc:if={cancelError}>
                         <div class="val-error">{cancelError}</div>
                     </template>
+                </div>
 
-                    <div class="form-footer">
-                        <button class="back-btn" onclick={handleBackToDetails}>&#8249; Back</button>
-                        <button class="confirm-cancel-btn" onclick={handleConfirmCancel}
-                                disabled={isCancelling}>
-                            <template lwc:if={isCancelling}>Cancelling...</template>
-                            <template lwc:else>Confirm Cancellation</template>
-                        </button>
-                    </div>
+                <div class="form-footer">
+                    <button class="back-btn" onclick={handleBackToDetails}>Keep meeting</button>
+                    <button class="confirm-cancel-btn" onclick={handleConfirmCancel}
+                            disabled={isCancelling}>
+                        <template lwc:if={isCancelling}>Cancelling...</template>
+                        <template lwc:else>Cancel meeting</template>
+                    </button>
                 </div>
             </template>
 
@@ -128,12 +169,12 @@
             <template lwc:if={showCancelSuccess}>
                 <div class="success-panel">
                     <div class="success-icon">&#x2713;</div>
-                    <h2 class="success-title">Appointment Cancelled</h2>
+                    <h2 class="success-title">Appointment cancelled</h2>
                     <p class="success-text">Your consultation has been cancelled.</p>
                     <template lwc:if={rescheduleBookingUrl}>
                         <p class="success-text">Changed your mind? You can rebook anytime:</p>
                         <a href={rescheduleBookingUrl} class="rebook-btn">
-                            Book a New Consultation
+                            Book a new consultation
                         </a>
                     </template>
                 </div>

@@ -304,10 +304,74 @@ public without sharing class GuestSchedulerController {
 
     @AuraEnabled
     public static Map<String, Object> getBookingConfig(Integer openWindowDays, String bookingType,
-                                                        String contactId, String opportunityId, String token) {
+                                                        String contactId, String opportunityId, String token,
+                                                        String rescheduleToken) {
         Map<String, Object> out = new Map<String, Object>();
         try {
-            if (String.isBlank(contactId) && String.isNotBlank(token)) {
+            Boolean isRescheduling = false;
+            if (String.isNotBlank(rescheduleToken)) {
+                List<ServiceAppointment> origs = [
+                    SELECT Id, Status, SchedStartTime, ContactId, ParentRecordId,
+                           Meeting_Type__c, Opportunity__c, OwnerId, Owner.Name
+                    FROM ServiceAppointment
+                    WHERE Reschedule_Token__c = :rescheduleToken
+                    LIMIT 1
+                ];
+                if (origs.isEmpty()) {
+                    out.put('success', false);
+                    out.put('error', 'LINK_ALREADY_USED');
+                    return out;
+                }
+                ServiceAppointment orig = origs[0];
+                if (orig.Status == 'Canceled' || orig.Status == 'Completed' || orig.Status == 'Cannot Complete') {
+                    out.put('success', false);
+                    out.put('error', 'LINK_ALREADY_USED');
+                    return out;
+                }
+                if (orig.SchedStartTime != null && orig.SchedStartTime < DateTime.now().addHours(-1)) {
+                    out.put('success', false);
+                    out.put('error', 'APPOINTMENT_PASSED');
+                    return out;
+                }
+                String mt = (orig.Meeting_Type__c != null) ? orig.Meeting_Type__c : '';
+                if (mt.startsWith('Program Director')) bookingType = 'PD';
+                else if (mt.startsWith('FSS')) bookingType = 'FSS';
+                else bookingType = 'IC';
+                contactId = (orig.ContactId != null) ? String.valueOf(orig.ContactId) : contactId;
+                opportunityId = (orig.Opportunity__c != null)
+                    ? String.valueOf(orig.Opportunity__c) : opportunityId;
+                isRescheduling = true;
+                out.put('isRescheduling', true);
+                out.put('originalAppointmentId', orig.Id);
+                out.put('originalStartTime', orig.SchedStartTime != null
+                    ? orig.SchedStartTime.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') : null);
+                if (orig.Owner != null && String.isNotBlank(orig.Owner.Name)) {
+                    out.put('counselorName', orig.Owner.Name);
+                }
+
+                if (bookingType == 'IC' && orig.ParentRecordId != null
+                    && String.valueOf(orig.ParentRecordId).startsWith('00Q')) {
+                    try {
+                        List<Lead> leads = [
+                            SELECT FirstName, LastName, Email, Phone
+                            FROM Lead WHERE Id = :orig.ParentRecordId LIMIT 1
+                        ];
+                        if (!leads.isEmpty()) {
+                            Lead l = leads[0];
+                            Map<String, String> ci = new Map<String, String>();
+                            ci.put('firstName', l.FirstName != null ? l.FirstName : '');
+                            ci.put('lastName', l.LastName != null ? l.LastName : '');
+                            ci.put('email', l.Email != null ? l.Email : '');
+                            ci.put('phone', l.Phone != null ? l.Phone : '');
+                            try {
+                                Object g = l.get('Student_Grade__c');
+                                ci.put('studentGrade', g != null ? String.valueOf(g) : '');
+                            } catch (Exception gex) { ci.put('studentGrade', ''); }
+                            out.put('rescheduleContactInfo', ci);
+                        }
+                    } catch (Exception ex) { }
+                }
+            } else if (String.isBlank(contactId) && String.isNotBlank(token)) {
                 try {
                     Map<String, String> decoded = BookingTokenUtil.decrypt(token);
                     contactId = decoded.get('contactId');
@@ -317,6 +381,13 @@ public without sharing class GuestSchedulerController {
             out.put('contactId', contactId);
             out.put('opportunityId', opportunityId);
             DiscoveredConfig cfg = discover(bookingType);
+
+            if (!isRescheduling && isOneTimeUseType(cfg.bookingType) && String.isNotBlank(opportunityId)
+                && isLinkAlreadyUsed(opportunityId, cfg.bookingType)) {
+                out.put('success', false);
+                out.put('error', 'LINK_ALREADY_USED');
+                return out;
+            }
             Integer targetDays = (openWindowDays != null && openWindowDays > 0)
                 ? openWindowDays : cfg.timeframeEndDays;
 
@@ -410,7 +481,8 @@ public without sharing class GuestSchedulerController {
         String firstName, String lastName, String email, String phone,
         String studentGrade, String leadSource, String guestEmails,
         String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
-        String bookingType, String contactId, String opportunityId
+        String bookingType, String contactId, String opportunityId,
+        String rescheduleToken
     ) {
         Map<String, String> res = new Map<String, String>();
         Savepoint sp = Database.setSavepoint();
@@ -418,10 +490,68 @@ public without sharing class GuestSchedulerController {
             String bType = normalizeType(bookingType);
             DateTime startDT = parseISO(startTimeISO);
             DateTime endDT = parseISO(endTimeISO);
+
+            ServiceAppointment originalSA = null;
+            Boolean isReschedule = String.isNotBlank(rescheduleToken);
+            if (isReschedule) {
+                List<ServiceAppointment> origs = [
+                    SELECT Id, Status, ContactId, AccountId, ParentRecordId,
+                           Meeting_Type__c, Opportunity__c
+                    FROM ServiceAppointment
+                    WHERE Reschedule_Token__c = :rescheduleToken
+                    LIMIT 1
+                    FOR UPDATE
+                ];
+                if (origs.isEmpty()) {
+                    res.put('success', 'false');
+                    res.put('error', 'LINK_ALREADY_USED');
+                    return res;
+                }
+                originalSA = origs[0];
+                if (originalSA.Status == 'Canceled' || originalSA.Status == 'Completed'
+                    || originalSA.Status == 'Cannot Complete') {
+                    res.put('success', 'false');
+                    res.put('error', 'LINK_ALREADY_USED');
+                    return res;
+                }
+                String mt = (originalSA.Meeting_Type__c != null) ? originalSA.Meeting_Type__c : '';
+                if (mt.startsWith('Program Director')) bType = 'PD';
+                else if (mt.startsWith('FSS')) bType = 'FSS';
+                else bType = 'IC';
+                if (String.isBlank(contactId) && originalSA.ContactId != null) {
+                    contactId = String.valueOf(originalSA.ContactId);
+                }
+                if (String.isBlank(opportunityId) && originalSA.Opportunity__c != null) {
+                    opportunityId = String.valueOf(originalSA.Opportunity__c);
+                }
+            }
+
             DiscoveredConfig cfg = discover(bType);
+
+            if (!isReschedule && isOneTimeUseType(bType) && String.isNotBlank(opportunityId)
+                && isLinkAlreadyUsedForUpdate(opportunityId, bType)) {
+                res.put('success', 'false');
+                res.put('error', 'LINK_ALREADY_USED');
+                return res;
+            }
+
+            if (isReschedule && originalSA != null) {
+                ServiceAppointment cancelOrig = new ServiceAppointment(Id = originalSA.Id);
+                cancelOrig.Status = 'Canceled';
+                cancelOrig.Reschedule_Token__c = null;
+                // Validation rule requires CancellationReason whenever Status = 'Canceled'.
+                RescheduleTokenService.tryPutCancellationReason(cancelOrig, 'Rescheduled by user');
+                try { cancelOrig.Description = 'Rescheduled by user.'; } catch (Exception ex) { }
+                update cancelOrig;
+                try {
+                    List<Event> origEvents = [SELECT Id FROM Event WHERE Service_Appointment__c = :originalSA.Id];
+                    if (!origEvents.isEmpty()) delete origEvents;
+                } catch (Exception ex) { }
+            }
 
             ResourceAssignment assignment = findAvailableResourceRoundRobin(cfg, startDT, endDT, bType, opportunityId);
             if (assignment == null) {
+                if (isReschedule) Database.rollback(sp);
                 res.put('success', 'false');
                 res.put('error', 'SLOT_UNAVAILABLE');
                 return res;
@@ -435,6 +565,21 @@ public without sharing class GuestSchedulerController {
             } else {
                 bookPDorFSS(res, cfg, assignment, bType, startDT, endDT,
                             contactId, opportunityId, clientTimezone);
+            }
+
+            if (isReschedule && originalSA != null && 'true'.equals(res.get('success'))) {
+                res.put('rescheduledFromId', originalSA.Id);
+                try {
+                    String newSAId = res.get('appointmentId');
+                    if (newSAId != null) {
+                        ServiceAppointment annotateNew = new ServiceAppointment(Id = newSAId);
+                        annotateNew.Description = 'Rescheduled from: ' + originalSA.Id;
+                        update annotateNew;
+                        ServiceAppointment annotateOrig = new ServiceAppointment(Id = originalSA.Id);
+                        annotateOrig.Description = 'Rescheduled by user. New appointment: ' + newSAId;
+                        update annotateOrig;
+                    }
+                } catch (Exception ex) { }
             }
 
         } catch (AuraHandledException ae) {
@@ -523,6 +668,8 @@ public without sharing class GuestSchedulerController {
             sa.AdditionalInformation = cfg.workTypeName;
             sa.Admission_Counselor__c = assignment.userId;
             sa.Student_Grade__c = studentGrade;
+            sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
+            tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
             insert sa;
 
             AssignedResource ar = new AssignedResource();
@@ -531,6 +678,7 @@ public without sharing class GuestSchedulerController {
             insert ar;
 
             res.put('appointmentId', sa.Id);
+            stampActionUrls(res, sa.Reschedule_Token__c);
             try {
                 tryPut(booking, 'Service_Appointment__c', sa.Id);
                 booking.Description += '\nAppointment: ' + sa.Id;
@@ -630,6 +778,12 @@ public without sharing class GuestSchedulerController {
             } catch (Exception ex) { }
         }
         if (String.isNotBlank(opportunityId)) tryPut(sa, 'Opportunity__c', (Id) opportunityId);
+        sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
+        if (conId != null) {
+            for (Contact con : [SELECT Name FROM Contact WHERE Id = :conId LIMIT 1]) {
+                tryPut(sa, 'Customer_Name__c', con.Name);
+            }
+        }
         insert sa;
 
         AssignedResource ar = new AssignedResource();
@@ -685,11 +839,56 @@ public without sharing class GuestSchedulerController {
             }
         }
 
+        if (isOneTimeUseType(bType) && String.isNotBlank(opportunityId)) {
+            try {
+                Opportunity stamp = new Opportunity(Id = (Id) opportunityId);
+                if (bType == 'PD')  stamp.PD_Link_Used_At__c  = System.now();
+                if (bType == 'FSS') stamp.FSS_Link_Used_At__c = System.now();
+                update stamp;
+            } catch (Exception stampEx) { }
+        }
+
         User assignedUser = [SELECT Name FROM User WHERE Id = :assignment.userId LIMIT 1];
         res.put('success', 'true');
         res.put('appointmentId', sa.Id);
         res.put('assignedTo', assignedUser.Name);
         res.put('meetingType', meetingType);
+        stampActionUrls(res, sa.Reschedule_Token__c);
+    }
+
+    private static Boolean isOneTimeUseType(String bType) {
+        return bType == 'PD' || bType == 'FSS';
+    }
+
+    private static final String BOOKING_BASE_URL =
+        'https://site-enterprise-6958--dev2.sandbox.my.site.com/booking';
+
+    private static void stampActionUrls(Map<String, String> res, String token) {
+        if (String.isBlank(token)) return;
+        res.put('rescheduleUrl', BOOKING_BASE_URL + '?token=' + token + '&action=reschedule');
+        res.put('cancelUrl',     BOOKING_BASE_URL + '?token=' + token + '&action=cancel');
+    }
+
+    private static Boolean isLinkAlreadyUsed(String opportunityId, String bType) {
+        try {
+            String fld = (bType == 'PD') ? 'PD_Link_Used_At__c' : 'FSS_Link_Used_At__c';
+            List<Opportunity> opps = Database.query(
+                'SELECT ' + fld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1');
+            return !opps.isEmpty() && opps[0].get(fld) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static Boolean isLinkAlreadyUsedForUpdate(String opportunityId, String bType) {
+        try {
+            String fld = (bType == 'PD') ? 'PD_Link_Used_At__c' : 'FSS_Link_Used_At__c';
+            List<Opportunity> opps = Database.query(
+                'SELECT Id, ' + fld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1 FOR UPDATE');
+            return !opps.isEmpty() && opps[0].get(fld) != null;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static ResourceAssignment findAvailableResourceRoundRobin(

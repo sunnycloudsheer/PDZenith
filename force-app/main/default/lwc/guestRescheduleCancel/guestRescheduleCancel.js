@@ -34,6 +34,14 @@ export default class GuestRescheduleCancel extends LightningElement {
         return this.cancelReason === 'Other';
     }
 
+    get counselorInitials() {
+        if (!this.counselorName) return '';
+        const parts = this.counselorName.trim().split(/\s+/);
+        const first = parts[0] ? parts[0].charAt(0) : '';
+        const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : '';
+        return (first + last).toUpperCase();
+    }
+
     connectedCallback() {
         this._extractToken();
         if (this.token) {
@@ -50,8 +58,10 @@ export default class GuestRescheduleCancel extends LightningElement {
         try {
             const params = new URLSearchParams(window.location.search);
             this.token = params.get('token') || '';
+            this._action = (params.get('action') || '').toLowerCase();
         } catch (e) {
             this.token = '';
+            this._action = '';
         }
     }
 
@@ -84,13 +94,28 @@ export default class GuestRescheduleCancel extends LightningElement {
                 this.showActions = true;
                 this.isReady = true;
 
-                // Check if URL says /cancel — go straight to cancel form
-                if (window.location.pathname.includes('/cancel')) {
+                // Cancel mode: jump straight to the cancel form
+                if (window.location.pathname.includes('/cancel') || this._action === 'cancel') {
                     this.handleCancelClick();
                 }
             } else {
-                this.errorTitle = 'Link Issue';
-                this.errorMessage = result.error || 'Unable to find this appointment.';
+                const reason = (result.error || '').toLowerCase();
+                const linkExpired = reason.includes('expired') || reason.includes('already');
+                if (linkExpired) {
+                    if (this._action === 'cancel') {
+                        this.errorTitle = 'Meeting Already Canceled';
+                        this.errorMessage = 'This appointment has already been canceled. Please contact us if you need to book a new one.';
+                    } else if (this._action === 'reschedule') {
+                        this.errorTitle = 'Meeting Already Rescheduled';
+                        this.errorMessage = 'This appointment has already been rescheduled or canceled. Please contact us if you need further changes.';
+                    } else {
+                        this.errorTitle = 'Meeting Already Scheduled';
+                        this.errorMessage = 'This scheduling link has already been used. Please contact us if you need to reschedule.';
+                    }
+                } else {
+                    this.errorTitle = 'Link Issue';
+                    this.errorMessage = result.error || 'Unable to find this appointment.';
+                }
                 this.hasError = true;
             }
         } catch (err) {

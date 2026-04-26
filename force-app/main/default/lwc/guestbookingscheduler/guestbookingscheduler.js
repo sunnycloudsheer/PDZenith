@@ -16,6 +16,11 @@ export default class GuestBookingScheduler extends LightningElement {
     @track isReady = false;
     @track hasFatalError = false;
     @track fatalErrorDetail = '';
+    @track isLinkAlreadyUsed = false;
+    @track isCancelMode = false;
+    @track isRescheduling = false;
+    @track originalStartDisplay = '';
+    @track originalStartCompact = '';
     @track currentStep = 1;
     @track isSlotsLoading = false;
     @track isSubmitting = false;
@@ -27,6 +32,8 @@ export default class GuestBookingScheduler extends LightningElement {
     _opportunityId = '';
     _resolvedType = '';
     _token = '';
+    _action = '';
+    _rescheduleToken = '';
 
     @track calYear = 0;
     @track calMonth = 0;
@@ -49,6 +56,15 @@ export default class GuestBookingScheduler extends LightningElement {
     @track guestEmails = '';
     @track consentChecked = false;
     @track validationError = '';
+    @track rescheduleUrl = '';
+    @track cancelUrl = '';
+    @track addToCalendarUrl = '';
+
+    // Optional counselor display in the Step-2 sidebar. Only populated when the
+    // backend hands us a name (e.g. reschedule flow with the original Owner).
+    @track _counselorDisplayName = '';
+    @track _counselorFirstName = '';
+    @track _counselorRole = '';
 
     // Deprecated IANA timezone names that browsers may still return
     static TZ_ALIASES = {
@@ -68,6 +84,21 @@ export default class GuestBookingScheduler extends LightningElement {
             let tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
             this.clientTimezone = GuestBookingScheduler.TZ_ALIASES[tz] || tz;
         } catch (_) {}
+        this._action = (this._getUrlParam('action') || '').toLowerCase();
+        const urlToken = this._getUrlParam('token') || '';
+
+        if ((this._action === 'reschedule' || this._action === 'cancel') && urlToken) {
+            this._rescheduleToken = urlToken;
+        } else {
+            this._token = urlToken;
+        }
+
+        if (this._action === 'cancel' && this._rescheduleToken) {
+            this.isCancelMode = true;
+            this.isLoading = false;
+            return;
+        }
+
         this._resolvedType = this.bookingType || this._getUrlParam('type') || '';
         this._contactId = this._getUrlParam('contactId') || '';
         this._opportunityId = this._getUrlParam('opportunityId') || '';
@@ -76,15 +107,30 @@ export default class GuestBookingScheduler extends LightningElement {
         this.utmMedium = this._getUrlParam('utm_medium');
         this.leadSource = this._getUrlParam('lead_source') || 'Website';
 
-        this._token = this._getUrlParam('token') || '';
         this._init();
     }
 
     get isStep1() { return this.currentStep === 1; }
     get isStep2() { return this.currentStep === 2; }
     get isStep3() { return this.currentStep === 3; }
-    get step1NodeClass() { return this.currentStep >= 1 ? 'step-node active' : 'step-node'; }
-    get step2NodeClass() { return this.currentStep >= 2 ? 'step-node active' : 'step-node'; }
+    get step1NodeClass() {
+        if (this.currentStep > 1) return 'step-node complete';
+        if (this.currentStep === 1) return 'step-node active';
+        return 'step-node';
+    }
+    get step2NodeClass() {
+        if (this.currentStep > 2) return 'step-node complete';
+        if (this.currentStep === 2) return 'step-node active';
+        return 'step-node';
+    }
+    get step3NodeClass() {
+        if (this.currentStep === 3) return 'step-node active';
+        return 'step-node';
+    }
+    get isStep1Complete() { return this.currentStep > 1; }
+    get isStep2Complete() { return this.currentStep > 2; }
+    get connector1Class() { return this.currentStep > 1 ? 'step-line complete' : 'step-line'; }
+    get connector2Class() { return this.currentStep > 2 ? 'step-line complete' : 'step-line'; }
     get hasSlots() { return !this.isSlotsLoading && this.timeSlots.length > 0; }
     get noSlotsForDate() { return !this.isSlotsLoading && this.selectedDate && this.timeSlots.length === 0; }
     get noDateSelected() { return !this.selectedDate; }
@@ -130,10 +176,107 @@ export default class GuestBookingScheduler extends LightningElement {
     get isICMode() {
         return !this._resolvedType || this._resolvedType === 'IC';
     }
+    get showTwoStepTrack() {
+        return this.isICMode && !this.isRescheduling;
+    }
     get headerLabel() {
         if (this._resolvedType === 'PD') return 'Program Director Meeting with Zenith Prep Academy';
         if (this._resolvedType === 'FSS') return 'FSS Onboarding Meeting with Zenith Prep Academy';
         return 'Initial Consultation with Zenith Prep Academy';
+    }
+
+    // Step-1 error surface (reschedule + PD/FSS book straight from slot click).
+    // The HTML references {bookingError}; this maps it to validationError so any
+    // failure from bookAppointment becomes visible instead of silently failing.
+    get bookingError() { return this.validationError; }
+    get showAssignedPdBanner() { return false; }
+    get assignedPdDisplay() { return ''; }
+
+    // ── Step-2 form: grade button group ───────────────────────
+    // Display labels match the design (5–6, 7–8, 9, 10, 11, 12) but the
+    // submitted value uses an existing picklist entry to avoid breaking the
+    // Lead.Student_Grade__c field.
+    get gradeOptions() {
+        const opts = [
+            { label: '5–6',  value: '5th'  },
+            { label: '7–8',  value: '7th'  },
+            { label: '9',    value: '9th'  },
+            { label: '10',   value: '10th' },
+            { label: '11',   value: '11th' },
+            { label: '12',   value: '12th' }
+        ];
+        return opts.map(o => ({
+            ...o,
+            cssClass: this.studentGrade === o.value ? 'grade-btn selected' : 'grade-btn'
+        }));
+    }
+
+    // ── Step-2 form: confirmation checkboxes ──────────────────
+    // The original design used "type 'I confirm'" text inputs. The string
+    // value is preserved so _validate() still passes/fails identically.
+    get confirm1Checked() { return this.confirm1.trim().toLowerCase() === 'i confirm'; }
+    get confirm2Checked() { return this.confirm2.trim().toLowerCase() === 'i confirm'; }
+    get confirm1RowClass() {
+        return this.confirm1Checked ? 'check-card check-card--checked' : 'check-card';
+    }
+    get confirm2RowClass() {
+        return this.confirm2Checked ? 'check-card check-card--checked' : 'check-card';
+    }
+
+    // ── Step-2 form: subtitle + counselor block ───────────────
+    get formSubtitle() {
+        const fn = (this._counselorFirstName || '').trim();
+        return fn
+            ? `Just a few details so ${fn} can prepare for your call.`
+            : 'Just a few details so we can prepare for your call.';
+    }
+    get showCounselorBlock() { return !!this._counselorDisplayName; }
+    get rescheduleWithCounselor() {
+        return this._counselorDisplayName ? ` with ${this._counselorDisplayName}` : '';
+    }
+    get counselorDisplayName() { return this._counselorDisplayName || ''; }
+    get counselorRole() { return this._counselorRole || 'Senior counselor'; }
+    get counselorInitials() {
+        const n = (this._counselorDisplayName || '').trim();
+        if (!n) return '';
+        const parts = n.split(/\s+/);
+        const first = parts[0] ? parts[0].charAt(0) : '';
+        const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : '';
+        return (first + last).toUpperCase();
+    }
+
+    // Action-aware copy for the "link already used" error card.
+    get linkUsedHeading() {
+        if (this._action === 'cancel')     return 'Meeting Already Canceled';
+        if (this._action === 'reschedule') return 'Meeting Already Rescheduled';
+        return 'Meeting Already Scheduled';
+    }
+    get linkUsedBody() {
+        if (this._action === 'cancel') {
+            return 'This appointment has already been canceled. Please contact us if you need to book a new one.';
+        }
+        if (this._action === 'reschedule') {
+            return 'This appointment has already been rescheduled or canceled. Please contact us if you need further changes.';
+        }
+        return 'This scheduling link has already been used. Please contact us if you need to reschedule.';
+    }
+
+    get confirmationGreeting() {
+        const fn = (this.firstName || '').trim();
+        return fn ? `You're all set, ${fn}!` : `You're all set!`;
+    }
+
+    _buildAddToCalendarUrl() {
+        if (!this.selectedStart || !this.selectedEnd) return '';
+        try {
+            const fmt = (iso) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+            const start = fmt(this.selectedStart);
+            const end = fmt(this.selectedEnd);
+            const title = encodeURIComponent(this.headerLabel || 'Zenith Prep Academy Meeting');
+            const details = encodeURIComponent('Your meeting with Zenith Prep Academy. The Zoom link will be in your confirmation email.');
+            const location = encodeURIComponent('Zoom');
+            return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+        } catch (_) { return ''; }
     }
 
     async _init() {
@@ -142,13 +285,71 @@ export default class GuestBookingScheduler extends LightningElement {
             const cfg = await getBookingConfig({
                 openWindowDays: windowDays, bookingType: this._resolvedType,
                 contactId: this._contactId, opportunityId: this._opportunityId,
-                token: this._token
+                token: this._token,
+                rescheduleToken: this._rescheduleToken || null
             });
             if (cfg.contactId && !this._contactId) this._contactId = cfg.contactId;
             if (cfg.opportunityId && !this._opportunityId) this._opportunityId = cfg.opportunityId;
+            if (cfg.bookingType && !this._resolvedType) this._resolvedType = cfg.bookingType;
+            if (cfg.isRescheduling) {
+                this.isRescheduling = true;
+                if (cfg.originalStartTime) {
+                    try {
+                        const dt = new Date(cfg.originalStartTime);
+                        this.originalStartDisplay = dt.toLocaleString('en-US', {
+                            timeZone: this.clientTimezone, weekday: 'long',
+                            month: 'long', day: 'numeric', year: 'numeric',
+                            hour: 'numeric', minute: '2-digit', hour12: true
+                        });
+                        // Compact form for the top banner: "Mon, April 27 · 3:00 pm IST"
+                        const datePart = dt.toLocaleDateString('en-US', {
+                            timeZone: this.clientTimezone, weekday: 'short',
+                            month: 'long', day: 'numeric'
+                        });
+                        const timePart = dt.toLocaleTimeString('en-US', {
+                            timeZone: this.clientTimezone, hour: 'numeric',
+                            minute: '2-digit', hour12: true
+                        }).toLowerCase();
+                        let tzShort = '';
+                        try {
+                            const parts = new Intl.DateTimeFormat('en-US', {
+                                timeZone: this.clientTimezone, timeZoneName: 'short'
+                            }).formatToParts(dt);
+                            const tzPart = parts.find(p => p.type === 'timeZoneName');
+                            if (tzPart) tzShort = ' ' + tzPart.value;
+                        } catch (_) { /* ignore */ }
+                        this.originalStartCompact = `${datePart} · ${timePart}${tzShort}`;
+                    } catch (_) {
+                        this.originalStartDisplay = cfg.originalStartTime;
+                        this.originalStartCompact = cfg.originalStartTime;
+                    }
+                }
+                if (cfg.counselorName) {
+                    this._counselorDisplayName = cfg.counselorName;
+                    this._counselorFirstName = cfg.counselorName.trim().split(/\s+/)[0] || '';
+                }
+                if (cfg.counselorRole) this._counselorRole = cfg.counselorRole;
+                if (cfg.rescheduleContactInfo) {
+                    this.firstName    = cfg.rescheduleContactInfo.firstName    || '';
+                    this.lastName     = cfg.rescheduleContactInfo.lastName     || '';
+                    this.email        = cfg.rescheduleContactInfo.email        || '';
+                    this.phone        = cfg.rescheduleContactInfo.phone        || '';
+                    this.studentGrade = cfg.rescheduleContactInfo.studentGrade || '';
+                    this.confirm1 = 'I confirm';
+                    this.confirm2 = 'I confirm';
+                    this.consentChecked = true;
+                }
+            }
             if (!cfg.success) {
-                this.fatalErrorDetail = cfg.error || 'Configuration error';
-                this.hasFatalError = true;
+                if (cfg.error === 'LINK_ALREADY_USED') {
+                    this.isLinkAlreadyUsed = true;
+                } else if (cfg.error === 'APPOINTMENT_PASSED') {
+                    this.fatalErrorDetail = 'This appointment has already passed.';
+                    this.hasFatalError = true;
+                } else {
+                    this.fatalErrorDetail = cfg.error || 'Configuration error';
+                    this.hasFatalError = true;
+                }
                 this.isLoading = false;
                 return;
             }
@@ -248,10 +449,11 @@ export default class GuestBookingScheduler extends LightningElement {
     }
 
     handleSlotClick(event) {
+        if (this.isSubmitting) return;
         this.selectedStart = event.currentTarget.dataset.start;
         this.selectedEnd = event.currentTarget.dataset.end;
         if (this.selectedStart && this.selectedEnd) {
-            if (this.isICMode) {
+            if (this.isICMode && !this.isRescheduling) {
                 this.currentStep = 2;
                 this.validationError = '';
             } else {
@@ -267,6 +469,21 @@ export default class GuestBookingScheduler extends LightningElement {
     handleConsent(event) { this.consentChecked = event.currentTarget.checked; }
     handleEditTime() { this.currentStep = 1; this.validationError = ''; }
     handleBack() { this.currentStep = 1; this.validationError = ''; }
+
+    // Grade button group → write the picklist value into studentGrade so the
+    // existing Apex submit path is unchanged.
+    handleGradeClick(event) {
+        this.studentGrade = event.currentTarget.dataset.grade;
+    }
+
+    // Checkboxes set the same string ('I confirm') the legacy text inputs used,
+    // so _validate() and the Apex payload stay identical.
+    handleConfirm1(event) {
+        this.confirm1 = event.currentTarget.checked ? 'I confirm' : '';
+    }
+    handleConfirm2(event) {
+        this.confirm2 = event.currentTarget.checked ? 'I confirm' : '';
+    }
 
     _validate() {
         if (!this.firstName.trim()) return 'First name is required.';
@@ -287,7 +504,7 @@ export default class GuestBookingScheduler extends LightningElement {
     }
 
     async handleSubmit() {
-        if (this.isICMode) {
+        if (this.isICMode && !this.isRescheduling) {
             const err = this._validate();
             if (err) { this.validationError = err; return; }
         }
@@ -301,15 +518,22 @@ export default class GuestBookingScheduler extends LightningElement {
                 studentGrade: this.studentGrade, leadSource: this.leadSource,
                 guestEmails: this.guestEmails.trim(), clientTimezone: this.clientTimezone,
                 utmSource: this.utmSource, utmCampaign: this.utmCampaign, utmMedium: this.utmMedium,
-                bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId
+                bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId,
+                rescheduleToken: this._rescheduleToken || null
             });
             if (result && result.success === 'true') {
                 this.timeSlots = this.timeSlots.filter(s => s.startUtc !== this.selectedStart);
+                this.rescheduleUrl   = result.rescheduleUrl   || '';
+                this.cancelUrl       = result.cancelUrl       || '';
+                this.addToCalendarUrl = this._buildAddToCalendarUrl();
                 this.currentStep = 3;
                 if (this.redirectUrl) {
                     // eslint-disable-next-line @lwc/lwc/no-async-operation
-                    setTimeout(() => { window.location.href = this.redirectUrl; }, 3000);
+                    setTimeout(() => { window.location.href = this.redirectUrl; }, 8000);
                 }
+            } else if (result && result.error === 'LINK_ALREADY_USED') {
+                this.isLinkAlreadyUsed = true;
+                this.isReady = false;
             } else if (result && result.error === 'SLOT_UNAVAILABLE') {
                 this.currentStep = 1;
                 this.selectedStart = null; this.selectedEnd = null;
