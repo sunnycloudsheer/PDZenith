@@ -339,7 +339,12 @@ textarea.field-inp {
     flex-direction: column;
     gap: 8px;
 }
-.action-btn {
+.action-btn,
+.action-btn:link,
+.action-btn:visited,
+.action-btn:hover,
+.action-btn:active,
+.action-btn:focus {
     display: block;
     width: 100%;
     padding: 11px 14px;
@@ -353,14 +358,24 @@ textarea.field-inp {
     transition: var(--zen-trans);
     border: 1px solid transparent;
 }
-.reschedule-btn {
+/* Reschedule button is an <a> tag — explicitly cover :link/:visited so
+   the Salesforce Site's global anchor styles (community blue + underline)
+   don't override the navy background + white text. */
+.reschedule-btn,
+.reschedule-btn:link,
+.reschedule-btn:visited {
     background: var(--zen-navy);
     color: white;
     border-color: var(--zen-navy);
+    text-decoration: none;
 }
-.reschedule-btn:hover {
+.reschedule-btn:hover,
+.reschedule-btn:active,
+.reschedule-btn:focus {
     background: var(--zen-navy-hover);
+    color: white;
     border-color: var(--zen-navy-hover);
+    text-decoration: none;
 }
 .cancel-btn {
     background: var(--zen-bg-card);
@@ -369,6 +384,7 @@ textarea.field-inp {
 }
 .cancel-btn:hover {
     background: var(--zen-danger-bg);
+    color: var(--zen-danger);
     border-color: var(--zen-danger);
 }
 
