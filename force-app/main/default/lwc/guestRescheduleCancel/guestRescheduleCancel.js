@@ -28,10 +28,20 @@ export default class GuestRescheduleCancel extends LightningElement {
     @track cancelReason = '';
     @track otherReason = '';
     @track cancelError = '';
+    @track reasonError = '';
+    @track otherReasonError = '';
     @track isCancelling = false;
 
     get showOtherReason() {
         return this.cancelReason === 'Other';
+    }
+
+    get reasonSelectClass() {
+        return this.reasonError ? 'field-inp field-inp-error' : 'field-inp';
+    }
+
+    get otherReasonInputClass() {
+        return this.otherReasonError ? 'field-inp field-inp-error' : 'field-inp';
     }
 
     get counselorInitials() {
@@ -75,19 +85,21 @@ export default class GuestRescheduleCancel extends LightningElement {
                 this.meetingType = result.meetingType || '';
                 this.rescheduleBookingUrl = result.rescheduleBookingUrl || '';
 
-                // Format the date/time for display
+                // Format the date/time for display — short style:
+                // "Tue, Apr 28 · 9:15 PM"
                 if (result.startTime) {
                     const dt = new Date(result.startTime);
-                    this.formattedDateTime = dt.toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric'
-                    }) + ' at ' + dt.toLocaleTimeString('en-US', {
+                    const datePart = dt.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                    const timePart = dt.toLocaleTimeString('en-US', {
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true
                     });
+                    this.formattedDateTime = `${datePart} · ${timePart}`;
                 }
 
                 this.showAppointmentDetails = true;
@@ -141,23 +153,43 @@ export default class GuestRescheduleCancel extends LightningElement {
 
     handleReasonChange(event) {
         this.cancelReason = event.target.value;
+        // Clear field-specific error as soon as the user picks a value.
+        if (this.cancelReason) {
+            this.reasonError = '';
+        }
         if (this.cancelReason !== 'Other') {
             this.otherReason = '';
+            this.otherReasonError = '';
         }
     }
 
     handleOtherReasonChange(event) {
         this.otherReason = event.target.value;
+        if (this.otherReason && this.otherReason.trim()) {
+            this.otherReasonError = '';
+        }
     }
 
     async handleConfirmCancel() {
-        // Validate
+        // Validate — collect ALL field errors before bailing so the user
+        // sees every problem at once instead of one-at-a-time.
+        let hasError = false;
         if (!this.cancelReason) {
-            this.cancelError = 'Please select a reason for cancellation.';
-            return;
+            this.reasonError = 'Please select a reason for cancellation.';
+            hasError = true;
+        } else {
+            this.reasonError = '';
         }
         if (this.cancelReason === 'Other' && !this.otherReason.trim()) {
-            this.cancelError = 'Please specify your reason.';
+            this.otherReasonError = 'Please specify your reason.';
+            hasError = true;
+        } else {
+            this.otherReasonError = '';
+        }
+        if (hasError) {
+            // Keep the bottom-of-form general error clear — field-specific
+            // errors render inline next to the offending input.
+            this.cancelError = '';
             return;
         }
 

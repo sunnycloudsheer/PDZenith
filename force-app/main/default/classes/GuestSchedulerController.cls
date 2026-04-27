@@ -413,10 +413,17 @@ public without sharing class GuestSchedulerController {
             if (String.isNotBlank(rescheduleToken)) {
                 List<ServiceAppointment> origs = [
                     SELECT Id, Status, SchedStartTime, ContactId, ParentRecordId,
-                           Meeting_Type__c, Opportunity__c, OwnerId, Owner.Name,
-                           Admission_Counselor__c, Admission_Counselor__r.Name,
-                           Program_Director__c, Program_Director__r.Name,
-                           Family_Success_Specialist__c, Family_Success_Specialist__r.Name
+                           Meeting_Type__c, Opportunity__c,
+                           OwnerId, Owner.Name, Owner.FirstName, Owner.LastName,
+                           Admission_Counselor__c,
+                           Admission_Counselor__r.Name,
+                           Admission_Counselor__r.FirstName, Admission_Counselor__r.LastName,
+                           Program_Director__c,
+                           Program_Director__r.Name,
+                           Program_Director__r.FirstName, Program_Director__r.LastName,
+                           Family_Success_Specialist__c,
+                           Family_Success_Specialist__r.Name,
+                           Family_Success_Specialist__r.FirstName, Family_Success_Specialist__r.LastName
                     FROM ServiceAppointment
                     WHERE Reschedule_Token__c = :rescheduleToken
                     LIMIT 1
@@ -453,19 +460,33 @@ public without sharing class GuestSchedulerController {
                 // on the reschedule banner, not the SA Owner — Owner is often
                 // a queue/admin set by Scheduler auto-assignment after insert
                 // and doesn't match who the family was actually booked with.
+                // Build the display name from FirstName + LastName explicitly
+                // (falling back to .Name) so users with auto-generated User.Name
+                // values like "User17744366632527905805" still display as the
+                // human-readable counselor name on the banner.
                 String assignedName = null;
                 String mtForName = (orig.Meeting_Type__c != null) ? orig.Meeting_Type__c : '';
                 if (mtForName.startsWith('Program Director')
                     && orig.Program_Director__r != null) {
-                    assignedName = orig.Program_Director__r.Name;
+                    assignedName = composeUserName(
+                        orig.Program_Director__r.FirstName,
+                        orig.Program_Director__r.LastName,
+                        orig.Program_Director__r.Name);
                 } else if (mtForName.startsWith('FSS')
                     && orig.Family_Success_Specialist__r != null) {
-                    assignedName = orig.Family_Success_Specialist__r.Name;
+                    assignedName = composeUserName(
+                        orig.Family_Success_Specialist__r.FirstName,
+                        orig.Family_Success_Specialist__r.LastName,
+                        orig.Family_Success_Specialist__r.Name);
                 } else if (orig.Admission_Counselor__r != null) {
-                    assignedName = orig.Admission_Counselor__r.Name;
+                    assignedName = composeUserName(
+                        orig.Admission_Counselor__r.FirstName,
+                        orig.Admission_Counselor__r.LastName,
+                        orig.Admission_Counselor__r.Name);
                 }
                 if (String.isBlank(assignedName) && orig.Owner != null) {
-                    assignedName = orig.Owner.Name;
+                    assignedName = composeUserName(
+                        orig.Owner.FirstName, orig.Owner.LastName, orig.Owner.Name);
                 }
                 if (String.isNotBlank(assignedName)) {
                     out.put('counselorName', assignedName);
@@ -707,6 +728,17 @@ public without sharing class GuestSchedulerController {
                 try {
                     List<Event> origEvents = [SELECT Id FROM Event WHERE Service_Appointment__c = :originalSA.Id];
                     if (!origEvents.isEmpty()) delete origEvents;
+                } catch (Exception ex) { }
+                // Expire the Zoom URL on the OLD SA so anyone holding the
+                // original confirmation email can't still join it. The NEW SA
+                // gets its own fresh Zoom meeting via the standard create
+                // flow, with its own confirmation email + .ics. Best-effort —
+                // failures are logged inside the Queueable and don't block
+                // the reschedule.
+                try {
+                    System.enqueueJob(new ZoomMeetingManager.ZoomCancelQueueable(
+                        new Set<Id>{ originalSA.Id }
+                    ));
                 } catch (Exception ex) { }
             }
 
@@ -1472,6 +1504,24 @@ public without sharing class GuestSchedulerController {
 
     private static void tryPut(SObject rec, String f, Object v) {
         try { rec.put(f, v); } catch (Exception ex) { }
+    }
+
+    /**
+     * Build a human-readable display name from a User's FirstName + LastName,
+     * falling back to the auto-computed Name field only when both parts are
+     * blank. Salesforce's User.Name is normally "FirstName LastName", but for
+     * users created without a real first/last (scratch users, federation-id
+     * provisioned users) it can end up as the username/federation Id, which
+     * looks like "User17744366632527905805" on the cancel/reschedule banner.
+     * Composing explicitly fixes that without breaking properly-named users —
+     * "FirstName LastName" still produces the same string.
+     */
+    private static String composeUserName(String firstName, String lastName, String fallbackName) {
+        String fn = (firstName != null) ? firstName.trim() : '';
+        String ln = (lastName != null) ? lastName.trim() : '';
+        String composed = (fn + ' ' + ln).trim();
+        if (String.isNotBlank(composed)) return composed;
+        return (fallbackName != null) ? fallbackName.trim() : '';
     }
 
     // Expected appointment length for a booking type, in minutes.

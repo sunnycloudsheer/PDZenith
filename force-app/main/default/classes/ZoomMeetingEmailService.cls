@@ -173,7 +173,20 @@ public class ZoomMeetingEmailService {
             msg.setTargetObjectId(inp.targetObjectId);
             msg.setTreatTargetObjectAsRecipient(false);
         }
-        if (inp.relatedWhatId != null) {
+        // Salesforce platform constraint: when targetObjectId is a Lead AND
+        // setSaveAsActivity is true, setting WhatId triggers
+        //   "WhatId is not available with saveAsActivity for sending emails to Leads"
+        // and aborts the send. Template merge fields still render correctly
+        // because renderStoredEmailTemplate (called below) resolves the
+        // {{{ServiceAppointment.*}}} fields against relatedWhatId and bakes
+        // them into the rendered subject/body — so dropping WhatId on the
+        // outgoing message itself doesn't lose any merge content.
+        Boolean isLeadTarget = inp.targetObjectId != null
+            && String.valueOf(inp.targetObjectId).startsWith('00Q');
+        Boolean wantsSaveAsActivity = inp.logEmailOnSend == true
+            && inp.targetObjectId != null;
+        Boolean skipWhatId = isLeadTarget && wantsSaveAsActivity;
+        if (inp.relatedWhatId != null && !skipWhatId) {
             msg.setWhatId(inp.relatedWhatId);
         }
 

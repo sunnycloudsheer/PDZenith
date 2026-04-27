@@ -577,7 +577,7 @@
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
         <rules>
             <name>Zoom_URL_Added</name>
-            <conditionLogic>1 AND 2 AND ( (3 AND 4) OR (5 AND 6) ) AND 7</conditionLogic>
+            <conditionLogic>and</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
                 <operator>IsBlank</operator>
@@ -607,6 +607,42 @@
                 </rightValue>
             </conditions>
             <conditions>
+                <leftValueReference>$Record.SchedStartTime</leftValueReference>
+                <operator>GreaterThan</operator>
+                <rightValue>
+                    <elementReference>$Flow.CurrentDateTime</elementReference>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Send_Meeting_Scheduled_Email_notification</targetReference>
+            </connector>
+            <label>Zoom URL Added</label>
+        </rules>
+        <rules>
+            <name>Zoom_URL_Added_For_Lead</name>
+            <conditionLogic>1 AND (2 OR 7) AND 3 AND 4 AND 5 AND 6</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
+                <operator>IsBlank</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
+                <operator>IsChanged</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.ContactId</leftValueReference>
+                <operator>IsBlank</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
                 <leftValueReference>$Record.Lead__r.Id</leftValueReference>
                 <operator>IsBlank</operator>
                 <rightValue>
@@ -627,10 +663,17 @@
                     <elementReference>$Flow.CurrentDateTime</elementReference>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>isNew</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Send_Meeting_Scheduled_Email_notification</targetReference>
             </connector>
-            <label>Zoom URL Added</label>
+            <label>Zoom URL Added For Lead</label>
         </rules>
     </decisions>
     <decisions>
@@ -733,7 +776,7 @@
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
         <rules>
             <name>Meeting_Cancelled_by_Educational_Strategist</name>
-            <conditionLogic>(1 OR 2) AND (3 OR 4)</conditionLogic>
+            <conditionLogic>(1 OR 2) AND 3</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Status</leftValueReference>
                 <operator>EqualTo</operator>
@@ -750,13 +793,6 @@
             </conditions>
             <conditions>
                 <leftValueReference>$Record.Contact.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
                 <operator>IsNull</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
@@ -800,7 +836,7 @@
         </rules>
         <rules>
             <name>Meeting_Cancelled_by_Student_or_Parent</name>
-            <conditionLogic>(1 OR 2) AND 3</conditionLogic>
+            <conditionLogic>(1 OR 2 OR 4) AND (3 OR 5)</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Status</leftValueReference>
                 <operator>EqualTo</operator>
@@ -822,10 +858,23 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>$Record.Status</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Meeting Canceled by Customer</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Send_Client_Cancellation_Email</targetReference>
             </connector>
-            <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
             <label>Meeting Cancelled by Student or Parent</label>
         </rules>
     </decisions>
@@ -988,11 +1037,6 @@ ISBLANK({!ccEmails}),
 )</expression>
     </formulas>
     <formulas>
-        <name>icLeadOwnerEmail</name>
-        <dataType>String</dataType>
-        <expression>{!$Record.Lead__r.Owner:User.Email}</expression>
-    </formulas>
-    <formulas>
         <name>isNew</name>
         <dataType>Boolean</dataType>
         <expression>isNew()</expression>
@@ -1089,6 +1133,13 @@ ISBLANK({!ccEmails}),
             <operator>EqualTo</operator>
             <value>
                 <elementReference>$Record.Contact.AccountId</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Subject</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Subject</elementReference>
             </value>
         </filters>
         <getFirstRecordOnly>true</getFirstRecordOnly>

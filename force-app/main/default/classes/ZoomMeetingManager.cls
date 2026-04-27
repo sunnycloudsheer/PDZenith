@@ -95,9 +95,15 @@ public without sharing class ZoomMeetingManager {
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
     /** Lightning "Zenith Meeting Scheduled" template — drives the branded
-     *  subject + HTML body on CREATE, so admin edits in Setup propagate
-     *  without a code deploy. */
+     *  subject + HTML body on CREATE for Contact-based SAs, so admin edits
+     *  in Setup propagate without a code deploy. */
     private static final Id SCHEDULED_EMAIL_TEMPLATE_ID   = '00XQU00000ARwzs';
+    /** Lightning "Initial Consultation Meeting Scheduled" template — used
+     *  for Lead-based SAs (IC bookings) so the IC-specific copy and links
+     *  go to the prospect. Org-specific Id; update when deploying to other
+     *  environments. Setup → Email Templates → Initial Consultation
+     *  Meeting Scheduled. */
+    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb0000031aCbEAI';
     /** Lightning "Meeting Rescheduled Email Template" (Enhanced) — carries
      *  the Zenith Prep Lightning Letterhead via Setup, so admin edits to
      *  copy / branding propagate without a code deploy. Used for RESCHEDULE
@@ -332,8 +338,15 @@ public without sharing class ZoomMeetingManager {
                       : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
         sin.targetObjectId = targetId;
         sin.logEmailOnSend = (targetId != null);
+        Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
         if (targetId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
+            // Lead-based IC bookings get the "Initial Consultation Meeting
+            // Scheduled" template (prospect-facing copy + links). Contact-based
+            // bookings keep the existing "Zenith Meeting Scheduled" template
+            // unchanged.
+            sin.templateId = isLeadBased
+                ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
+                : SCHEDULED_EMAIL_TEMPLATE_ID;
         } else {
             sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
             sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
@@ -415,6 +428,16 @@ public without sharing class ZoomMeetingManager {
                 String trimmed = raw.trim();
                 if (String.isNotBlank(trimmed)) out.add(trimmed);
             }
+        }
+        // 3. Lead Owner — for Lead-based SAs (IC bookings), CC the assigned
+        //    counselor (= Lead.Owner User, resolved into ctx.host) on the
+        //    family confirmation so they have a thread copy. Contact-based
+        //    paths intentionally skip this — they keep the existing CC
+        //    behaviour (verified parents + guests).
+        Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
+        if (isLeadBased && ctx != null && ctx.host != null
+            && String.isNotBlank(ctx.host.Email)) {
+            out.add(ctx.host.Email);
         }
         return out;
     }
@@ -959,6 +982,71 @@ public without sharing class ZoomMeetingManager {
 
     private static String describe(HttpResponse res) {
         return res.getStatusCode() + ' ' + res.getStatus() + ' Body=' + res.getBody();
+    }
+
+    // =========================================================================
+    //  ZOOM-ONLY CANCELLATION (Join URL invalidation)
+    // =========================================================================
+    /**
+     * Delete the Zoom meetings for the given SAs so the join URL in any
+     * already-sent confirmation email stops working. Email/.ics cancellation
+     * notice is NOT sent here — that's a separate concern handled by the
+     * Meeting_After_RTF flow when the SA's Status flips. This method is
+     * the surgical "expire the Zoom URL" hook for the family-cancel flow,
+     * where we already have the SA marked Canceled and just need the Zoom
+     * URL invalidated.
+     *
+     * Skips SAs without a Zoom_Meeting_ID__c (nothing to delete). 404s from
+     * Zoom are treated as success (the meeting is already gone). Failures
+     * are logged at WARN and swallowed — the calling user already saw their
+     * cancellation succeed at the SA level, so we don't want a Zoom-side
+     * hiccup to surface as an error to them.
+     */
+    public static void cancelZoomMeetingsForSAs(Set<Id> saIds) {
+        if (saIds == null || saIds.isEmpty()) return;
+        List<ServiceAppointment> sas = [
+            SELECT Id, Zoom_Meeting_ID__c
+            FROM ServiceAppointment
+            WHERE Id IN :saIds
+              AND Zoom_Meeting_ID__c != null
+        ];
+        if (sas.isEmpty()) return;
+
+        Http http = new Http();
+        for (ServiceAppointment sa : sas) {
+            try {
+                String endpoint = NAMED_CREDENTIAL + '/meetings/' + sa.Zoom_Meeting_ID__c
+                    + '?schedule_for_reminder=false&cancel_meeting_reminder=true';
+                HttpResponse res = doCallout(http, 'DELETE', endpoint, null);
+                if (!isSuccess(res) && res.getStatusCode() != 404) {
+                    System.debug(LoggingLevel.WARN,
+                        'cancelZoomMeetingsForSAs: Zoom DELETE failed for SA '
+                        + sa.Id + ' meetingId=' + sa.Zoom_Meeting_ID__c
+                        + ' — ' + describe(res));
+                }
+            } catch (Exception e) {
+                System.debug(LoggingLevel.WARN,
+                    'cancelZoomMeetingsForSAs: error deleting Zoom meeting for SA '
+                    + sa.Id + ': ' + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Queueable wrapper around cancelZoomMeetingsForSAs so callers (typically
+     * @AuraEnabled methods invoked from a guest-user LWC) can enqueue the
+     * Zoom delete AFTER their DML commit — the platform forbids HTTP callouts
+     * in the same transaction as pending DML, and the cancellation always
+     * does DML on the SA first.
+     */
+    public class ZoomCancelQueueable implements Queueable, Database.AllowsCallouts {
+        private Set<Id> serviceAppointmentIds;
+        public ZoomCancelQueueable(Set<Id> saIds) {
+            this.serviceAppointmentIds = saIds;
+        }
+        public void execute(QueueableContext ctx) {
+            ZoomMeetingManager.cancelZoomMeetingsForSAs(serviceAppointmentIds);
+        }
     }
 
     // =========================================================================

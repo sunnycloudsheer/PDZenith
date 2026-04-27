@@ -127,14 +127,57 @@ public without sharing class RescheduleTokenService {
                 return result;
             }
 
-            sa.Status = 'Canceled';
+            // Use the customer-facing cancel status so Meeting_After_RTF's
+            // family-cancel rule fires and sends the cancellation email + .ics.
+            // Falls back to the existing 'Meeting Canceled by Student' value
+            // if the org's Status picklist hasn't been extended with the
+            // Customer entry — both values are matched by the flow rule.
+            sa.Status = 'Meeting Canceled by Customer';
             String reasonText = String.isNotBlank(reason) ? reason : 'Not specified';
             String existingDesc = (sa.Description != null) ? (sa.Description + '\n') : '';
             sa.Description = existingDesc + 'Cancellation reason: ' + reasonText;
             // CancellationReason is required by a validation rule when Status = 'Canceled'.
             tryPutCancellationReason(sa, reasonText);
             sa.Reschedule_Token__c = null;
-            update sa;
+            try {
+                update sa;
+            } catch (DmlException de) {
+                Boolean badPicklist = false;
+                for (Integer i = 0; i < de.getNumDml(); i++) {
+                    String code = String.valueOf(de.getDmlType(i));
+                    if (code != null && (code.contains('PICKLIST')
+                        || de.getDmlMessage(i) != null
+                        && (de.getDmlMessage(i).contains('restricted picklist')
+                            || de.getDmlMessage(i).contains('invalid value for restricted picklist')))) {
+                        badPicklist = true;
+                        break;
+                    }
+                }
+                if (!badPicklist) throw de;
+                // Org doesn't have the 'Meeting Canceled by Customer' picklist
+                // value — retry with the canonical 'Meeting Canceled by Student'
+                // value. Either way the family-cancel flow rule still fires.
+                sa.Status = 'Meeting Canceled by Student';
+                update sa;
+            }
+
+            // Expire the Zoom join URL by deleting the meeting on Zoom's side.
+            // Reschedule + cancel links are already invalidated above by clearing
+            // Reschedule_Token__c, but the Zoom join URL in the original
+            // confirmation email keeps working until we DELETE the meeting via
+            // the Zoom API. Done in a Queueable because callouts can't run in
+            // the same transaction as the DML above. Best-effort — failures are
+            // logged inside the Queueable and don't surface to the caller (they
+            // already saw their cancellation succeed at the SA level).
+            try {
+                System.enqueueJob(new ZoomMeetingManager.ZoomCancelQueueable(
+                    new Set<Id>{ sa.Id }
+                ));
+            } catch (Exception ex) {
+                System.debug(LoggingLevel.WARN,
+                    'cancelAppointment: failed to enqueue ZoomCancelQueueable for SA '
+                    + sa.Id + ': ' + ex.getMessage());
+            }
 
             result.put('success', 'true');
             result.put('appointmentId', sa.Id);

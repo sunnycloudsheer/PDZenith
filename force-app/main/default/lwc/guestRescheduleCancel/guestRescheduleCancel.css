@@ -199,6 +199,14 @@
     margin-left: 4px;
     font-size: 12px;
 }
+.field-lbl-required {
+    color: var(--zen-danger);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 4px;
+    font-size: 12px;
+}
 .field-inp {
     width: 100%;
     padding: 10px 12px;
@@ -215,9 +223,29 @@
     border-color: var(--zen-navy);
     box-shadow: var(--zen-focus);
 }
+.field-inp-error {
+    border-color: var(--zen-danger);
+}
+.field-inp-error:focus {
+    border-color: var(--zen-danger);
+    box-shadow: 0 0 0 3px rgba(163, 45, 45, 0.18);
+}
+.field-error {
+    color: var(--zen-danger);
+    font-size: 12.5px;
+    margin-top: 6px;
+    line-height: 1.4;
+}
 textarea.field-inp {
     resize: vertical;
     min-height: 72px;
+}
+
+/* ── SECTION DIVIDER (between manage card and cancel form) ─── */
+.section-divider {
+    border: 0;
+    border-top: 1px solid var(--zen-border);
+    margin: 0 24px 20px;
 }
 
 /* ── POLICY / WARNING BANNER ───────────────────────────────── */
@@ -370,20 +398,6 @@ textarea.field-inp {
     color: var(--zen-text-muted);
     margin: 4px 0;
 }
-.rebook-btn {
-    display: inline-block;
-    margin-top: 14px;
-    padding: 10px 22px;
-    background: var(--zen-navy);
-    color: white;
-    text-decoration: none;
-    border-radius: var(--zen-radius);
-    font-weight: 600;
-    font-size: 13px;
-    transition: var(--zen-trans);
-}
-.rebook-btn:hover { background: var(--zen-navy-hover); }
-
 .loader-wrap {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
