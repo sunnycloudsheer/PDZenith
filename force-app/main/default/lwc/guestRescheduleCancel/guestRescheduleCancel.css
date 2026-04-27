@@ -30,8 +30,10 @@
 
     display: flex;
     justify-content: center;
-    align-items: safe center;
-    min-height: 85vh;
+    /* Top-align so wide viewports don't stamp a large empty band above
+       the modal. Horizontal centering still works via justify-content +
+       .widget-shell's max-width: 560px. */
+    align-items: flex-start;
     width: 100%;
     padding: 2rem 1rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Salesforce Sans", Roboto, sans-serif;
@@ -422,11 +424,62 @@ textarea.field-inp {
     font-weight: 600;
 }
 
+/* ============================================================
+   RESPONSIVE BREAKPOINTS
+   ------------------------------------------------------------
+   Desktop  (≥1025px): default modal width 560px
+   Tablet   (601–1024px): keep 560px modal, slightly tighter padding
+   Mobile   (≤600px): full-width card with stacked actions
+   Very narrow (≤380px): one more notch of padding reduction
+   ============================================================ */
+
+/* ── Tablet ─────────────────────────────────────────────────── */
+@media (min-width: 601px) and (max-width: 1024px) {
+    :host { padding: 1.5rem 1rem; }
+    .appt-header { padding: 20px 22px; }
+    .cancel-form-header { padding: 20px 22px 12px; }
+    .appt-details { padding: 14px; }
+    .cancel-form { padding: 0 22px 18px; }
+    .form-footer { padding: 14px 22px; }
+}
+
+/* ── Mobile (≤600px) ────────────────────────────────────────── */
 @media (max-width: 600px) {
-    .widget-shell { margin: 1rem; }
+    :host { padding: 1rem 0.75rem; }
+    .widget-shell {
+        margin: 0;
+        max-width: 100%;
+        border-radius: 12px;
+    }
+    .appt-header { padding: 18px 18px; gap: 8px; }
     .cancel-form-header,
     .appt-details,
     .cancel-form { padding-left: 16px; padding-right: 16px; }
-    .form-footer { padding: 14px 16px; }
-    .detail-grid { grid-template-columns: 1fr; }
+    .cancel-form-header { padding-top: 18px; }
+    .appt-details { padding: 14px 16px; }
+    .detail-grid { grid-template-columns: 1fr; gap: 8px; }
+    .form-footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 10px;
+        padding: 14px 16px;
+    }
+    .back-btn,
+    .confirm-cancel-btn,
+    .action-btn {
+        width: 100%;
+        padding: 13px 18px;
+    }
+    .action-buttons { padding: 14px 16px 18px; }
+}
+
+/* ── Very narrow screens (≤380px) ───────────────────────────── */
+@media (max-width: 380px) {
+    :host { padding: 0.75rem 0.5rem; }
+    .appt-header { padding: 16px 14px; }
+    .cancel-form-header,
+    .appt-details,
+    .cancel-form { padding-left: 14px; padding-right: 14px; }
+    .form-footer { padding: 12px 14px; }
+    .action-buttons { padding: 12px 14px 16px; }
 }

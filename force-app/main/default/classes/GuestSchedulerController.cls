@@ -1,5 +1,12 @@
 public without sharing class GuestSchedulerController {
 
+    // Custom exception used by discover() so getBookingConfig's catch can read
+    // the real failure message via e.getMessage(). AuraHandledException has a
+    // platform quirk where getMessage() returns "Script-thrown exception"
+    // instead of the constructor-supplied text, so caught-message paths can't
+    // surface a useful reason to the LWC.
+    public class SchedulerConfigException extends Exception {}
+
     private static final String ADMISSION_PROFILE_NAME     = 'Admission Counsellor';
     private static final String ADMISSION_PROFILE_NAME_ALT = 'Admission Counselor';
     private static final String PD_PROFILE_NAME            = 'Program Director';
@@ -9,14 +16,16 @@ public without sharing class GuestSchedulerController {
     private static Map<String, DiscoveredConfig> cachedDiscoveryMap = new Map<String, DiscoveredConfig>();
 
     private static final Map<String, String> MEETING_TYPE_MAP = new Map<String, String>{
-        'IC'  => 'Initial Consultation',
-        'PD'  => 'Program Director - 60 Minutes',
-        'FSS' => 'FSS Onboarding Meeting'
+        'IC'    => 'Initial Consultation',
+        'PD'    => 'Program Director - 60 Minutes',
+        'PD-FU' => 'Program Director - Follow Up',
+        'FSS'   => 'FSS Onboarding Meeting'
     };
     private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
-        'IC'  => 'Initial Consultation - Zenith Prep Academy',
-        'PD'  => 'Program Director - 60 Minutes - Zenith Prep Academy',
-        'FSS' => 'FSS Onboarding Meeting - Zenith Prep Academy'
+        'IC'    => 'Initial Consultation - Zenith Prep Academy',
+        'PD'    => 'Program Director - 60 Minutes - Zenith Prep Academy',
+        'PD-FU' => 'Program Director Follow Up - Zenith Prep Academy',
+        'FSS'   => 'FSS Onboarding Meeting - Zenith Prep Academy'
     };
 
     private class DiscoveredConfig {
@@ -65,7 +74,9 @@ public without sharing class GuestSchedulerController {
     }
 
     private static List<String> getProfileNames(String bType) {
-        if (bType == 'PD') return new List<String>{ PD_PROFILE_NAME };
+        // PD-FU (Program Director Follow-up) shares the same profile as PD,
+        // only the duration differs (30 min vs 60 min).
+        if (bType == 'PD' || bType == 'PD-FU') return new List<String>{ PD_PROFILE_NAME };
         if (bType == 'FSS') return new List<String>{ FSS_PROFILE_NAME };
         return new List<String>{ ADMISSION_PROFILE_NAME, ADMISSION_PROFILE_NAME_ALT };
     }
@@ -118,7 +129,7 @@ public without sharing class GuestSchedulerController {
             }
         }
         if (userIds.isEmpty())
-            throw new AuraHandledException('No active users found for ' + bType + ' booking.');
+            throw new SchedulerConfigException('No active users found for ' + bType + ' booking.');
 
         Set<Id> resourceIds = new Set<Id>();
         for (ServiceResource sr : [
@@ -128,7 +139,8 @@ public without sharing class GuestSchedulerController {
             resourceIds.add(sr.Id);
         }
         if (resourceIds.isEmpty())
-            throw new AuraHandledException('No Service Resources found for ' + bType + ' users.');
+            throw new SchedulerConfigException('No active Service Resources found for ' + bType + ' users. '
+                + 'Please ensure each ' + bType + ' user has an active Service Resource record.');
 
         Set<Id> rawTerritoryIds = new Set<Id>();
         for (ServiceTerritoryMember stm : [
@@ -140,7 +152,20 @@ public without sharing class GuestSchedulerController {
             rawTerritoryIds.add(stm.ServiceTerritoryId);
         }
         if (rawTerritoryIds.isEmpty())
-            throw new AuraHandledException('No territories found for ' + bType + ' resources.');
+            throw new SchedulerConfigException('No territories found for ' + bType + ' resources.');
+
+        // Each Service Resource is typically a member of multiple territories
+        // (e.g. one 30-min and one 60-min). Without filtering, the discovery
+        // below picks whichever territory wins on CreatedDate / TimeSlot count
+        // — which can be the wrong duration. Restrict rawTerritoryIds to
+        // territories whose associated WorkType matches the duration we're
+        // booking (60 for IC/PD, 30 for FSS) so slot scanning, the resolved
+        // WorkType, and the SA's ServiceTerritoryId all line up.
+        Integer expectedDur = expectedDurationMinutes(bType);
+        if (expectedDur != null) {
+            Set<Id> filtered = filterTerritoriesByDuration(rawTerritoryIds, expectedDur);
+            if (!filtered.isEmpty()) rawTerritoryIds = filtered;
+        }
 
         List<ServiceTerritory> territories = [
             SELECT Id, Name, IsActive, OperatingHoursId,
@@ -156,7 +181,7 @@ public without sharing class GuestSchedulerController {
                 ORDER BY CreatedDate DESC LIMIT 1
             ];
         }
-        if (territories.isEmpty()) throw new AuraHandledException('No ServiceTerritory found for ' + bType + '.');
+        if (territories.isEmpty()) throw new SchedulerConfigException('No ServiceTerritory found for ' + bType + '.');
 
         ServiceTerritory st = territories[0];
         if (territories.size() > 1) {
@@ -195,7 +220,7 @@ public without sharing class GuestSchedulerController {
             }
         }
         if (opHoursId == null)
-            throw new AuraHandledException('No OperatingHours on territory "' + st.Name + '".');
+            throw new SchedulerConfigException('No OperatingHours on territory "' + st.Name + '".');
 
         cfg.serviceTerritoryId = st.Id;
         cfg.territoryName = st.Name;
@@ -207,14 +232,26 @@ public without sharing class GuestSchedulerController {
         cfg.allTerritoryIds = rawTerritoryIds;
 
         WorkType wt = null;
+        // Prefer a WorkType whose duration matches the booking type (60 for
+        // IC/PD, 30 for FSS) so we never accidentally pick a 30-min WorkType
+        // for an IC booking even when both share the same OperatingHours.
         List<WorkType> wtsByOH = [
             SELECT Id, Name, DurationInMinutes, DurationType, DefaultAppointmentType,
                    ApptStartTimeIntvlInMin, TimeframeEnd, TimeFrameEndUnit,
                    TimeframeStart, TimeFrameStartUnit
             FROM WorkType WHERE OperatingHoursId = :opHoursId
-            ORDER BY CreatedDate DESC LIMIT 1
+            ORDER BY CreatedDate DESC
         ];
-        if (!wtsByOH.isEmpty()) wt = wtsByOH[0];
+        if (!wtsByOH.isEmpty()) {
+            if (expectedDur != null) {
+                for (WorkType candidate : wtsByOH) {
+                    Integer cMins = workTypeDurationInMinutes(
+                        candidate.DurationInMinutes, candidate.DurationType);
+                    if (cMins != null && cMins == expectedDur) { wt = candidate; break; }
+                }
+            }
+            if (wt == null) wt = wtsByOH[0];
+        }
         if (wt == null) {
             try {
                 for (ServiceTerritoryWorkType stwt : [
@@ -238,23 +275,35 @@ public without sharing class GuestSchedulerController {
             ];
             if (!anyWTs.isEmpty()) wt = anyWTs[0];
         }
-        if (wt == null) throw new AuraHandledException('No WorkType found.');
+        if (wt == null) throw new SchedulerConfigException('No WorkType found.');
 
         cfg.workTypeId = wt.Id;
         cfg.workTypeName = wt.Name;
         cfg.durationType = wt.DurationType;
         cfg.appointmentType = wt.DefaultAppointmentType;
 
+        // Duration matrix (hardcoded so misconfigured WorkTypes can't leak
+        // wrong-duration slots into the booking widget):
+        //   IC     → 60 min (Admission Counselor first meeting)
+        //   PD     → 60 min (Program Director SOM / first call)
+        //   PD-FU  → 30 min (Program Director follow-up)
+        //   FSS    → 30 min (FSS Onboarding)
         if (bType == 'PD') {
             cfg.durationMinutes = 60;
             cfg.slotIntervalMinutes = 45;
+        } else if (bType == 'PD-FU') {
+            cfg.durationMinutes = 30;
+            cfg.slotIntervalMinutes = 30;
         } else if (bType == 'FSS') {
             cfg.durationMinutes = 30;
             cfg.slotIntervalMinutes = 30;
         } else {
-            cfg.durationMinutes = Integer.valueOf(wt.DurationInMinutes);
+            // IC is always a 60-minute meeting.
+            // ApptStartTimeIntvlInMin from the WorkType still controls the
+            // start interval — defaults to the duration when not set.
+            cfg.durationMinutes = 60;
             cfg.slotIntervalMinutes = (wt.ApptStartTimeIntvlInMin != null && wt.ApptStartTimeIntvlInMin > 0)
-                ? wt.ApptStartTimeIntvlInMin : cfg.durationMinutes;
+                ? wt.ApptStartTimeIntvlInMin : 60;
         }
         cfg.timeframeEndDays = DEFAULT_SCAN_DAYS;
         if (wt.TimeframeEnd != null && wt.TimeframeEnd > 0)
@@ -276,6 +325,58 @@ public without sharing class GuestSchedulerController {
 
         cachedDiscoveryMap.put(bType, cfg);
         return cfg;
+    }
+
+    // For reschedule flows: resolve the resource that was assigned to the
+    // original Service Appointment so the family is offered slots from (and
+    // ultimately rebooked with) the same counselor. Returns null when the
+    // token is blank, the SA is gone, or the assigned resource is inactive —
+    // callers fall back to normal round-robin in that case.
+    private static Id findStickyResourceForReschedule(String rescheduleToken) {
+        if (String.isBlank(rescheduleToken)) return null;
+        try {
+            List<ServiceAppointment> origs = [
+                SELECT Id, Admission_Counselor__c, OwnerId
+                FROM ServiceAppointment
+                WHERE Reschedule_Token__c = :rescheduleToken
+                LIMIT 1
+            ];
+            if (origs.isEmpty()) return null;
+            Id origSAId = origs[0].Id;
+            for (AssignedResource ar : [
+                SELECT ServiceResourceId, ServiceResource.IsActive
+                FROM AssignedResource
+                WHERE ServiceAppointmentId = :origSAId
+                ORDER BY CreatedDate ASC LIMIT 1
+            ]) {
+                if (ar.ServiceResource != null && ar.ServiceResource.IsActive == true) {
+                    return ar.ServiceResourceId;
+                }
+            }
+            // No AssignedResource (or inactive) — fall back to the AC field.
+            Id userId = origs[0].Admission_Counselor__c;
+            if (userId == null && origs[0].OwnerId != null
+                && String.valueOf(origs[0].OwnerId).startsWith('005')) {
+                userId = origs[0].OwnerId;
+            }
+            if (userId != null) {
+                List<ServiceResource> srs = [
+                    SELECT Id FROM ServiceResource
+                    WHERE RelatedRecordId = :userId AND IsActive = true LIMIT 1
+                ];
+                if (!srs.isEmpty()) return srs[0].Id;
+            }
+        } catch (Exception e) { }
+        return null;
+    }
+
+    private static ResourceBundle restrictBundleToResource(ResourceBundle rb, Id resourceId) {
+        ResourceBundle stickyRb = new ResourceBundle();
+        stickyRb.resourceIds.add(resourceId);
+        stickyRb.orderedResourceIds.add(resourceId);
+        stickyRb.resourceToUserId.put(resourceId, rb.resourceToUserId.get(resourceId));
+        stickyRb.resourceToTerritoryId.put(resourceId, rb.resourceToTerritoryId.get(resourceId));
+        return stickyRb;
     }
 
     private static Id findStickyResourceForContact(String contactId, String opportunityId) {
@@ -312,7 +413,10 @@ public without sharing class GuestSchedulerController {
             if (String.isNotBlank(rescheduleToken)) {
                 List<ServiceAppointment> origs = [
                     SELECT Id, Status, SchedStartTime, ContactId, ParentRecordId,
-                           Meeting_Type__c, Opportunity__c, OwnerId, Owner.Name
+                           Meeting_Type__c, Opportunity__c, OwnerId, Owner.Name,
+                           Admission_Counselor__c, Admission_Counselor__r.Name,
+                           Program_Director__c, Program_Director__r.Name,
+                           Family_Success_Specialist__c, Family_Success_Specialist__r.Name
                     FROM ServiceAppointment
                     WHERE Reschedule_Token__c = :rescheduleToken
                     LIMIT 1
@@ -345,8 +449,26 @@ public without sharing class GuestSchedulerController {
                 out.put('originalAppointmentId', orig.Id);
                 out.put('originalStartTime', orig.SchedStartTime != null
                     ? orig.SchedStartTime.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') : null);
-                if (orig.Owner != null && String.isNotBlank(orig.Owner.Name)) {
-                    out.put('counselorName', orig.Owner.Name);
+                // Show the actually-assigned counselor (role-specific field)
+                // on the reschedule banner, not the SA Owner — Owner is often
+                // a queue/admin set by Scheduler auto-assignment after insert
+                // and doesn't match who the family was actually booked with.
+                String assignedName = null;
+                String mtForName = (orig.Meeting_Type__c != null) ? orig.Meeting_Type__c : '';
+                if (mtForName.startsWith('Program Director')
+                    && orig.Program_Director__r != null) {
+                    assignedName = orig.Program_Director__r.Name;
+                } else if (mtForName.startsWith('FSS')
+                    && orig.Family_Success_Specialist__r != null) {
+                    assignedName = orig.Family_Success_Specialist__r.Name;
+                } else if (orig.Admission_Counselor__r != null) {
+                    assignedName = orig.Admission_Counselor__r.Name;
+                }
+                if (String.isBlank(assignedName) && orig.Owner != null) {
+                    assignedName = orig.Owner.Name;
+                }
+                if (String.isNotBlank(assignedName)) {
+                    out.put('counselorName', assignedName);
                 }
 
                 if (bookingType == 'IC' && orig.ParentRecordId != null
@@ -418,6 +540,28 @@ public without sharing class GuestSchedulerController {
             out.put('stickyResourceId', stickyResourceId);
             out.put('availableDates', computeAvailableDates(cfg, targetDays));
             out.put('success', true);
+        } catch (SchedulerConfigException sce) {
+            // Config gap (e.g. role has no active Service Resources / no
+            // territories yet). Render an empty calendar instead of fatal-
+            // erroring out so the booking widget stays usable; as soon as the
+            // admin fixes the missing config (active SR + territory + work
+            // type), slots show up automatically. The reason is surfaced in
+            // configMessage for diagnostics — the LWC just renders no clickable
+            // dates today, no admin-only banner is added.
+            String bType = normalizeType(bookingType);
+            Integer expectedDur = expectedDurationMinutes(bType);
+            Integer dur = (expectedDur != null) ? expectedDur : 60;
+            out.put('bookingType', bType);
+            out.put('durationMinutes', dur);
+            out.put('slotIntervalMinutes', dur);
+            out.put('targetAvailDays', DEFAULT_SCAN_DAYS);
+            out.put('territoryTimezone', 'America/Chicago');
+            out.put('meetingType', MEETING_TYPE_MAP.get(bType));
+            out.put('availableDates', new List<String>());
+            out.put('isSticky', false);
+            out.put('stickyResourceId', null);
+            out.put('configMessage', sce.getMessage());
+            out.put('success', true);
         } catch (Exception e) {
             out.put('success', false);
             out.put('error', e.getMessage());
@@ -425,9 +569,25 @@ public without sharing class GuestSchedulerController {
         return out;
     }
 
+    // Wrappers around RescheduleTokenService so the Site Guest User only needs
+    // Apex class access to GuestSchedulerController (which the booking widget
+    // already requires) — calling RescheduleTokenService directly from the
+    // cancel LWC was failing with "The Apex request is invalid" because the
+    // guest profile didn't grant access to that second class.
+    @AuraEnabled
+    public static Map<String, Object> validateAppointmentByToken(String token) {
+        return RescheduleTokenService.validateAndGetAppointment(token);
+    }
+
+    @AuraEnabled
+    public static Map<String, String> cancelAppointmentByToken(String token, String reason) {
+        return RescheduleTokenService.cancelAppointment(token, reason);
+    }
+
     @AuraEnabled
     public static List<Map<String, String>> getAvailableSlots(String dateStr, String bookingType,
-                                                               String contactId, String opportunityId) {
+                                                               String contactId, String opportunityId,
+                                                               String rescheduleToken) {
         List<Map<String, String>> result = new List<Map<String, String>>();
         try {
             DiscoveredConfig cfg = discover(bookingType);
@@ -441,15 +601,15 @@ public without sharing class GuestSchedulerController {
             ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
             if (rb.resourceIds.isEmpty()) return result;
 
-            if (cfg.bookingType == 'PD') {
+            // Reschedule: lock slot view to the originally-assigned resource so
+            // the family can only rebook with the same counselor they had.
+            Id stickyResourceId = findStickyResourceForReschedule(rescheduleToken);
+            if (stickyResourceId != null && rb.resourceIds.contains(stickyResourceId)) {
+                rb = restrictBundleToResource(rb, stickyResourceId);
+            } else if (cfg.bookingType == 'PD') {
                 Id stickyId = findStickyResourceForContact(contactId, opportunityId);
                 if (stickyId != null && rb.resourceIds.contains(stickyId)) {
-                    ResourceBundle stickyRb = new ResourceBundle();
-                    stickyRb.resourceIds.add(stickyId);
-                    stickyRb.orderedResourceIds.add(stickyId);
-                    stickyRb.resourceToUserId.put(stickyId, rb.resourceToUserId.get(stickyId));
-                    stickyRb.resourceToTerritoryId.put(stickyId, rb.resourceToTerritoryId.get(stickyId));
-                    rb = stickyRb;
+                    rb = restrictBundleToResource(rb, stickyId);
                 }
             }
 
@@ -550,7 +710,8 @@ public without sharing class GuestSchedulerController {
                 } catch (Exception ex) { }
             }
 
-            ResourceAssignment assignment = findAvailableResourceRoundRobin(cfg, startDT, endDT, bType, opportunityId);
+            ResourceAssignment assignment = findAvailableResourceRoundRobin(
+                cfg, startDT, endDT, bType, opportunityId, rescheduleToken);
             if (assignment == null) {
                 if (isReschedule) Database.rollback(sp);
                 res.put('success', 'false');
@@ -676,12 +837,22 @@ public without sharing class GuestSchedulerController {
             sa.Meeting_Type__c = MEETING_TYPE_MAP.get('IC');
             sa.AdditionalInformation = cfg.workTypeName;
             sa.Admission_Counselor__c = assignment.userId;
+            // Map the browser-detected timezone (passed from the booking widget
+            // via Intl.DateTimeFormat().resolvedOptions().timeZone) into the
+            // standard Scheduler ServiceAppointment.TimeZone field so email
+            // notifications + Scheduled_Start_Display__c render appointment
+            // times in the family's local timezone, not the org default.
+            // Mirrors the bookPDorFSS path that already does this.
+            if (String.isNotBlank(clientTimezone)) sa.TimeZone = normalizeTimezone(clientTimezone);
             sa.Student_Grade__c = studentGrade;
             sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
             tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
             // Populate Lead lookup so Meeting_After_RTF can resolve
             // $Record.Lead__r.Email and fire the IC confirmation email.
             tryPut(sa, 'Lead__c', mktLead.Id);
+            if (guestList != null && !guestList.isEmpty()) {
+                tryPut(sa, 'Guest_Emails__c', String.join(guestList, ','));
+            }
             insert sa;
 
             AssignedResource ar = new AssignedResource();
@@ -808,6 +979,9 @@ public without sharing class GuestSchedulerController {
         }
         String saDesc = buildEventDescription(notes, guestList);
         if (String.isNotBlank(saDesc)) sa.Description = saDesc;
+        if (guestList != null && !guestList.isEmpty()) {
+            tryPut(sa, 'Guest_Emails__c', String.join(guestList, ','));
+        }
         insert sa;
 
         AssignedResource ar = new AssignedResource();
@@ -918,8 +1092,36 @@ public without sharing class GuestSchedulerController {
     }
 
     private static ResourceAssignment findAvailableResourceRoundRobin(
-        DiscoveredConfig cfg, DateTime startDT, DateTime endDT, String bType, String opportunityId
+        DiscoveredConfig cfg, DateTime startDT, DateTime endDT, String bType, String opportunityId,
+        String rescheduleToken
     ) {
+        // Reschedule: re-use the original SA's resource so the family stays
+        // with the same counselor across the rebook. Skips RR entirely when
+        // the original resource is still active.
+        if (String.isNotBlank(rescheduleToken)) {
+            Id stickyResId = findStickyResourceForReschedule(rescheduleToken);
+            if (stickyResId != null) {
+                ResourceAssignment ra = new ResourceAssignment();
+                ra.resourceId = stickyResId;
+                List<ServiceResource> srs = [
+                    SELECT Id, RelatedRecordId FROM ServiceResource
+                    WHERE Id = :stickyResId AND IsActive = true LIMIT 1
+                ];
+                if (!srs.isEmpty()) {
+                    ra.userId = srs[0].RelatedRecordId;
+                    for (ServiceTerritoryMember stm : [
+                        SELECT ServiceTerritoryId FROM ServiceTerritoryMember
+                        WHERE ServiceResourceId = :stickyResId
+                        AND ServiceTerritory.IsActive = true
+                        AND EffectiveStartDate <= :Date.today()
+                        AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :Date.today())
+                        ORDER BY CreatedDate DESC LIMIT 1
+                    ]) { ra.territoryId = stm.ServiceTerritoryId; }
+                    return ra;
+                }
+            }
+        }
+
         if (bType == 'PD' && String.isNotBlank(opportunityId)) {
             List<Opportunity> opps = [SELECT Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
             if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
@@ -1270,6 +1472,101 @@ public without sharing class GuestSchedulerController {
 
     private static void tryPut(SObject rec, String f, Object v) {
         try { rec.put(f, v); } catch (Exception ex) { }
+    }
+
+    // Expected appointment length for a booking type, in minutes.
+    // Each Service Resource may belong to a 30-min territory AND a 60-min
+    // territory; we use this to keep only the right one in discover().
+    // Returns null when the type is not recognised — caller skips filtering.
+    private static Integer expectedDurationMinutes(String bType) {
+        if (bType == 'IC')    return 60;
+        if (bType == 'PD')    return 60;
+        if (bType == 'PD-FU') return 30;
+        if (bType == 'FSS')   return 30;
+        return null;
+    }
+
+    // Keep only the territories whose associated WorkType matches the
+    // booking's expected meeting length. Two strategies in priority order:
+    //
+    //   A. ServiceTerritoryWorkType junction (when populated) — most direct.
+    //   B. ServiceTerritory.OperatingHoursId → WorkType.OperatingHoursId
+    //      reverse lookup — works when WorkTypes are linked to OperatingHours
+    //      instead of via the junction.
+    //
+    // Both strategies normalise WorkType.DurationType ('Hours' → minutes) so
+    // a 1-hour WorkType matches expectedMins=60 even if stored as 1.
+    //
+    // If neither strategy returns matches, this returns empty and the caller
+    // falls back to the unfiltered list — so the change can't break bookings
+    // in orgs that don't model duration through WorkType.
+    private static Set<Id> filterTerritoriesByDuration(
+        Set<Id> territoryIds, Integer expectedMins
+    ) {
+        Set<Id> matching = new Set<Id>();
+        if (territoryIds == null || territoryIds.isEmpty() || expectedMins == null) return matching;
+
+        // ── Strategy A: ServiceTerritoryWorkType junction ────────────────
+        try {
+            for (ServiceTerritoryWorkType stwt : [
+                SELECT ServiceTerritoryId,
+                       WorkType.DurationInMinutes, WorkType.DurationType
+                FROM ServiceTerritoryWorkType
+                WHERE ServiceTerritoryId IN :territoryIds
+                AND WorkType.DurationInMinutes != NULL
+            ]) {
+                Integer dur = workTypeDurationInMinutes(
+                    stwt.WorkType.DurationInMinutes, stwt.WorkType.DurationType);
+                if (dur != null && dur == expectedMins) {
+                    matching.add(stwt.ServiceTerritoryId);
+                }
+            }
+        } catch (Exception ex) { /* junction may be unavailable */ }
+        if (!matching.isEmpty()) return matching;
+
+        // ── Strategy B: OperatingHoursId reverse lookup ─────────────────
+        // Map territory → OH, then find WorkTypes per OH whose duration
+        // matches; mark every territory pointing at a matching OH.
+        Map<Id, Id> territoryToOH = new Map<Id, Id>();
+        try {
+            for (ServiceTerritory t : [
+                SELECT Id, OperatingHoursId FROM ServiceTerritory
+                WHERE Id IN :territoryIds AND OperatingHoursId != NULL
+            ]) {
+                territoryToOH.put(t.Id, t.OperatingHoursId);
+            }
+        } catch (Exception ex) { return matching; }
+        if (territoryToOH.isEmpty()) return matching;
+
+        Set<Id> matchingOH = new Set<Id>();
+        try {
+            for (WorkType wt : [
+                SELECT OperatingHoursId, DurationInMinutes, DurationType
+                FROM WorkType
+                WHERE OperatingHoursId IN :territoryToOH.values()
+                AND DurationInMinutes != NULL
+            ]) {
+                Integer dur = workTypeDurationInMinutes(
+                    wt.DurationInMinutes, wt.DurationType);
+                if (dur != null && dur == expectedMins) {
+                    matchingOH.add(wt.OperatingHoursId);
+                }
+            }
+        } catch (Exception ex) { return matching; }
+        for (Id tId : territoryToOH.keySet()) {
+            if (matchingOH.contains(territoryToOH.get(tId))) matching.add(tId);
+        }
+        return matching;
+    }
+
+    // Normalise WorkType.DurationInMinutes accounting for DurationType.
+    // Some orgs store '60 min' as DurationInMinutes=1, DurationType='Hours' —
+    // converting to minutes here lets the duration filter match either form.
+    private static Integer workTypeDurationInMinutes(Decimal raw, String durationType) {
+        if (raw == null) return null;
+        Integer mins = Integer.valueOf(raw);
+        if (durationType == 'Hours') mins = mins * 60;
+        return mins;
     }
 
     // ── Notes + guest-email helpers ──────────────────────────────

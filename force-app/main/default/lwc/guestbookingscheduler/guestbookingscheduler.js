@@ -57,13 +57,18 @@ export default class GuestBookingScheduler extends LightningElement {
     @track guestEmailList = [];
     @track newGuestEmail = '';
     @track guestError = '';
-    @track notes = '';
-    @track notesTouched = false;
     @track consentChecked = false;
     @track validationError = '';
-    @track rescheduleUrl = '';
-    @track cancelUrl = '';
-    @track addToCalendarUrl = '';
+    // Toggled true on the first submit attempt. Per-field error getters key
+    // off this so the form stays clean until the user clicks "Confirm meeting"
+    // once — then errors appear inline next to each invalid field, not at
+    // the bottom of the form.
+    @track submitAttempted = false;
+    // Confirm-page action buttons (Add to calendar / Reschedule / Cancel)
+    // were removed — the confirmation email already carries those links, so
+    // the in-page buttons were redundant. Apex still returns rescheduleUrl /
+    // cancelUrl on bookAppointment for the Lead/SA URL formula fields and
+    // the email service; we just don't surface them in the LWC anymore.
 
     // Optional counselor display in the Step-2 sidebar. Only populated when the
     // backend hands us a name (e.g. reschedule flow with the original Owner).
@@ -249,9 +254,42 @@ export default class GuestBookingScheduler extends LightningElement {
             || !(this.newGuestEmail || '').trim();
     }
 
-    // Notes field: required after the user has tried to submit (notesTouched).
-    get notesError() {
-        return this.notesTouched && !(this.notes || '').trim();
+    // ── Step-2 form: per-field error getters (inline display) ──
+    // Each returns an empty string until the user has tried to submit at
+    // least once (submitAttempted=true), so the form starts clean. After
+    // that, the getter recomputes on every keystroke thanks to LWC
+    // reactivity, so a fixed field clears its error live.
+    get firstNameError() {
+        return this.submitAttempted && !this.firstName.trim() ? 'First name is required.' : '';
+    }
+    get lastNameError() {
+        return this.submitAttempted && !this.lastName.trim() ? 'Last name is required.' : '';
+    }
+    get emailError() {
+        if (!this.submitAttempted) return '';
+        const v = (this.email || '').trim();
+        if (!v) return 'Email is required.';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Please enter a valid email address.';
+        return '';
+    }
+    get phoneError() {
+        return this.submitAttempted && (this.phone || '').replace(/\D/g, '').length < 10
+            ? 'Phone number must be at least 10 digits.' : '';
+    }
+    get studentGradeError() {
+        return this.submitAttempted && !this.studentGrade ? 'Please select a student grade.' : '';
+    }
+    get confirm1Error() {
+        return this.submitAttempted && this.confirm1.trim().toLowerCase() !== 'i confirm'
+            ? 'Please confirm you will attend the consultation.' : '';
+    }
+    get confirm2Error() {
+        return this.submitAttempted && this.confirm2.trim().toLowerCase() !== 'i confirm'
+            ? 'Please acknowledge the limited-availability and rescheduling policy.' : '';
+    }
+    get consentError() {
+        return this.submitAttempted && !this.consentChecked
+            ? 'You must agree to receive communications.' : '';
     }
 
     // ── Step-2 form: confirmation checkboxes ──────────────────
@@ -307,19 +345,6 @@ export default class GuestBookingScheduler extends LightningElement {
     get confirmationGreeting() {
         const fn = (this.firstName || '').trim();
         return fn ? `You're all set, ${fn}!` : `You're all set!`;
-    }
-
-    _buildAddToCalendarUrl() {
-        if (!this.selectedStart || !this.selectedEnd) return '';
-        try {
-            const fmt = (iso) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-            const start = fmt(this.selectedStart);
-            const end = fmt(this.selectedEnd);
-            const title = encodeURIComponent(this.headerLabel || 'Zenith Prep Academy Meeting');
-            const details = encodeURIComponent('Your meeting with Zenith Prep Academy. The Zoom link will be in your confirmation email.');
-            const location = encodeURIComponent('Zoom');
-            return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
-        } catch (_) { return ''; }
     }
 
     async _init() {
@@ -476,7 +501,8 @@ export default class GuestBookingScheduler extends LightningElement {
         try {
             const slots = await getAvailableSlots({
                 dateStr: this.selectedDate, bookingType: this._resolvedType,
-                contactId: this._contactId, opportunityId: this._opportunityId
+                contactId: this._contactId, opportunityId: this._opportunityId,
+                rescheduleToken: this._rescheduleToken || null
             });
             this.timeSlots = (slots || []).map(s => ({
                 startUtc: s.startUtc, endUtc: s.endUtc,
@@ -564,31 +590,18 @@ export default class GuestBookingScheduler extends LightningElement {
         this.guestError = '';
     }
 
-    _validate() {
-        if (!this.firstName.trim()) return 'First name is required.';
-        if (!this.lastName.trim()) return 'Last name is required.';
-        if (!this.email.trim()) return 'Email is required.';
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email.trim()))
-            return 'Please enter a valid email address.';
-        if (this.phone.replace(/\D/g,'').length < 10)
-            return 'Phone number must be at least 10 digits.';
-        if (!this.studentGrade) return 'Please select a student grade.';
-        if (this.confirm1.trim().toLowerCase() !== 'i confirm')
-            return "First confirmation must say exactly: I confirm";
-        if (this.confirm2.trim().toLowerCase() !== 'i confirm')
-            return "Second confirmation must say exactly: I confirm";
-        if (!(this.notes || '').trim())
-            return 'This field is required. Please enter a value.';
-        if (!this.consentChecked)
-            return 'You must agree to receive communications.';
-        return '';
-    }
-
     async handleSubmit() {
         if (this.isICMode && !this.isRescheduling) {
-            this.notesTouched = true; // surface inline notes error after submit
-            const err = this._validate();
-            if (err) { this.validationError = err; return; }
+            this.submitAttempted = true;
+            // Field-level errors render inline next to each input; the bottom
+            // banner is reserved for booking-time errors (slot taken, save
+            // failed, etc.) — so we clear it here on form-validation failures.
+            const hasFieldErrors = !!(
+                this.firstNameError || this.lastNameError || this.emailError
+                || this.phoneError || this.studentGradeError
+                || this.confirm1Error || this.confirm2Error || this.consentError
+            );
+            if (hasFieldErrors) { this.validationError = ''; return; }
         }
         this.validationError = '';
         this.isSubmitting = true;
@@ -603,13 +616,10 @@ export default class GuestBookingScheduler extends LightningElement {
                 utmAd: this.utmAd, utmAdSet: this.utmAdSet,
                 bookingType: this._resolvedType, contactId: this._contactId, opportunityId: this._opportunityId,
                 rescheduleToken: this._rescheduleToken || null,
-                notes: (this.notes || '').trim()
+                notes: ''
             });
             if (result && result.success === 'true') {
                 this.timeSlots = this.timeSlots.filter(s => s.startUtc !== this.selectedStart);
-                this.rescheduleUrl   = result.rescheduleUrl   || '';
-                this.cancelUrl       = result.cancelUrl       || '';
-                this.addToCalendarUrl = this._buildAddToCalendarUrl();
                 this.currentStep = 3;
                 if (this.redirectUrl) {
                     // eslint-disable-next-line @lwc/lwc/no-async-operation

@@ -577,7 +577,7 @@
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
         <rules>
             <name>Zoom_URL_Added</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>1 AND 2 AND ( (3 AND 4) OR (5 AND 6) ) AND 7</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
                 <operator>IsBlank</operator>
@@ -607,39 +607,10 @@
                 </rightValue>
             </conditions>
             <conditions>
-                <leftValueReference>$Record.SchedStartTime</leftValueReference>
-                <operator>GreaterThan</operator>
-                <rightValue>
-                    <elementReference>$Flow.CurrentDateTime</elementReference>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Send_Meeting_Scheduled_Email_notification</targetReference>
-            </connector>
-            <label>Zoom URL Added</label>
-        </rules>
-        <rules>
-            <name>Zoom_URL_Added_For_Lead</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
+                <leftValueReference>$Record.Lead__r.Id</leftValueReference>
                 <operator>IsBlank</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Zoom_Link__c</leftValueReference>
-                <operator>IsChanged</operator>
-                <rightValue>
-                    <booleanValue>true</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.ContactId</leftValueReference>
-                <operator>IsBlank</operator>
-                <rightValue>
-                    <booleanValue>true</booleanValue>
                 </rightValue>
             </conditions>
             <conditions>
@@ -659,7 +630,7 @@
             <connector>
                 <targetReference>Send_Meeting_Scheduled_Email_notification</targetReference>
             </connector>
-            <label>Zoom URL Added For Lead</label>
+            <label>Zoom URL Added</label>
         </rules>
     </decisions>
     <decisions>
@@ -762,7 +733,7 @@
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
         <rules>
             <name>Meeting_Cancelled_by_Educational_Strategist</name>
-            <conditionLogic>(1 OR 2) AND 3</conditionLogic>
+            <conditionLogic>(1 OR 2) AND (3 OR 4)</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Status</leftValueReference>
                 <operator>EqualTo</operator>
@@ -779,6 +750,13 @@
             </conditions>
             <conditions>
                 <leftValueReference>$Record.Contact.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
                 <operator>IsNull</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
@@ -1008,6 +986,11 @@ ISBLANK({!ccEmails}),
 &quot;]&quot;,
 &quot;&quot;
 )</expression>
+    </formulas>
+    <formulas>
+        <name>icLeadOwnerEmail</name>
+        <dataType>String</dataType>
+        <expression>{!$Record.Lead__r.Owner:User.Email}</expression>
     </formulas>
     <formulas>
         <name>isNew</name>

@@ -1,6 +1,6 @@
 import { LightningElement, track } from 'lwc';
-import validateAndGetAppointment from '@salesforce/apex/RescheduleTokenService.validateAndGetAppointment';
-import cancelAppointment from '@salesforce/apex/RescheduleTokenService.cancelAppointment';
+import validateAndGetAppointment from '@salesforce/apex/GuestSchedulerController.validateAppointmentByToken';
+import cancelAppointment from '@salesforce/apex/GuestSchedulerController.cancelAppointmentByToken';
 
 export default class GuestRescheduleCancel extends LightningElement {
 

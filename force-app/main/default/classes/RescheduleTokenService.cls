@@ -40,6 +40,9 @@ public without sharing class RescheduleTokenService {
             List<ServiceAppointment> sas = [
                 SELECT Id, Status, SchedStartTime, SchedEndTime, Subject,
                        Meeting_Type__c, OwnerId, Owner.Name,
+                       Admission_Counselor__c, Admission_Counselor__r.Name,
+                       Program_Director__c, Program_Director__r.Name,
+                       Family_Success_Specialist__c, Family_Success_Specialist__r.Name,
                        ContactId, AccountId, ParentRecordId
                 FROM ServiceAppointment
                 WHERE Reschedule_Token__c = :token
@@ -66,7 +69,24 @@ public without sharing class RescheduleTokenService {
             result.put('appointmentId', sa.Id);
             result.put('startTime', sa.SchedStartTime != null
                 ? sa.SchedStartTime.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') : null);
-            result.put('counselorName', sa.Owner != null ? sa.Owner.Name : '');
+            // Show the actually-assigned counselor (role-specific field) —
+            // Owner can be a queue/admin set by Scheduler auto-assignment and
+            // doesn't reflect who the family was booked with.
+            String assignedName = null;
+            String mtForName = (sa.Meeting_Type__c != null) ? sa.Meeting_Type__c : '';
+            if (mtForName.startsWith('Program Director')
+                && sa.Program_Director__r != null) {
+                assignedName = sa.Program_Director__r.Name;
+            } else if (mtForName.startsWith('FSS')
+                && sa.Family_Success_Specialist__r != null) {
+                assignedName = sa.Family_Success_Specialist__r.Name;
+            } else if (sa.Admission_Counselor__r != null) {
+                assignedName = sa.Admission_Counselor__r.Name;
+            }
+            if (String.isBlank(assignedName) && sa.Owner != null) {
+                assignedName = sa.Owner.Name;
+            }
+            result.put('counselorName', assignedName != null ? assignedName : '');
             result.put('meetingType', sa.Meeting_Type__c);
             result.put('rescheduleBookingUrl',
                 BOOKING_BASE_URL + '?token=' + token + '&action=reschedule');

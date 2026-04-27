@@ -228,7 +228,6 @@
                         <div class="booking-overlay">
                             <div class="booking-overlay-card">
                                 <lightning-spinner alternative-text="Booking..." size="small"></lightning-spinner>
-                                <p class="booking-overlay-text">Booking your meeting&hellip;</p>
                             </div>
                         </div>
                     </template>
@@ -320,11 +319,17 @@
                             <label class="field-lbl">First Name <span class="req">*</span></label>
                             <input type="text" class="field-inp" value={firstName}
                                    data-field="firstName" oninput={handleInput} />
+                            <template lwc:if={firstNameError}>
+                                <p class="field-error">{firstNameError}</p>
+                            </template>
                         </div>
                         <div class="field-group">
                             <label class="field-lbl">Last Name <span class="req">*</span></label>
                             <input type="text" class="field-inp" value={lastName}
                                    data-field="lastName" oninput={handleInput} />
+                            <template lwc:if={lastNameError}>
+                                <p class="field-error">{lastNameError}</p>
+                            </template>
                         </div>
                     </div>
 
@@ -333,6 +338,9 @@
                         <input type="email" class="field-inp" value={email}
                                placeholder="parent@example.com"
                                data-field="email" oninput={handleInput} />
+                        <template lwc:if={emailError}>
+                            <p class="field-error">{emailError}</p>
+                        </template>
                     </div>
 
                     <div class="field-group">
@@ -340,6 +348,9 @@
                         <input type="tel" class="field-inp" value={phone}
                                placeholder="98XXX XXXXX"
                                data-field="phone" oninput={handleInput} />
+                        <template lwc:if={phoneError}>
+                            <p class="field-error">{phoneError}</p>
+                        </template>
                     </div>
 
                     <div class="field-group">
@@ -350,66 +361,15 @@
                                 <option key={g.value} value={g.value} selected={g.isSelected}>{g.label}</option>
                             </template>
                         </select>
-                    </div>
-
-                    <p class="form-section-label">Agreements</p>
-                    <div class="agreements-grid">
-                        <div class="agreement-card">
-                            <div class="agreement-icon">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                                </svg>
-                            </div>
-                            <p class="agreement-text">Slots are limited</p>
-                        </div>
-                        <div class="agreement-card">
-                            <div class="agreement-icon">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <polyline points="23 4 23 10 17 10"></polyline>
-                                    <path d="M20.49 15A9 9 0 1 1 5.64 5.64L23 10"></path>
-                                </svg>
-                            </div>
-                            <p class="agreement-text">Reschedule <strong>3+ days ahead</strong></p>
-                        </div>
-                        <div class="agreement-card">
-                            <div class="agreement-icon">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <polyline points="12 6 12 12 16 14"></polyline>
-                                </svg>
-                            </div>
-                            <p class="agreement-text">No-shows affect future bookings</p>
-                        </div>
-                    </div>
-
-                    <label class={confirm1RowClass}>
-                        <input type="checkbox" checked={confirm1Checked} onchange={handleConfirm1} />
-                        <span>I commit to attending this consultation</span>
-                    </label>
-                    <label class={confirm2RowClass}>
-                        <input type="checkbox" checked={confirm2Checked} onchange={handleConfirm2} />
-                        <span>I acknowledge the booking policy above</span>
-                    </label>
-
-                    <div class="field-group">
-                        <label class="field-lbl">
-                            Due to limited availability/high demand - If you miss your consultation, we reserve the right to not provide a free consultation, or any at all in the future. Reschedules must be made 3+ days in advance.
-                            <span class="req">*</span>
-                        </label>
-                        <textarea class="field-inp field-inp--area"
-                                  data-field="notes" oninput={handleInput}
-                                  rows="3"
-                                  placeholder="Type your acknowledgement here...">{notes}</textarea>
-                        <template lwc:if={notesError}>
-                            <p class="field-error">This field is required. Please enter a value</p>
+                        <template lwc:if={studentGradeError}>
+                            <p class="field-error">{studentGradeError}</p>
                         </template>
                     </div>
 
                     <p class="form-section-label">Optional</p>
 
                     <div class="field-group">
-                        <label class="field-lbl">Add guests</label>
+                        <label class="field-lbl">Add Guests</label>
                         <p class="guests-help">Invite up to 10 guests to attend the meeting.</p>
                         <div class="guests-input-row">
                             <input type="email" class="field-inp guests-input"
@@ -443,6 +403,53 @@
                     </div>
 
                     <p class="form-section-label">Data privacy</p>
+
+                    <div class="agreements-grid">
+                        <div class="agreement-card">
+                            <div class="agreement-icon">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                </svg>
+                            </div>
+                            <p class="agreement-text">Slots are limited</p>
+                        </div>
+                        <div class="agreement-card">
+                            <div class="agreement-icon">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15A9 9 0 1 1 5.64 5.64L23 10"></path>
+                                </svg>
+                            </div>
+                            <p class="agreement-text">Reschedule <strong>3+ days ahead</strong></p>
+                        </div>
+                        <div class="agreement-card">
+                            <div class="agreement-icon">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                            </div>
+                            <p class="agreement-text">No-shows affect future bookings</p>
+                        </div>
+                    </div>
+
+                    <label class={confirm1RowClass}>
+                        <input type="checkbox" checked={confirm1Checked} onchange={handleConfirm1} />
+                        <span>I will 100% make it to my consultation</span>
+                    </label>
+                    <template lwc:if={confirm1Error}>
+                        <p class="field-error">{confirm1Error}</p>
+                    </template>
+
+                    <label class={confirm2RowClass}>
+                        <input type="checkbox" checked={confirm2Checked} onchange={handleConfirm2} />
+                        <span>Due to limited availability/high demand - If you miss your consultation, we reserve the right to not provide a free consultation, or any at all in the future. Reschedules must be made 3+ days in advance.</span>
+                    </label>
+                    <template lwc:if={confirm2Error}>
+                        <p class="field-error">{confirm2Error}</p>
+                    </template>
+                    
                     <div class="privacy-box">
                         <p class="privacy-body">
                             Zenith Prep Academy is committed to protecting and respecting your privacy, and we'll only use your personal information to administer your account and to provide the products and services you requested from us. From time to time, we would like to contact you about our products and services, as well as other content that may be of interest to you. If you consent to us contacting you for this purpose, please tick below to say how you would like us to contact you:
@@ -453,6 +460,9 @@
                                        onchange={handleConsent} />
                                 <span>I agree to receive other communications from Zenith Prep Academy.</span>
                             </label>
+                            <template lwc:if={consentError}>
+                                <p class="field-error">{consentError}</p>
+                            </template>
                         </div>
                         <p class="privacy-body privacy-body--secondary">
                             You can unsubscribe from these communications at any time. For more information on how to unsubscribe, our privacy practices, and how we are committed to protecting and respecting your privacy, please review our <a href="https://www.zenithprepacademy.com/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a>.
@@ -525,27 +535,6 @@
                                 <span class="summary-meta-icon">&#x1F4F9;</span>
                                 <span>Zoom video call &mdash; link will arrive in your email</span>
                             </div>
-                        </div>
-
-                        <div class="confirmed-actions">
-                            <template lwc:if={addToCalendarUrl}>
-                                <a class="confirmed-action-btn confirmed-action-btn--primary"
-                                   href={addToCalendarUrl} target="_blank" rel="noopener">
-                                    Add to calendar
-                                </a>
-                            </template>
-                            <template lwc:if={rescheduleUrl}>
-                                <a class="confirmed-action-btn confirmed-action-btn--secondary"
-                                   href={rescheduleUrl}>
-                                    Reschedule
-                                </a>
-                            </template>
-                            <template lwc:if={cancelUrl}>
-                                <a class="confirmed-action-btn confirmed-action-btn--danger"
-                                   href={cancelUrl}>
-                                    Cancel
-                                </a>
-                            </template>
                         </div>
 
                         <div class="prep-list">

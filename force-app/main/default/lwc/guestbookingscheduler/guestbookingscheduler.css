@@ -40,11 +40,10 @@
 
     display: flex;
     justify-content: center;
-    /* `safe center` keeps the widget vertically centered when there's room,
-       and falls back to top-aligned when content is taller than the viewport
-       (Step 2 form on small screens) — prevents clipping the header. */
-    align-items: safe center;
-    min-height: 85vh;
+    /* Top-align so wide viewports don't push the widget down with a large
+       empty band above it. Horizontal centering still happens via
+       justify-content + .widget-shell's max-width + margin auto. */
+    align-items: flex-start;
     width: 100%;
     padding: 1.5rem 1rem;
     font-family: var(--zen-font);
@@ -1194,7 +1193,11 @@
 /* Acknowledgement check-cards ----------------------------- */
 .check-card {
     display: flex;
-    align-items: center;
+    /* Top-align so multi-line acknowledgements (e.g. the limited-availability
+       policy) keep the checkbox next to the first line, matching the
+       marketing-consent card style. Single-line cards still look correct
+       because the input naturally sits on that one line. */
+    align-items: flex-start;
     gap: 10px;
     padding: 12px 14px;
     border: 1px solid var(--zen-border-strong);
@@ -1212,7 +1215,8 @@
     width: 18px; height: 18px;
     accent-color: var(--zen-navy);
     flex-shrink: 0;
-    margin: 0;
+    /* Nudge down 2px so the box optically aligns with the first text baseline. */
+    margin: 2px 0 0 0;
     cursor: pointer;
 }
 .check-card--checked {
@@ -1257,16 +1261,82 @@
 }
 
 /* ============================================================
-   RESPONSIVE: collapse to single column on mobile
+   RESPONSIVE BREAKPOINTS
+   ------------------------------------------------------------
+   Desktop  (≥1025px): default 3-column split (240px | 1fr | 200px)
+   Tablet   (601–1024px): 3-col still works but slightly tighter
+   Mobile   (≤600px): collapse to single column, stack panels
    ============================================================ */
+
+/* ── Tablet ──────────────────────────────────────────────────
+   Keep the 3-panel layout but compress side panels and pad less
+   so it fits portrait iPads (768px) and small landscape tablets. */
+@media (min-width: 861px) and (max-width: 1024px) {
+    :host { padding: 1.25rem 0.75rem; }
+    .widget-shell { max-width: 920px; }
+    .split-panel { grid-template-columns: 220px 1fr 190px; min-height: 460px; }
+    .summary-panel { padding: 20px 16px; }
+    .panel-left { padding: 20px 16px; }
+    .panel-right { padding: 20px 16px; }
+    .form-panel--in-split { padding: 24px 24px; }
+}
+
+/* ── Tablet (small) / Large mobile: collapse split-panel ─────
+   Below 860px the 3-column grid no longer reads — stack panels
+   vertically (navy summary on top, calendar, time slots). */
 @media (max-width: 860px) {
+    :host { padding: 1rem 0.75rem; }
+    .widget-shell { max-width: 100%; border-radius: 12px; }
     .split-panel {
         grid-template-columns: 1fr;
+        min-height: 0;
     }
     .summary-panel { padding: 20px; }
     .panel-left { border-right: none; border-bottom: 1px solid var(--zen-border); }
-    .panel-right { max-height: none; }
+    .panel-right { max-height: none; padding: 18px 16px; }
     .form-panel { padding: 22px 20px; }
+    .form-panel--in-split { grid-column: 1 / -1; padding: 22px 20px; }
     .field-row-2 { grid-template-columns: 1fr; }
-    .step-line { width: 24px; }
+    .step-track { gap: 12px; padding: 14px 12px; }
+    .step-line, .step-text { display: none; }
+    .step-node { gap: 0; }
+}
+
+/* ── Mobile (≤600px) ─────────────────────────────────────────
+   Tighten paddings, stack the form footer buttons full-width,
+   and let the calendar/time-slot grid breathe on narrow screens. */
+@media (max-width: 600px) {
+    :host { padding: 0.75rem 0.5rem; }
+    .widget-shell { border-radius: 10px; }
+    .summary-panel { padding: 16px 14px; gap: 12px; }
+    .panel-left, .panel-right { padding: 16px 12px; }
+    .form-panel, .form-panel--in-split { padding: 18px 14px; }
+    .form-title { font-size: 19px; }
+    .cal-month-label { font-size: 13px; }
+    .cal-cell { font-size: 12px; }
+    .slots-list { gap: 5px; }
+    .slot-btn { padding: 11px 8px; font-size: 13px; }
+    .form-footer {
+        flex-direction: column-reverse;
+        gap: 10px;
+        padding-top: 16px;
+    }
+    .back-btn, .confirm-btn {
+        width: 100%;
+        padding: 13px 18px;
+    }
+    .guests-input-row { flex-wrap: wrap; }
+    .guests-input { flex: 1 1 100%; }
+    .guests-add-btn { flex: 0 0 auto; }
+    .guests-counter { flex: 1 1 auto; text-align: right; }
+}
+
+/* ── Very narrow screens (≤380px) ────────────────────────────
+   Older / small Android phones — drop one more notch of padding
+   so the calendar grid doesn't overflow. */
+@media (max-width: 380px) {
+    :host { padding: 0.5rem 0.25rem; }
+    .panel-left, .panel-right { padding: 14px 10px; }
+    .form-panel, .form-panel--in-split { padding: 16px 12px; }
+    .cal-grid { gap: 2px; }
 }

@@ -97,7 +97,14 @@ public class ZoomMeetingEmailService {
         try {
             sendResults = Messaging.sendEmail(messages, false);
         } catch (Exception e) {
-            // Whole batch threw — mark every sendable slot as failed.
+            // Whole batch threw — mark every sendable slot as failed and
+            // log to the debug log so the failure is visible (it was
+            // previously only attached to in-memory result objects that
+            // the flow caller silently discards).
+            System.debug(LoggingLevel.ERROR,
+                'Messaging.sendEmail BATCH FAILURE — ' + messages.size()
+                + ' message(s) — ' + e.getTypeName() + ': ' + e.getMessage()
+                + '\n' + e.getStackTraceString());
             for (Integer i = 0; i < sendable.size(); i++) {
                 if (sendable[i]) {
                     results[i].success = false;
@@ -199,7 +206,19 @@ public class ZoomMeetingEmailService {
                 msg.setPlainTextBody(inp.plainBody);
             }
         }
-        msg.setSaveAsActivity(inp.logEmailOnSend == true);
+        // setSaveAsActivity(true) requires a valid targetObjectId on a record
+        // type that supports activities (Lead, Contact, User). If the Lead has
+        // already been converted between booking and the Zoom hydration, this
+        // call throws and silently aborts the entire batch. Wrap it so the
+        // worst case is "email sent but not logged as an Activity".
+        try {
+            msg.setSaveAsActivity(inp.logEmailOnSend == true && inp.targetObjectId != null);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.WARN,
+                'setSaveAsActivity threw for targetObjectId=' + inp.targetObjectId
+                + ' — disabling activity logging for this message: ' + e.getMessage());
+            msg.setSaveAsActivity(false);
+        }
         msg.setUseSignature(false);
 
         // --- .ics attachment with correct content-type ---
@@ -228,6 +247,15 @@ public class ZoomMeetingEmailService {
         } catch (Exception e) {
             // Render failed — fall back to the template-driven send so the
             // email still goes out (without recipient-aware merge resolution).
+            // Logging the failure so silent template misconfiguration (wrong
+            // template Id, converted Lead, missing merge field permissions)
+            // is visible in debug logs instead of vanishing.
+            System.debug(LoggingLevel.WARN,
+                'renderStoredEmailTemplate FAILED templateId=' + inp.templateId
+                + ' targetObjectId=' + inp.targetObjectId
+                + ' relatedWhatId=' + inp.relatedWhatId
+                + ' — ' + e.getMessage()
+                + ' | falling back to setTemplateId()');
             msg.setTemplateId(inp.templateId);
             return;
         }

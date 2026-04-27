@@ -69,7 +69,17 @@
  * @Author             : Amit Yadav
  * @Created On         : April 2026
  */
-public with sharing class ZoomMeetingManager {
+// `without sharing` is required because Meeting_After_RTF runs in the
+// post-commit context of the originating user (often the Site Guest User
+// `zenith_booking@…` for IC bookings). After insert, the SA's OwnerId is
+// reassigned to the Admission Counselor, so the guest user no longer has
+// row visibility under `with sharing` — the SA-load SOQL returns 0 rows
+// and the Zoom callout is skipped, which silently broke the IC email
+// pipeline (no Zoom_Link__c stamped → flow never fires the email branch).
+// The class only reads SA + role users and writes back via Zoom callout +
+// the flow's own SA UPDATE, so this does not grant the guest user any
+// new write access.
+public without sharing class ZoomMeetingManager {
 
     public static final String ACTION_CREATE = 'CREATE';
     public static final String ACTION_UPDATE = 'UPDATE';
@@ -232,12 +242,29 @@ public with sharing class ZoomMeetingManager {
         List<OutputWrapper>                     emailOwners = new List<OutputWrapper>();
 
         for (ServiceAppointment sa : saMap.values()) {
-            if (String.isBlank(sa.Zoom_Meeting_ID__c)) continue;
+            // Only require a join URL — Zoom_Meeting_ID__c is no longer
+            // mandatory because some org flows stamp Zoom_Link__c without
+            // also stamping Zoom_Meeting_ID__c, which previously caused a
+            // SILENT skip and was the reason IC emails never arrived even
+            // though the Zoom link was set on the SA. computeIcsUid() uses
+            // sa.Id so the .ics is still uniquely identified.
             String joinUrl = String.isNotBlank(sa.Zoom_Join_URL__c) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
-            if (String.isBlank(joinUrl)) continue;
+            if (String.isBlank(joinUrl)) {
+                System.debug(LoggingLevel.WARN,
+                    'sendInvitesForSavedAppointments: skip SA ' + sa.Id +
+                    ' — no Zoom join URL on Zoom_Join_URL__c or Zoom_Link__c');
+                continue;
+            }
 
             MeetingContext ctx = resolveContext(sa, leadsById, ownerUsers, substitutes);
-            if (ctx == null || String.isBlank(ctx.attendeeEmail)) continue;
+            if (ctx == null || String.isBlank(ctx.attendeeEmail)) {
+                System.debug(LoggingLevel.WARN,
+                    'sendInvitesForSavedAppointments: skip SA ' + sa.Id +
+                    ' — no attendee email (ContactId=' + sa.ContactId +
+                    ', ParentRecordType=' + sa.ParentRecordType +
+                    ', ParentRecordId=' + sa.ParentRecordId + ')');
+                continue;
+            }
 
             String uid = computeIcsUid(sa);
             Integer seq = deriveSequence(sa);
@@ -288,12 +315,24 @@ public with sharing class ZoomMeetingManager {
         sin.inviteType    = ZoomMeetingEmailService.InviteType.NEW_BOOKING;
         sin.icsContent    = ics;
         sin.toEmail       = ctx.attendeeEmail;
-        sin.ccEmails      = parentsOnlyCcList(ctx, parentsByAcct);
+        // CC = verified parents (Contact-based) + counselor + booking guests
+        // (the Add-guests list captured at booking time, stored in the SA's
+        // Guest_Emails__c text field as comma-separated addresses).
+        sin.ccEmails      = buildFamilyCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        sin.targetObjectId = sa.ContactId;
-        sin.logEmailOnSend = (sa.ContactId != null);
-        if (sa.ContactId != null) {
+        // For Lead-based SAs (IC bookings), there's no ContactId — fall back
+        // to the Lead Id so Messaging.renderStoredEmailTemplate can resolve
+        // recipient-aware merge fields ({{{Recipient.FirstName}}} etc.) and
+        // the "Initial Consultation Meeting Scheduled" lightning template
+        // renders for Lead recipients too. The template's ServiceAppointment
+        // merge fields resolve via relatedWhatId regardless.
+        Id targetId = sa.ContactId != null
+                      ? sa.ContactId
+                      : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
+        sin.targetObjectId = targetId;
+        sin.logEmailOnSend = (targetId != null);
+        if (targetId != null) {
             sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
         } else {
             sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
@@ -351,6 +390,57 @@ public with sharing class ZoomMeetingManager {
             if (p != null && String.isNotBlank(p.Email)) out.add(p.Email);
         }
         return out;
+    }
+
+    /**
+     * Family-side CC list = verified parents + assigned counselor + invited
+     * guests captured at booking time. Host is intentionally NOT in this list
+     * — they receive a dedicated PUBLISH-method email so Gmail auto-adds the
+     * event. Dedup + casing is handled by ZoomMeetingEmailService.dedupAndClean.
+     */
+    private static List<String> buildFamilyCcList(
+        ServiceAppointment sa, MeetingContext ctx, Map<Id, List<Contact>> parentsByAcct
+    ) {
+        List<String> out = new List<String>();
+        // 1. Verified parent contacts (Contact-based SAs only)
+        out.addAll(parentsOnlyCcList(ctx, parentsByAcct));
+        // 2. Booking guests — Add-guests field on the SA, comma-separated.
+        //    Read via dynamic SObject.get() so this class still compiles in
+        //    orgs that haven't created Guest_Emails__c yet (loadAppointments
+        //    only adds the field to its SELECT when describe says it exists).
+        String guestStr = readGuestEmails(sa);
+        if (String.isNotBlank(guestStr)) {
+            for (String raw : guestStr.split(',')) {
+                if (raw == null) continue;
+                String trimmed = raw.trim();
+                if (String.isNotBlank(trimmed)) out.add(trimmed);
+            }
+        }
+        return out;
+    }
+
+    /** Schema-cached: does ServiceAppointment.Guest_Emails__c exist? */
+    private static Boolean guestEmailsResolved = false;
+    private static Boolean guestEmailsCache = false;
+    private static Boolean hasGuestEmailsField() {
+        if (guestEmailsResolved) return guestEmailsCache;
+        guestEmailsResolved = true;
+        try {
+            guestEmailsCache = Schema.SObjectType.ServiceAppointment.fields
+                .getMap().containsKey('guest_emails__c');
+        } catch (Exception e) { guestEmailsCache = false; }
+        return guestEmailsCache;
+    }
+
+    /** Read Guest_Emails__c off an SA without compile-time field reference. */
+    private static String readGuestEmails(ServiceAppointment sa) {
+        if (sa == null || !hasGuestEmailsField()) return null;
+        try {
+            Object v = sa.get('Guest_Emails__c');
+            return (v instanceof String) ? (String) v : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -434,14 +524,31 @@ public with sharing class ZoomMeetingManager {
         List<ZoomMeetingEmailService.SendInput> batch,
         List<OutputWrapper> owners
     ) {
-        if (batch == null || batch.isEmpty()) return;
+        if (batch == null || batch.isEmpty()) {
+            System.debug(LoggingLevel.INFO,
+                'deliverEmailBatch: empty batch, nothing to send');
+            return;
+        }
+        System.debug(LoggingLevel.INFO,
+            'deliverEmailBatch: dispatching ' + batch.size() + ' message(s)');
         List<ZoomMeetingEmailService.SendResult> results = ZoomMeetingEmailService.sendBulk(batch);
         for (Integer i = 0; i < results.size(); i++) {
             ZoomMeetingEmailService.SendResult r = results[i];
             OutputWrapper out = owners[i];
             out.icsInviteSent = r.success;
-            if (!r.success && String.isBlank(out.errorMessage)) {
-                out.errorMessage = 'Zoom action succeeded, but email failed: ' + r.errorMessage;
+            if (r.success) {
+                System.debug(LoggingLevel.INFO,
+                    'deliverEmailBatch: msg ' + i + ' sent OK to ' + batch[i].toEmail);
+            } else {
+                // Surface the failure to the debug log every time — previously
+                // it was only attached to the OutputWrapper, which is invisible
+                // to the flow caller and made silent failures the norm for IC.
+                System.debug(LoggingLevel.ERROR,
+                    'deliverEmailBatch: msg ' + i + ' FAILED to ' + batch[i].toEmail +
+                    ' — ' + r.errorMessage);
+                if (String.isBlank(out.errorMessage)) {
+                    out.errorMessage = 'Zoom action succeeded, but email failed: ' + r.errorMessage;
+                }
             }
         }
     }
@@ -1345,36 +1452,41 @@ public with sharing class ZoomMeetingManager {
     //  SOQL
     // =========================================================================
     private static Map<Id, ServiceAppointment> loadAppointments(Set<Id> saIds) {
-        return new Map<Id, ServiceAppointment>([
-            SELECT Id, Subject, SchedStartTime, SchedEndTime, Status,
-                   Meeting_Type__c, Email, Phone,
-                   Zoom_Meeting_ID__c, Zoom_Link__c, Zoom_Join_URL__c, Zoom_Start_URL__c,
-                   CreatedDate, SystemModstamp,
-                   ContactId,
-                   Contact.Id, Contact.Name, Contact.Email, Contact.AccountId,
-                   Contact.Counselor__c,
-                   Contact.Counselor__r.Name, Contact.Counselor__r.Email, Contact.Counselor__r.TimeZoneSidKey,
-                   Contact.Substitute_Counselor__c,
-                   Contact.Substitute_Counselor__r.Name, Contact.Substitute_Counselor__r.Email, Contact.Substitute_Counselor__r.TimeZoneSidKey,
-                   Contact.Program_Director__c,
-                   Contact.Program_Director__r.Name, Contact.Program_Director__r.Email, Contact.Program_Director__r.TimeZoneSidKey,
-                   Contact.Family_Success_Specialist__c,
-                   Contact.Family_Success_Specialist__r.Name, Contact.Family_Success_Specialist__r.Email, Contact.Family_Success_Specialist__r.TimeZoneSidKey,
-                   Contact.IC_admissions_counselor__c,
-                   Contact.IC_admissions_counselor__r.Name, Contact.IC_admissions_counselor__r.Email, Contact.IC_admissions_counselor__r.TimeZoneSidKey,
-                   Educational_Strategist__c,
-                   Educational_Strategist__r.Name, Educational_Strategist__r.Email, Educational_Strategist__r.TimeZoneSidKey,
-                   Admission_Counselor__c,
-                   Admission_Counselor__r.Name, Admission_Counselor__r.Email, Admission_Counselor__r.TimeZoneSidKey,
-                   Program_Director__c,
-                   Program_Director__r.Name, Program_Director__r.Email, Program_Director__r.TimeZoneSidKey,
-                   Family_Success_Specialist__c,
-                   Family_Success_Specialist__r.Name, Family_Success_Specialist__r.Email, Family_Success_Specialist__r.TimeZoneSidKey,
-                   ParentRecordId, ParentRecordType,
-                   OwnerId
-            FROM ServiceAppointment
-            WHERE Id IN :saIds
-        ]);
+        // Built dynamically so optional custom fields (Guest_Emails__c) are
+        // only requested in orgs where they exist — keeps the class
+        // deployable to sandboxes that haven't created the field yet.
+        String soql =
+            'SELECT Id, Subject, SchedStartTime, SchedEndTime, Status, '
+          + '       Meeting_Type__c, Email, Phone, '
+          + '       Zoom_Meeting_ID__c, Zoom_Link__c, Zoom_Join_URL__c, Zoom_Start_URL__c, '
+          + '       CreatedDate, SystemModstamp, '
+          + '       ContactId, '
+          + '       Contact.Id, Contact.Name, Contact.Email, Contact.AccountId, '
+          + '       Contact.Counselor__c, '
+          + '       Contact.Counselor__r.Name, Contact.Counselor__r.Email, Contact.Counselor__r.TimeZoneSidKey, '
+          + '       Contact.Substitute_Counselor__c, '
+          + '       Contact.Substitute_Counselor__r.Name, Contact.Substitute_Counselor__r.Email, Contact.Substitute_Counselor__r.TimeZoneSidKey, '
+          + '       Contact.Program_Director__c, '
+          + '       Contact.Program_Director__r.Name, Contact.Program_Director__r.Email, Contact.Program_Director__r.TimeZoneSidKey, '
+          + '       Contact.Family_Success_Specialist__c, '
+          + '       Contact.Family_Success_Specialist__r.Name, Contact.Family_Success_Specialist__r.Email, Contact.Family_Success_Specialist__r.TimeZoneSidKey, '
+          + '       Contact.IC_admissions_counselor__c, '
+          + '       Contact.IC_admissions_counselor__r.Name, Contact.IC_admissions_counselor__r.Email, Contact.IC_admissions_counselor__r.TimeZoneSidKey, '
+          + '       Educational_Strategist__c, '
+          + '       Educational_Strategist__r.Name, Educational_Strategist__r.Email, Educational_Strategist__r.TimeZoneSidKey, '
+          + '       Admission_Counselor__c, '
+          + '       Admission_Counselor__r.Name, Admission_Counselor__r.Email, Admission_Counselor__r.TimeZoneSidKey, '
+          + '       Program_Director__c, '
+          + '       Program_Director__r.Name, Program_Director__r.Email, Program_Director__r.TimeZoneSidKey, '
+          + '       Family_Success_Specialist__c, '
+          + '       Family_Success_Specialist__r.Name, Family_Success_Specialist__r.Email, Family_Success_Specialist__r.TimeZoneSidKey, '
+          + '       ParentRecordId, ParentRecordType, '
+          + '       OwnerId'
+          + (hasGuestEmailsField() ? ', Guest_Emails__c ' : ' ')
+          + 'FROM ServiceAppointment WHERE Id IN :saIds';
+        return new Map<Id, ServiceAppointment>(
+            (List<ServiceAppointment>) Database.query(soql)
+        );
     }
 
     private static Map<Id, Lead> loadParentLeads(List<ServiceAppointment> sas) {
