@@ -442,24 +442,33 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
-    /** Schema-cached: does ServiceAppointment.Guest_Emails__c exist? */
+    /** Schema-cached: does Lead.Guest_Emails__c exist? Guest emails live on
+     *  the Lead (NOT the SA) so the field is hidden from the Service
+     *  Appointment UI. The SA reaches them via the Lead__c custom lookup. */
     private static Boolean guestEmailsResolved = false;
     private static Boolean guestEmailsCache = false;
     private static Boolean hasGuestEmailsField() {
         if (guestEmailsResolved) return guestEmailsCache;
         guestEmailsResolved = true;
         try {
-            guestEmailsCache = Schema.SObjectType.ServiceAppointment.fields
+            guestEmailsCache = Schema.SObjectType.Lead.fields
                 .getMap().containsKey('guest_emails__c');
         } catch (Exception e) { guestEmailsCache = false; }
         return guestEmailsCache;
     }
 
-    /** Read Guest_Emails__c off an SA without compile-time field reference. */
+    /**
+     * Read Guest_Emails__c off the SA's parent Lead, accessed via the SA's
+     * Lead__c custom lookup (sa.Lead__r). Guests are only persisted on the
+     * Lead in IC (lead-based) bookings — Contact-based PD/FSS bookings don't
+     * currently expose a guest UI, so this returns null for them.
+     */
     private static String readGuestEmails(ServiceAppointment sa) {
         if (sa == null || !hasGuestEmailsField()) return null;
         try {
-            Object v = sa.get('Guest_Emails__c');
+            SObject leadRel = sa.getSObject('Lead__r');
+            if (leadRel == null) return null;
+            Object v = leadRel.get('Guest_Emails__c');
             return (v instanceof String) ? (String) v : null;
         } catch (Exception e) {
             return null;
@@ -909,6 +918,24 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
+    /**
+     * Build a human-readable display name from a User's FirstName + LastName,
+     * falling back to .Name only when both are blank. Salesforce's User.Name
+     * is auto-computed as "FirstName LastName" for normal users, but for
+     * scratch / federation-id provisioned users it can be the username
+     * (e.g. "User17744366632527905805"). Composing explicitly fixes the
+     * email subject + body display without breaking properly-named users —
+     * "FirstName LastName" produces the same string as User.Name.
+     */
+    private static String composeUserDisplayName(User u) {
+        if (u == null) return '';
+        String fn = (u.FirstName != null) ? u.FirstName.trim() : '';
+        String ln = (u.LastName != null)  ? u.LastName.trim()  : '';
+        String composed = (fn + ' ' + ln).trim();
+        if (String.isNotBlank(composed)) return composed;
+        return (u.Name != null) ? u.Name.trim() : '';
+    }
+
     private static Boolean isUsable(User u) {
         return u != null && String.isNotBlank(u.Email);
     }
@@ -931,18 +958,27 @@ public without sharing class ZoomMeetingManager {
                     : UserInfo.getTimeZone().getID();
 
         String topic  = buildTopic(sa, ctx);
-        String hostName = (ctx.host != null && String.isNotBlank(ctx.host.Name))
-                          ? ctx.host.Name : ORG_SENDER_NAME;
+        String hostName = composeUserDisplayName(ctx.host);
+        if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
         String agenda = 'Meeting with ' + hostName;
 
-        // No meeting_invitees / email_notification flags — we drive the
-        // branded invitation email ourselves from Apex so Zoom stays silent
-        // (no duplicate create / reschedule / cancel emails from Zoom).
+        // We drive the branded invitation email ourselves from Apex so Zoom
+        // stays silent (no duplicate create / reschedule / cancel emails
+        // from Zoom). Add booking guests as meeting_invitees so the host
+        // sees the guest list inside Zoom (and the host can copy the
+        // invite-link mid-meeting if needed). registrants_email_notification
+        // stays off so Zoom doesn't compete with our branded email.
         Map<String, Object> settings = new Map<String, Object>{
-            'join_before_host' => false,
-            'waiting_room'     => true,
-            'mute_upon_entry'  => true
+            'join_before_host'                => false,
+            'waiting_room'                    => true,
+            'mute_upon_entry'                 => true,
+            'registrants_email_notification'  => false
         };
+
+        List<Map<String, Object>> meetingInvitees = buildZoomMeetingInvitees(sa, ctx);
+        if (!meetingInvitees.isEmpty()) {
+            settings.put('meeting_invitees', meetingInvitees);
+        }
 
         return new Map<String, Object>{
             'topic'      => topic,
@@ -953,6 +989,40 @@ public without sharing class ZoomMeetingManager {
             'timezone'   => tz,
             'settings'   => settings
         };
+    }
+
+    /**
+     * Build the Zoom settings.meeting_invitees array from the SA's
+     * Guest_Emails__c list (plus the primary attendee). Zoom shows these in
+     * the meeting's Invitees section in the host's UI; the email list also
+     * helps Zoom's analytics tie joiners back to invited addresses. We do
+     * NOT add the host here — Zoom auto-includes the meeting owner.
+     */
+    private static List<Map<String, Object>> buildZoomMeetingInvitees(
+        ServiceAppointment sa, MeetingContext ctx
+    ) {
+        List<Map<String, Object>> out = new List<Map<String, Object>>();
+        Set<String> seen = new Set<String>();
+
+        if (ctx != null && String.isNotBlank(ctx.attendeeEmail)) {
+            String norm = ctx.attendeeEmail.toLowerCase().trim();
+            seen.add(norm);
+            out.add(new Map<String, Object>{ 'email' => ctx.attendeeEmail });
+        }
+
+        String guestStr = readGuestEmails(sa);
+        if (String.isNotBlank(guestStr)) {
+            for (String raw : guestStr.split(',')) {
+                if (raw == null) continue;
+                String email = raw.trim();
+                if (String.isBlank(email)) continue;
+                String norm = email.toLowerCase();
+                if (seen.contains(norm)) continue;
+                seen.add(norm);
+                out.add(new Map<String, Object>{ 'email' => email });
+            }
+        }
+        return out;
     }
 
     private static String buildTopic(ServiceAppointment sa, MeetingContext ctx) {
@@ -1049,6 +1119,33 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
+    /**
+     * Queueable wrapper around manage(action='UPDATE') so callers can enqueue
+     * the Zoom-side reschedule AFTER they've committed the new SchedStartTime
+     * onto the SA. Platform rule: HTTP callouts must run before any DML, so
+     * once cancellation/reschedule code has done update sa, the Zoom PATCH
+     * must wait for the next async transaction.
+     *
+     * Reads the SA's freshly-saved SchedStartTime/SchedEndTime out of the DB
+     * inside execute() and PATCHes the existing Zoom meeting (no new Zoom
+     * meeting is created — the join URL stays the same), then sends the
+     * RESCHEDULE email + .ics METHOD:REQUEST so calendar clients move the
+     * existing event to the new time instead of producing a duplicate.
+     */
+    public class ZoomRescheduleQueueable implements Queueable, Database.AllowsCallouts {
+        private Id serviceAppointmentId;
+        public ZoomRescheduleQueueable(Id saId) {
+            this.serviceAppointmentId = saId;
+        }
+        public void execute(QueueableContext ctx) {
+            if (serviceAppointmentId == null) return;
+            InputWrapper input = new InputWrapper();
+            input.serviceAppointmentId = serviceAppointmentId;
+            input.action = ACTION_UPDATE;
+            ZoomMeetingManager.manage(new List<InputWrapper>{ input });
+        }
+    }
+
     // =========================================================================
     //  VALIDATION
     // =========================================================================
@@ -1127,8 +1224,9 @@ public without sharing class ZoomMeetingManager {
                              : (String.isNotBlank(ctx.attendeeName) ? ctx.attendeeName : 'Student');
         String summary = studentName + ' - Zenith Meeting';
 
-        String hostName = (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Name))
-                          ? ctx.host.Name : ORG_SENDER_NAME;
+        String hostName = (ctx != null && ctx.host != null)
+                          ? composeUserDisplayName(ctx.host) : '';
+        if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
 
         String descText;
         if (String.isNotBlank(zoomInvitationText)) {
@@ -1157,8 +1255,9 @@ public without sharing class ZoomMeetingManager {
         // be overridden by the caller (host's own copy uses the org-wide
         // address so Gmail doesn't trip its organizer-recipient lookup) and
         // otherwise defaults to the host's email.
-        ici.organizerName  = (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Name))
-                             ? ctx.host.Name : ORG_SENDER_NAME;
+        ici.organizerName  = (ctx != null && ctx.host != null)
+                             ? composeUserDisplayName(ctx.host) : '';
+        if (String.isBlank(ici.organizerName)) ici.organizerName = ORG_SENDER_NAME;
         if (String.isNotBlank(organizerEmailOverride)) {
             ici.organizerEmail = organizerEmailOverride;
         } else {
@@ -1224,9 +1323,33 @@ public without sharing class ZoomMeetingManager {
                 // same person as ORGANIZER plus an unaccepted REQ-PARTICIPANT
                 // ATTENDEE is contradictory and clients silently drop the
                 // event for the organizer in that case.
+                String hostDisplayName = composeUserDisplayName(ctx.host);
                 out.add(new ZoomIcsBuilder.Attendee(
-                    String.isNotBlank(ctx.host.Name) ? ctx.host.Name : ctx.host.Email,
+                    String.isNotBlank(hostDisplayName) ? hostDisplayName : ctx.host.Email,
                     ctx.host.Email, 'CHAIR', 'ACCEPTED', false
+                ));
+            }
+        }
+
+        // Booking guests — Add-guests list captured at booking time on
+        // Guest_Emails__c. Each guest gets their own ICS ATTENDEE entry so
+        // the calendar invite (delivered to them via the email CC list) is
+        // auto-added to their calendar by Gmail / Outlook / Apple Mail.
+        // Without this, even if a guest receives the email, their calendar
+        // client doesn't recognise them as an attendee and refuses to add
+        // the event. Read via dynamic SObject.get so this still compiles
+        // in orgs that haven't created the field yet.
+        String guestStr = readGuestEmails(sa);
+        if (String.isNotBlank(guestStr)) {
+            for (String raw : guestStr.split(',')) {
+                if (raw == null) continue;
+                String email = raw.trim();
+                if (String.isBlank(email)) continue;
+                String norm = email.toLowerCase();
+                if (norm == studentEmailLower || seen.contains(norm)) continue;
+                seen.add(norm);
+                out.add(new ZoomIcsBuilder.Attendee(
+                    email, email, 'REQ-PARTICIPANT'
                 ));
             }
         }
@@ -1338,20 +1461,24 @@ public without sharing class ZoomMeetingManager {
         ZoomMeetingEmailService.InviteType t, ServiceAppointment sa, MeetingContext ctx
     ) {
         String studentName = studentFullName(sa, ctx);
-        String hostName    = (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Name))
-                             ? ctx.host.Name : ORG_SENDER_NAME;
+        String hostName    = (ctx != null && ctx.host != null)
+                             ? composeUserDisplayName(ctx.host) : '';
+        if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
         String dateLabel   = scheduledDateLabel(sa, ctx);
 
-        if (t == ZoomMeetingEmailService.InviteType.CANCELLATION) {
-            return 'Zenith Meeting Cancelled: ' + studentName + ' with ' + hostName
-                 + (String.isBlank(dateLabel) ? '' : ' on ' + dateLabel);
+        // Use the SAME core subject across CREATE / RESCHEDULE / CANCELLATION
+        // and prefix follow-ups with "Re:" so Gmail / Outlook / Apple Mail
+        // group all three messages into ONE inbox conversation thread.
+        // (Email clients strip the "Re:" prefix when matching subjects for
+        // threading — that's the standard convention since SMTP RFC 2822.)
+        String coreSubject = 'Zenith Meeting Scheduled: ' + studentName + ' with ' + hostName
+                           + (String.isBlank(dateLabel) ? '' : ' on ' + dateLabel);
+
+        if (t == ZoomMeetingEmailService.InviteType.CANCELLATION
+            || t == ZoomMeetingEmailService.InviteType.RESCHEDULE) {
+            return 'Re: ' + coreSubject;
         }
-        if (t == ZoomMeetingEmailService.InviteType.RESCHEDULE) {
-            return 'Zenith Meeting Updated: ' + studentName + ' with ' + hostName
-                 + (String.isBlank(dateLabel) ? '' : ' on ' + dateLabel);
-        }
-        return 'Zenith Meeting Scheduled: ' + studentName + ' with ' + hostName
-             + (String.isBlank(dateLabel) ? '' : ' on ' + dateLabel);
+        return coreSubject;
     }
 
     private static String buildHtmlBody(
@@ -1359,9 +1486,10 @@ public without sharing class ZoomMeetingManager {
         MeetingContext ctx, String zoomInvitationText
     ) {
         String firstName = String.escapeSingleQuotes(studentFirstName(sa, ctx));
-        String hostName  = String.escapeSingleQuotes(
-            (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Name))
-                ? ctx.host.Name : ORG_SENDER_NAME);
+        String resolvedHostName = (ctx != null && ctx.host != null)
+            ? composeUserDisplayName(ctx.host) : '';
+        if (String.isBlank(resolvedHostName)) resolvedHostName = ORG_SENDER_NAME;
+        String hostName  = String.escapeSingleQuotes(resolvedHostName);
         String timeLabel = scheduledDateTimeLabel(sa, ctx);
         String joinUrl   = (sa.Zoom_Join_URL__c != null) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
         if (joinUrl == null) joinUrl = '';
@@ -1412,8 +1540,9 @@ public without sharing class ZoomMeetingManager {
         MeetingContext ctx, String zoomInvitationText
     ) {
         String firstName = studentFirstName(sa, ctx);
-        String hostName  = (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Name))
-                           ? ctx.host.Name : ORG_SENDER_NAME;
+        String hostName  = (ctx != null && ctx.host != null)
+                           ? composeUserDisplayName(ctx.host) : '';
+        if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
         String timeLabel = scheduledDateTimeLabel(sa, ctx);
         String joinUrl   = (sa.Zoom_Join_URL__c != null) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
         if (joinUrl == null) joinUrl = '';
@@ -1551,26 +1680,26 @@ public without sharing class ZoomMeetingManager {
           + '       ContactId, '
           + '       Contact.Id, Contact.Name, Contact.Email, Contact.AccountId, '
           + '       Contact.Counselor__c, '
-          + '       Contact.Counselor__r.Name, Contact.Counselor__r.Email, Contact.Counselor__r.TimeZoneSidKey, '
+          + '       Contact.Counselor__r.Name, Contact.Counselor__r.FirstName, Contact.Counselor__r.LastName, Contact.Counselor__r.Email, Contact.Counselor__r.TimeZoneSidKey, '
           + '       Contact.Substitute_Counselor__c, '
-          + '       Contact.Substitute_Counselor__r.Name, Contact.Substitute_Counselor__r.Email, Contact.Substitute_Counselor__r.TimeZoneSidKey, '
+          + '       Contact.Substitute_Counselor__r.Name, Contact.Substitute_Counselor__r.FirstName, Contact.Substitute_Counselor__r.LastName, Contact.Substitute_Counselor__r.Email, Contact.Substitute_Counselor__r.TimeZoneSidKey, '
           + '       Contact.Program_Director__c, '
-          + '       Contact.Program_Director__r.Name, Contact.Program_Director__r.Email, Contact.Program_Director__r.TimeZoneSidKey, '
+          + '       Contact.Program_Director__r.Name, Contact.Program_Director__r.FirstName, Contact.Program_Director__r.LastName, Contact.Program_Director__r.Email, Contact.Program_Director__r.TimeZoneSidKey, '
           + '       Contact.Family_Success_Specialist__c, '
-          + '       Contact.Family_Success_Specialist__r.Name, Contact.Family_Success_Specialist__r.Email, Contact.Family_Success_Specialist__r.TimeZoneSidKey, '
+          + '       Contact.Family_Success_Specialist__r.Name, Contact.Family_Success_Specialist__r.FirstName, Contact.Family_Success_Specialist__r.LastName, Contact.Family_Success_Specialist__r.Email, Contact.Family_Success_Specialist__r.TimeZoneSidKey, '
           + '       Contact.IC_admissions_counselor__c, '
-          + '       Contact.IC_admissions_counselor__r.Name, Contact.IC_admissions_counselor__r.Email, Contact.IC_admissions_counselor__r.TimeZoneSidKey, '
+          + '       Contact.IC_admissions_counselor__r.Name, Contact.IC_admissions_counselor__r.FirstName, Contact.IC_admissions_counselor__r.LastName, Contact.IC_admissions_counselor__r.Email, Contact.IC_admissions_counselor__r.TimeZoneSidKey, '
           + '       Educational_Strategist__c, '
-          + '       Educational_Strategist__r.Name, Educational_Strategist__r.Email, Educational_Strategist__r.TimeZoneSidKey, '
+          + '       Educational_Strategist__r.Name, Educational_Strategist__r.FirstName, Educational_Strategist__r.LastName, Educational_Strategist__r.Email, Educational_Strategist__r.TimeZoneSidKey, '
           + '       Admission_Counselor__c, '
-          + '       Admission_Counselor__r.Name, Admission_Counselor__r.Email, Admission_Counselor__r.TimeZoneSidKey, '
+          + '       Admission_Counselor__r.Name, Admission_Counselor__r.FirstName, Admission_Counselor__r.LastName, Admission_Counselor__r.Email, Admission_Counselor__r.TimeZoneSidKey, '
           + '       Program_Director__c, '
-          + '       Program_Director__r.Name, Program_Director__r.Email, Program_Director__r.TimeZoneSidKey, '
+          + '       Program_Director__r.Name, Program_Director__r.FirstName, Program_Director__r.LastName, Program_Director__r.Email, Program_Director__r.TimeZoneSidKey, '
           + '       Family_Success_Specialist__c, '
-          + '       Family_Success_Specialist__r.Name, Family_Success_Specialist__r.Email, Family_Success_Specialist__r.TimeZoneSidKey, '
+          + '       Family_Success_Specialist__r.Name, Family_Success_Specialist__r.FirstName, Family_Success_Specialist__r.LastName, Family_Success_Specialist__r.Email, Family_Success_Specialist__r.TimeZoneSidKey, '
           + '       ParentRecordId, ParentRecordType, '
           + '       OwnerId'
-          + (hasGuestEmailsField() ? ', Guest_Emails__c ' : ' ')
+          + (hasGuestEmailsField() ? ', Lead__r.Guest_Emails__c ' : ' ')
           + 'FROM ServiceAppointment WHERE Id IN :saIds';
         return new Map<Id, ServiceAppointment>(
             (List<ServiceAppointment>) Database.query(soql)
@@ -1590,10 +1719,14 @@ public without sharing class ZoomMeetingManager {
                    Parent_1_Email__c, Parent_2_Email__c,
                    Assigned_Admission_Counsellor__c,
                    Assigned_Admission_Counsellor__r.Name,
+                   Assigned_Admission_Counsellor__r.FirstName,
+                   Assigned_Admission_Counsellor__r.LastName,
                    Assigned_Admission_Counsellor__r.Email,
                    Assigned_Admission_Counsellor__r.TimeZoneSidKey,
                    Assigned_PD__c,
                    Assigned_PD__r.Name,
+                   Assigned_PD__r.FirstName,
+                   Assigned_PD__r.LastName,
                    Assigned_PD__r.Email,
                    Assigned_PD__r.TimeZoneSidKey
             FROM Lead
@@ -1635,6 +1768,8 @@ public without sharing class ZoomMeetingManager {
             SELECT Contact__c,
                    Substitute_Educational_Strategist__c,
                    Substitute_Educational_Strategist__r.Name,
+                   Substitute_Educational_Strategist__r.FirstName,
+                   Substitute_Educational_Strategist__r.LastName,
                    Substitute_Educational_Strategist__r.Email,
                    Substitute_Educational_Strategist__r.TimeZoneSidKey
             FROM Substitute__c
@@ -1664,7 +1799,7 @@ public without sharing class ZoomMeetingManager {
         }
         if (userOwnerIds.isEmpty()) return new Map<Id, User>();
         return new Map<Id, User>([
-            SELECT Id, Name, Email, TimeZoneSidKey
+            SELECT Id, Name, FirstName, LastName, Email, TimeZoneSidKey
             FROM User
             WHERE Id IN :userOwnerIds
         ]);

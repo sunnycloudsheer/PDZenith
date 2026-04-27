@@ -677,7 +677,7 @@ public without sharing class GuestSchedulerController {
             Boolean isReschedule = String.isNotBlank(rescheduleToken);
             if (isReschedule) {
                 List<ServiceAppointment> origs = [
-                    SELECT Id, Status, ContactId, AccountId, ParentRecordId,
+                    SELECT Id, Status, ContactId, AccountId, ParentRecordId, ParentRecordType,
                            Meeting_Type__c, Opportunity__c
                     FROM ServiceAppointment
                     WHERE Reschedule_Token__c = :rescheduleToken
@@ -717,7 +717,18 @@ public without sharing class GuestSchedulerController {
                 return res;
             }
 
-            if (isReschedule && originalSA != null) {
+            // IC reschedules with a Lead parent are handled IN PLACE — we
+            // update the existing SA's SchedStartTime / SchedEndTime instead
+            // of cancelling the old SA and creating a new Lead+SA+Event chain.
+            // This avoids the "duplicate Lead per reschedule" problem the
+            // family was hitting, and keeps the same Zoom meeting (PATCH'd
+            // with the new time) instead of deleting + recreating it.
+            Boolean isICInPlaceReschedule = isReschedule && originalSA != null
+                && bType == 'IC'
+                && originalSA.ParentRecordType == 'Lead'
+                && originalSA.ParentRecordId != null;
+
+            if (!isICInPlaceReschedule && isReschedule && originalSA != null) {
                 ServiceAppointment cancelOrig = new ServiceAppointment(Id = originalSA.Id);
                 cancelOrig.Status = 'Canceled';
                 cancelOrig.Reschedule_Token__c = null;
@@ -751,7 +762,9 @@ public without sharing class GuestSchedulerController {
                 return res;
             }
 
-            if (bType == 'IC') {
+            if (isICInPlaceReschedule) {
+                rescheduleICInPlace(res, originalSA, startDT, endDT);
+            } else if (bType == 'IC') {
                 bookIC(res, cfg, assignment, startDT, endDT,
                        firstName, lastName, email, phone, studentGrade,
                        leadSource, guestEmails, clientTimezone,
@@ -763,7 +776,12 @@ public without sharing class GuestSchedulerController {
                             guestEmails, notes);
             }
 
-            if (isReschedule && originalSA != null && 'true'.equals(res.get('success'))) {
+            // Cross-link annotations only apply when reschedule was the
+            // cancel+create variant (NEW SA Id distinct from old). For IC
+            // in-place reschedules the appointmentId IS the originalSA.Id
+            // and there's nothing to annotate cross-record.
+            if (!isICInPlaceReschedule && isReschedule && originalSA != null
+                && 'true'.equals(res.get('success'))) {
                 res.put('rescheduledFromId', originalSA.Id);
                 try {
                     String newSAId = res.get('appointmentId');
@@ -786,6 +804,90 @@ public without sharing class GuestSchedulerController {
             throw new AuraHandledException('Problem saving booking: ' + e.getMessage());
         }
         return res;
+    }
+
+    /**
+     * In-place IC reschedule: update the existing SA's start/end time, keep
+     * the same Lead, the same Event, and the same Zoom meeting (PATCH'd
+     * with the new time). Replaces the previous cancel+create flow for IC
+     * reschedules so the family no longer ends up with a duplicate Lead per
+     * reschedule.
+     *
+     * The SA's AssignedResource stays as-is — sticky-resource logic in
+     * findAvailableResourceRoundRobin only allows new times where the
+     * originally-assigned counselor is still free, so we never need to
+     * detach + reattach the resource here.
+     *
+     * Order of operations:
+     *   1. DML to update SA times (and rotate Reschedule_Token__c so the new
+     *      confirmation email's reschedule/cancel links are fresh and the
+     *      previous email's links cease to work).
+     *   2. DML to update Lead.Scheduled_Meeting_DateTime__c (best-effort).
+     *   3. DML to update related Event StartDateTime/EndDateTime so the
+     *      counselor's calendar shows the new time.
+     *
+     * The Zoom-side PATCH + RESCHEDULE email + .ics METHOD:REQUEST is sent
+     * automatically by the Zoom_Meeting_Update_Or_Cancel record-triggered
+     * flow's AsyncAfterCommit path (it fires when SchedStartTime/SchedEndTime
+     * change on an SA whose Zoom_Meeting_ID__c is populated, and routes to
+     * ZoomMeetingManager.handleUpdate). No Queueable enqueue needed here.
+     */
+    private static void rescheduleICInPlace(
+        Map<String, String> res, ServiceAppointment originalSA,
+        DateTime startDT, DateTime endDT
+    ) {
+        DateTime saEndDT = startDT.addMinutes(60);
+        String newToken = RescheduleTokenService.generateToken();
+
+        ServiceAppointment saUpd = new ServiceAppointment(Id = originalSA.Id);
+        saUpd.SchedStartTime         = startDT;
+        saUpd.SchedEndTime           = saEndDT;
+        saUpd.EarliestStartTime      = startDT;
+        saUpd.DueDate                = saEndDT;
+        saUpd.ArrivalWindowStartTime = startDT;
+        saUpd.ArrivalWindowEndTime   = saEndDT;
+        saUpd.Reschedule_Token__c    = newToken;
+        update saUpd;
+
+        // Best-effort Lead update so any Lead-side date-display fields stay
+        // in sync with the new SA time. Wrapped in try/catch because the
+        // Scheduled_Meeting_DateTime__c custom field may not exist in every
+        // org variant — ZoomMeetingManager.manage(UPDATE) is the source of
+        // truth for the family-facing reschedule email.
+        if (originalSA.ParentRecordId != null
+            && String.valueOf(originalSA.ParentRecordId).startsWith('00Q')) {
+            try {
+                Lead l = new Lead(Id = originalSA.ParentRecordId);
+                tryPut(l, 'Scheduled_Meeting_DateTime__c', startDT);
+                update l;
+            } catch (Exception ex) { }
+        }
+
+        try {
+            List<Event> events = [
+                SELECT Id, StartDateTime, EndDateTime
+                FROM Event WHERE Service_Appointment__c = :originalSA.Id
+            ];
+            for (Event e : events) {
+                e.StartDateTime = startDT;
+                e.EndDateTime   = saEndDT;
+            }
+            if (!events.isEmpty()) update events;
+        } catch (Exception ex) { }
+
+        // The Zoom-side PATCH + RESCHEDULE email + .ics METHOD:REQUEST is
+        // sent by the existing Zoom_Meeting_Update_Or_Cancel flow's
+        // AsyncAfterCommit path, which fires on this SA's SchedStartTime/
+        // SchedEndTime change and routes to ZoomMeetingManager.handleUpdate.
+        // No Queueable enqueue needed here — that would duplicate the work
+        // and produce two reschedule emails.
+
+        res.put('success', 'true');
+        res.put('appointmentId', originalSA.Id);
+        if (originalSA.ParentRecordId != null) {
+            res.put('leadId', String.valueOf(originalSA.ParentRecordId));
+        }
+        stampActionUrls(res, newToken);
     }
 
     private static void bookIC(
@@ -815,6 +917,12 @@ public without sharing class GuestSchedulerController {
         tryPut(mktLead, 'UTM_Medium__c', utmMedium);
         tryPut(mktLead, 'UTM_Ad__c', utmAd);
         tryPut(mktLead, 'UTM_AdSet__c', utmAdSet);
+        // Booking guests are stored on the Lead (NOT on the SA). Apex reads
+        // them back via SA.Lead__r.Guest_Emails__c when building the family
+        // CC list and the .ics ATTENDEE entries.
+        if (guestList != null && !guestList.isEmpty()) {
+            tryPut(mktLead, 'Guest_Emails__c', String.join(guestList, ','));
+        }
         mktLead.Description = buildLeadDescription(notes, studentGrade, guestList);
         mktLead.setOptions(dmlOpts);
         Database.SaveResult leadSr = Database.insert(mktLead, dmlOpts);
@@ -881,10 +989,10 @@ public without sharing class GuestSchedulerController {
             tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
             // Populate Lead lookup so Meeting_After_RTF can resolve
             // $Record.Lead__r.Email and fire the IC confirmation email.
+            // Guest emails are intentionally NOT stored on the SA — they
+            // live on the Lead (Guest_Emails__c) and are read back through
+            // sa.Lead__r.Guest_Emails__c in the email-build path.
             tryPut(sa, 'Lead__c', mktLead.Id);
-            if (guestList != null && !guestList.isEmpty()) {
-                tryPut(sa, 'Guest_Emails__c', String.join(guestList, ','));
-            }
             insert sa;
 
             AssignedResource ar = new AssignedResource();
@@ -1011,9 +1119,12 @@ public without sharing class GuestSchedulerController {
         }
         String saDesc = buildEventDescription(notes, guestList);
         if (String.isNotBlank(saDesc)) sa.Description = saDesc;
-        if (guestList != null && !guestList.isEmpty()) {
-            tryPut(sa, 'Guest_Emails__c', String.join(guestList, ','));
-        }
+        // Guest emails are NOT stored on the SA — for IC bookings they live
+        // on the Lead (Lead.Guest_Emails__c). PD/FSS bookings don't currently
+        // expose a guest UI in the LWC, so guestList is empty here in
+        // practice. If a guest UI is added for PD/FSS later, persist guests
+        // on the Contact (or related Account) — keep the SA UI free of
+        // backend-only data.
         insert sa;
 
         AssignedResource ar = new AssignedResource();

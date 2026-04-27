@@ -163,11 +163,18 @@
     margin: 0;
 }
 .detail-icon {
-    font-size: 13px;
     color: var(--zen-text-muted);
-    width: 16px;
-    text-align: center;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.detail-icon svg {
+    width: 18px;
+    height: 18px;
+    display: block;
 }
 .detail-label { display: none; }
 .detail-value {
@@ -201,11 +208,12 @@
 }
 .field-lbl-required {
     color: var(--zen-danger);
-    font-weight: 500;
+    font-weight: 700;
     text-transform: none;
     letter-spacing: 0;
-    margin-left: 4px;
-    font-size: 12px;
+    margin-left: 3px;
+    font-size: 13px;
+    line-height: 1;
 }
 .field-inp {
     width: 100%;
@@ -264,7 +272,7 @@ textarea.field-inp {
     gap: 8px;
 }
 .policy-banner::before {
-    content: "!";
+    content: "i";
     width: 18px; height: 18px;
     border-radius: 50%;
     border: 1.5px solid var(--zen-warn);
@@ -272,6 +280,8 @@ textarea.field-inp {
     display: inline-flex; align-items: center; justify-content: center;
     font-weight: 700;
     font-size: 11px;
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
     flex-shrink: 0;
     margin-top: 1px;
 }
@@ -358,24 +368,27 @@ textarea.field-inp {
     transition: var(--zen-trans);
     border: 1px solid transparent;
 }
-/* Reschedule button is an <a> tag — explicitly cover :link/:visited so
-   the Salesforce Site's global anchor styles (community blue + underline)
-   don't override the navy background + white text. */
-.reschedule-btn,
-.reschedule-btn:link,
-.reschedule-btn:visited {
+/* Reschedule button is an <a> tag — the Salesforce Site's global anchor
+   theme uses `!important` on a:hover color + text-decoration, which
+   otherwise wins against any plain class selector and turns this button
+   community-blue with an underline (text invisible against the navy
+   background). Use !important on color + text-decoration in every link
+   state to force our navy/white styling through. */
+a.action-btn.reschedule-btn,
+a.action-btn.reschedule-btn:link,
+a.action-btn.reschedule-btn:visited {
     background: var(--zen-navy);
-    color: white;
+    color: white !important;
     border-color: var(--zen-navy);
-    text-decoration: none;
+    text-decoration: none !important;
 }
-.reschedule-btn:hover,
-.reschedule-btn:active,
-.reschedule-btn:focus {
+a.action-btn.reschedule-btn:hover,
+a.action-btn.reschedule-btn:active,
+a.action-btn.reschedule-btn:focus {
     background: var(--zen-navy-hover);
-    color: white;
+    color: white !important;
     border-color: var(--zen-navy-hover);
-    text-decoration: none;
+    text-decoration: none !important;
 }
 .cancel-btn {
     background: var(--zen-bg-card);
@@ -417,11 +430,36 @@ textarea.field-inp {
 .loader-wrap {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    min-height: 320px; gap: 10px;
+    min-height: 320px; gap: 14px;
+    background: transparent;
 }
 .loader-label {
     font-size: 13px;
     color: var(--zen-text-muted);
+}
+/* Custom 3-dot spinner — replaces lightning-spinner (which renders inside
+   a white SLDS pill backdrop). Pure CSS, transparent background, just
+   three pulsing dots. */
+.dot-spinner {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+}
+.dot-spinner span {
+    width: 8px;
+    height: 8px;
+    background: var(--zen-text-muted);
+    border-radius: 50%;
+    display: inline-block;
+    animation: dot-spinner-pulse 1.4s infinite ease-in-out both;
+}
+.dot-spinner span:nth-child(2) { animation-delay: 0.2s; }
+.dot-spinner span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dot-spinner-pulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.7); }
+    40%          { opacity: 1;   transform: scale(1); }
 }
 
 .error-wrap {

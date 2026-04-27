@@ -6,7 +6,9 @@
     <template lwc:elseif={isLoading}>
         <div class="widget-shell">
             <div class="loader-wrap">
-                <lightning-spinner alternative-text="Loading..." size="medium"></lightning-spinner>
+                <div class="dot-spinner" role="status" aria-label="Loading">
+                    <span></span><span></span><span></span>
+                </div>
                 <p class="loader-label">Loading available times...</p>
             </div>
         </div>
@@ -114,15 +116,38 @@
                         <p class="summary-title">{headerLabel}</p>
 
                         <div class="summary-meta-row">
-                            <span class="summary-meta-icon">&#x1F552;</span>
+                            <span class="summary-meta-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                     aria-hidden="true">
+                                    <circle cx="12" cy="12" r="9"/>
+                                    <path d="M12 7v5l3 2"/>
+                                </svg>
+                            </span>
                             <span>{durationLabel}</span>
                         </div>
                         <div class="summary-meta-row">
-                            <span class="summary-meta-icon">&#x1F4F9;</span>
+                            <span class="summary-meta-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                     aria-hidden="true">
+                                    <rect x="3" y="6" width="13" height="12" rx="2"/>
+                                    <path d="m16 10 5-3v10l-5-3z"/>
+                                </svg>
+                            </span>
                             <span>Zoom video call</span>
                         </div>
                         <div class="summary-meta-row">
-                            <span class="summary-meta-icon">&#x1F310;</span>
+                            <span class="summary-meta-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                     aria-hidden="true">
+                                    <circle cx="12" cy="12" r="9"/>
+                                    <path d="M3 12h18"/>
+                                    <path d="M12 3a14 14 0 0 1 0 18"/>
+                                    <path d="M12 3a14 14 0 0 0 0 18"/>
+                                </svg>
+                            </span>
                             <span>{timezoneDisplay}</span>
                         </div>
 
@@ -131,7 +156,16 @@
                             <p class="summary-section-label">Current Booking</p>
                             <div class="summary-meeting-card">
                                 <p class="summary-meeting-detail">
-                                    <span class="summary-meta-icon">&#x1F4C5;</span>
+                                    <span class="summary-meta-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                             aria-hidden="true">
+                                            <rect x="3" y="5" width="18" height="16" rx="2"/>
+                                            <path d="M3 9h18"/>
+                                            <path d="M8 3v4"/>
+                                            <path d="M16 3v4"/>
+                                        </svg>
+                                    </span>
                                     <span>{originalStartDisplay}</span>
                                 </p>
                             </div>
@@ -175,7 +209,14 @@
 
                         <template lwc:if={showAssignedPdBanner}>
                             <div class="pd-banner">
-                                <span class="pd-banner-icon">&#x1F464;</span>
+                                <span class="pd-banner-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                         aria-hidden="true">
+                                        <circle cx="12" cy="8" r="4"/>
+                                        <path d="M4 21a8 8 0 0 1 16 0"/>
+                                    </svg>
+                                </span>
                                 <span class="pd-banner-text">{assignedPdDisplay}</span>
                             </div>
                         </template>
@@ -532,7 +573,14 @@
                                 </div>
                             </div>
                             <div class="confirmed-meeting-location">
-                                <span class="summary-meta-icon">&#x1F4F9;</span>
+                                <span class="summary-meta-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                         aria-hidden="true">
+                                        <rect x="3" y="6" width="13" height="12" rx="2"/>
+                                        <path d="m16 10 5-3v10l-5-3z"/>
+                                    </svg>
+                                </span>
                                 <span>Zoom video call &mdash; link will arrive in your email</span>
                             </div>
                         </div>
