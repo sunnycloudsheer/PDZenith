@@ -33,6 +33,7 @@
             </value>
         </inputParameters>
         <nameSegment>PDPostBookingHandler</nameSegment>
+        <offset>0</offset>
         <outputParameters>
             <assignToReference>varPDName</assignToReference>
             <name>pdName</name>
@@ -57,6 +58,7 @@
             <targetReference>Verify_PD_Assignment</targetReference>
         </connector>
         <faultConnector>
+            <isGoTo>true</isGoTo>
             <targetReference>PD_Assignment_Error</targetReference>
         </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
@@ -73,6 +75,7 @@
             </value>
         </inputParameters>
         <nameSegment>PDSchedulingConfigHandler</nameSegment>
+        <offset>0</offset>
         <outputParameters>
             <assignToReference>varPDTerritoryId</assignToReference>
             <name>serviceTerritoryId</name>
@@ -127,6 +130,7 @@
             </value>
         </inputParameters>
         <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
     </actionCalls>
     <actionCalls>
         <name>Send_PD_Email</name>
@@ -136,9 +140,11 @@
         <actionName>SchedulingEmailSender</actionName>
         <actionType>apex</actionType>
         <connector>
+            <isGoTo>true</isGoTo>
             <targetReference>Email_Sent_Screen</targetReference>
         </connector>
         <faultConnector>
+            <isGoTo>true</isGoTo>
             <targetReference>Email_Send_Error_Screen</targetReference>
         </faultConnector>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
@@ -161,6 +167,7 @@
             </value>
         </inputParameters>
         <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
     </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
@@ -209,6 +216,7 @@
             </value>
         </assignmentItems>
         <connector>
+            <isGoTo>true</isGoTo>
             <targetReference>Call_PD_Round_Robin</targetReference>
         </connector>
     </assignments>
@@ -335,7 +343,7 @@
     </assignments>
     <choices>
         <name>choiceFirstSOM</name>
-        <choiceText>First SOM Call (60 min)</choiceText>
+        <choiceText>Book First SOM Call (60 min)</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>first_som</stringValue>
@@ -359,7 +367,7 @@
     </choices>
     <choices>
         <name>choicePDLink</name>
-        <choiceText>PD Scheduling Link</choiceText>
+        <choiceText>Email PD Scheduling Link</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>pd_link</stringValue>
@@ -413,6 +421,38 @@
         </rules>
     </decisions>
     <decisions>
+        <name>Check_PD_Assigned</name>
+        <label>PD Already Assigned?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_Existing_First_SOM</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No PD Assigned</defaultConnectorLabel>
+        <rules>
+            <name>PD_Is_Assigned</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.Program_Director__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <stringValue>Contract Signed</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Force_Follow_Up</targetReference>
+            </connector>
+            <label>PD Already Assigned</label>
+        </rules>
+    </decisions>
+    <decisions>
         <name>Check_PD_Link_Sent</name>
         <label>PD Link Already Sent?</label>
         <locationX>0</locationX>
@@ -457,38 +497,6 @@
                 <targetReference>PD_Link_Already_Sent_Screen</targetReference>
             </connector>
             <label>PD Link Already Sent</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Assigned</name>
-        <label>PD Already Assigned?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Check_Existing_First_SOM</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No PD Assigned</defaultConnectorLabel>
-        <rules>
-            <name>PD_Is_Assigned</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.Program_Director__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.StageName</leftValueReference>
-                <operator>NotEqualTo</operator>
-                <rightValue>
-                    <stringValue>Contract Signed</stringValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Force_Follow_Up</targetReference>
-            </connector>
-            <label>PD Already Assigned</label>
         </rules>
     </decisions>
     <decisions>
@@ -697,6 +705,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
+            <isGoTo>true</isGoTo>
             <targetReference>Force_Follow_Up</targetReference>
         </defaultConnector>
         <defaultConnectorLabel>Not Contract Signed - Auto Follow-up</defaultConnectorLabel>
@@ -736,6 +745,7 @@
                 </rightValue>
             </conditions>
             <connector>
+                <isGoTo>true</isGoTo>
                 <targetReference>Check_FSS_Link_Sent</targetReference>
             </connector>
             <label>Contract Signed - FSS Link</label>
@@ -793,6 +803,7 @@
                 </rightValue>
             </conditions>
             <connector>
+                <isGoTo>true</isGoTo>
                 <targetReference>Force_Follow_Up</targetReference>
             </connector>
             <label>Follow-up Call</label>
@@ -837,6 +848,7 @@
                 </rightValue>
             </conditions>
             <connector>
+                <isGoTo>true</isGoTo>
                 <targetReference>Check_FSS_Link_Sent</targetReference>
             </connector>
             <label>FSS Scheduling Link</label>
@@ -873,6 +885,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
+            <isGoTo>true</isGoTo>
             <targetReference>PD_Assignment_Error</targetReference>
         </defaultConnector>
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
@@ -893,6 +906,7 @@
         </rules>
     </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
+    <environments>Default</environments>
     <formulas>
         <name>capturedAction</name>
         <dataType>String</dataType>
@@ -1210,54 +1224,6 @@
         <showHeader>false</showHeader>
     </screens>
     <screens>
-        <name>FSS_Link_Already_Sent_Screen</name>
-        <label>FSS Link Already Sent</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>FSSLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>PD_Link_Already_Sent_Screen</name>
-        <label>PD Link Already Sent</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>PDLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
         <name>Close_Won_Error_Screen</name>
         <label>Opportunity Closed</label>
         <locationX>0</locationX>
@@ -1375,6 +1341,30 @@
             </styleProperties>
         </fields>
         <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>FSS_Link_Already_Sent_Screen</name>
+        <label>FSS Link Already Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>FSSLinkSentMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>
@@ -1572,6 +1562,30 @@
         <showHeader>false</showHeader>
     </screens>
     <screens>
+        <name>PD_Link_Already_Sent_Screen</name>
+        <label>PD Link Already Sent</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>PDLinkSentMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
         <name>PD_Review_Screen</name>
         <label>Review Meeting Details</label>
         <locationX>0</locationX>
@@ -1626,6 +1640,7 @@
             </defaultValue>
             <fieldText>Program Director</fieldText>
             <fieldType>InputField</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
             <isReadOnly>
                 <booleanValue>true</booleanValue>
             </isReadOnly>
@@ -1929,6 +1944,7 @@
             </defaultValue>
             <fieldText>Select an option</fieldText>
             <fieldType>RadioButtons</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
             <isRequired>true</isRequired>
             <styleProperties>
                 <verticalAlignment>
@@ -1950,7 +1966,7 @@
             <targetReference>Get_Opportunity_Record</targetReference>
         </connector>
     </start>
-    <status>Draft</status>
+    <status>Active</status>
     <variables>
         <name>recordId</name>
         <dataType>String</dataType>

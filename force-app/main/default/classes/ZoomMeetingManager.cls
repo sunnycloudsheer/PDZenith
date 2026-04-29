@@ -725,6 +725,14 @@ public without sharing class ZoomMeetingManager {
         List<ZoomMeetingEmailService.SendInput> emailBatch,
         List<OutputWrapper> emailOwners
     ) {
+        // For Lead-based SAs (IC bookings), reflect the cancellation on the
+        // parent Lead by flipping its Status to "IC Canceled". Done first so
+        // the Lead update succeeds even on SAs that never had a Zoom meeting
+        // attached (the Zoom_Meeting_ID__c blank check below would otherwise
+        // short-circuit the whole method). Best-effort — failures are logged
+        // and don't block the rest of the cancel flow.
+        flipLeadStatusToCanceled(sa);
+
         if (String.isBlank(sa.Zoom_Meeting_ID__c)) {
             out.status = STATUS_SKIPPED;
             out.errorMessage = 'No Zoom meeting found to cancel.';
@@ -916,6 +924,58 @@ public without sharing class ZoomMeetingManager {
             User lo = ownerUsers.get(ctx.parentLead.OwnerId);
             if (isUsable(lo)) { ctx.host = lo; ctx.hostSource = 'Lead.Owner'; return; }
         }
+    }
+
+    /**
+     * For SAs whose ParentRecordId points at a Lead, flip the parent Lead's
+     * Status to "IC Canceled" when the meeting is cancelled, AND generate a
+     * fresh single-use IC_Reschedule_Token__c so the family can rebook into
+     * a new SA against the same Lead via IC_Reschedule_Link__c.
+     *
+     * Token generation is gated to leads that DON'T already have one — if
+     * IC_Meeting_Rescheduled__c is true (already rebooked once) we don't
+     * mint another, since by spec the link is single-use. tryPut is used so
+     * the apex still compiles in orgs that haven't yet deployed the new
+     * Lead.IC_Reschedule_Token__c / IC_Reschedule_Link__c / IC_Meeting_Rescheduled__c
+     * fields — silent no-op until the metadata lands.
+     *
+     * Idempotent (running it twice is harmless), best-effort (a Lead-update
+     * failure shouldn't block the cancel email or the Zoom DELETE), and
+     * gated to Lead-parent SAs only — Contact-based PD/FSS cancellations
+     * leave the Contact and downstream records alone.
+     */
+    private static void flipLeadStatusToCanceled(ServiceAppointment sa) {
+        if (sa == null || sa.ParentRecordType != 'Lead' || sa.ParentRecordId == null) return;
+        try {
+            Lead leadUpdate = new Lead(
+                Id = sa.ParentRecordId,
+                Status = 'IC Canceled'
+            );
+            // Mint a fresh rebook token. Same generator as the SA's
+            // Reschedule_Token__c so token format + entropy match. Cleared
+            // by GuestSchedulerController.bookAppointment after a successful
+            // rebook so the link is single-use.
+            tryPutOnLead(leadUpdate, 'IC_Reschedule_Token__c',
+                RescheduleTokenService.generateToken());
+            // Reset the rebook-completed flag in case the same Lead is being
+            // canceled a second time (admin reopened + canceled again).
+            tryPutOnLead(leadUpdate, 'IC_Meeting_Rescheduled__c', false);
+            update leadUpdate;
+        } catch (Exception e) {
+            System.debug(LoggingLevel.WARN,
+                'flipLeadStatusToCanceled: could not set Lead.Status=IC Canceled for SA '
+                + sa.Id + ' (Lead Id ' + sa.ParentRecordId + '): ' + e.getMessage());
+        }
+    }
+
+    /**
+     * Best-effort dynamic put on a Lead instance — swallows the field-doesn't-
+     * exist exception so this class compiles in orgs that haven't yet deployed
+     * the IC_Reschedule_Token__c / IC_Reschedule_Link__c / IC_Meeting_Rescheduled__c
+     * custom fields.
+     */
+    private static void tryPutOnLead(Lead l, String fieldName, Object value) {
+        try { l.put(fieldName, value); } catch (Exception ignored) { }
     }
 
     /**

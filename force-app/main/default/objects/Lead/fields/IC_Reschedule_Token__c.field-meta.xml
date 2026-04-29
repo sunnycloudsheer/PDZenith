@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>IC_Reschedule_Token__c</fullName>
+    <caseSensitive>true</caseSensitive>
+    <description>BACKEND-ONLY. Single-use token populated on the Lead when its IC Service Appointment is canceled. Lets the prospect rebook a new SA against the same Lead via the public booking widget without going through the full lead-capture flow again. Cleared by GuestSchedulerController.bookAppointment after a successful rebook so the link cannot be reused.</description>
+    <externalId>true</externalId>
+    <label>IC Reschedule Token</label>
+    <length>64</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>
