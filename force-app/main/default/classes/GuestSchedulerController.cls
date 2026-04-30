@@ -18,8 +18,8 @@ public without sharing class GuestSchedulerController {
     private static final Map<String, String> MEETING_TYPE_MAP = new Map<String, String>{
         'IC'    => 'Initial Consultation',
         'PD'    => 'Program Director - 60 Minutes',
-        'PD-FU' => 'Program Director - Follow Up',
-        'FSS'   => 'FSS Onboarding Meeting'
+        'PD-FU' => 'Program Director Follow Up',
+        'FSS'   => 'FSS Onboarding'
     };
     private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
         'IC'    => 'Initial Consultation - Zenith Prep Academy',
@@ -448,6 +448,74 @@ public without sharing class GuestSchedulerController {
     }
 
     /**
+     * Look up a Lead by its IC_Schedule_Token__c (first-time schedule link
+     * stamped by the Lead_Generate_IC_Schedule_Token flow on Lead create).
+     * Returns null when the token is blank, the field doesn't exist in the
+     * org's schema yet, no matching Lead is found, or the Lead already has
+     * an IC SA (Service_Appointment__c populated → link is spent).
+     */
+    private static Lead lookupLeadByScheduleToken(String token) {
+        if (String.isBlank(token)) return null;
+        if (!Schema.SObjectType.Lead.fields.getMap().containsKey('ic_schedule_token__c')) {
+            return null;
+        }
+        try {
+            String soql =
+                'SELECT Id, FirstName, LastName, Email, Phone, OwnerId, '
+              + '       Assigned_Admission_Counsellor__c, '
+              + '       Service_Appointment__c, '
+              + '       Student_Grade__c '
+              + 'FROM Lead WHERE IC_Schedule_Token__c = :token LIMIT 1';
+            List<Lead> hits = (List<Lead>) Database.query(soql);
+            if (hits.isEmpty()) return null;
+            Lead l = hits[0];
+            // Single-use: a populated Service_Appointment__c means an IC SA
+            // is already linked to this Lead — the link has been spent and
+            // must not be replayable.
+            try {
+                Object saId = l.get('Service_Appointment__c');
+                if (saId != null && String.isNotBlank(String.valueOf(saId))) return null;
+            } catch (Exception ignored) { }
+            return l;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Build the Lead first-schedule context map for getBookingConfig — same
+     * shape as buildLeadRebookContext (isRescheduling=true so the LWC skips
+     * the "Your Info" form, plus rescheduleContactInfo with name/email/phone/
+     * grade pre-fill from the Lead). Differs in that isLeadRebook is NOT set,
+     * so the 8-day rebook-window override does NOT apply — first-schedule
+     * uses the standard openWindowDays.
+     *
+     * Returns null when the token doesn't match any first-schedule Lead.
+     */
+    private static Map<String, Object> buildLeadScheduleContext(String scheduleToken) {
+        Lead lead = lookupLeadByScheduleToken(scheduleToken);
+        if (lead == null) return null;
+
+        Map<String, Object> out = new Map<String, Object>();
+        out.put('isRescheduling', true);
+        out.put('isLeadFirstSchedule', true);
+        out.put('leadId', String.valueOf(lead.Id));
+
+        Map<String, String> ci = new Map<String, String>();
+        ci.put('firstName', lead.FirstName != null ? lead.FirstName : '');
+        ci.put('lastName',  lead.LastName  != null ? lead.LastName  : '');
+        ci.put('email',     lead.Email     != null ? lead.Email     : '');
+        ci.put('phone',     lead.Phone     != null ? lead.Phone     : '');
+        try {
+            Object g = lead.get('Student_Grade__c');
+            ci.put('studentGrade', g != null ? String.valueOf(g) : '');
+        } catch (Exception ignored) { ci.put('studentGrade', ''); }
+        out.put('rescheduleContactInfo', ci);
+
+        return out;
+    }
+
+    /**
      * Look up a Lead by its IC_Reschedule_Token__c (post-cancel rebook).
      * Returns null when the token is blank, the field doesn't exist in the
      * org's schema yet (apex stays deployable to orgs that haven't deployed
@@ -538,26 +606,39 @@ public without sharing class GuestSchedulerController {
                     LIMIT 1
                 ];
                 Boolean isLeadRebook = false;
+                Boolean isLeadFirstSchedule = false;
                 ServiceAppointment orig = null;
                 if (origs.isEmpty()) {
-                    // SA token miss — try Lead.IC_Reschedule_Token__c
-                    // (post-cancel rebook link). If that hits, populate the
-                    // Lead-rebook context and FALL THROUGH to the standard
-                    // discover() / availableDates block below so the LWC
-                    // calendar gets every field it needs (durationMinutes,
-                    // operatingHoursId, availableDates, etc.). Returning
-                    // early here was the bug — without availableDates the
-                    // calendar greys out every day.
+                    // SA token miss — try the two Lead-side tokens in order:
+                    //   1. IC_Reschedule_Token__c (post-cancel rebook link)
+                    //   2. IC_Schedule_Token__c   (first-time schedule link
+                    //      generated by Lead_Generate_IC_Schedule_Token on
+                    //      Lead create)
+                    // Either context populates the Lead pre-fill so the LWC
+                    // skips the "Your Info" form. We FALL THROUGH to the
+                    // standard discover() / availableDates block below so
+                    // the LWC calendar gets durationMinutes, operatingHoursId,
+                    // availableDates, etc. — returning early here would grey
+                    // out every day.
                     Map<String, Object> leadRebookCtx = buildLeadRebookContext(rescheduleToken);
-                    if (leadRebookCtx == null) {
-                        out.put('success', false);
-                        out.put('error', 'LINK_ALREADY_USED');
-                        return out;
+                    if (leadRebookCtx != null) {
+                        out.putAll(leadRebookCtx);
+                        bookingType = 'IC';
+                        isRescheduling = true;
+                        isLeadRebook = true;
+                    } else {
+                        Map<String, Object> leadScheduleCtx =
+                            buildLeadScheduleContext(rescheduleToken);
+                        if (leadScheduleCtx == null) {
+                            out.put('success', false);
+                            out.put('error', 'LINK_ALREADY_USED');
+                            return out;
+                        }
+                        out.putAll(leadScheduleCtx);
+                        bookingType = 'IC';
+                        isRescheduling = true;
+                        isLeadFirstSchedule = true;
                     }
-                    out.putAll(leadRebookCtx);
-                    bookingType = 'IC';
-                    isRescheduling = true;
-                    isLeadRebook = true;
                 } else {
                     orig = origs[0];
                 }
@@ -799,7 +880,8 @@ public without sharing class GuestSchedulerController {
         String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
         String utmAd, String utmAdSet,
         String bookingType, String contactId, String opportunityId,
-        String rescheduleToken, String notes
+        String rescheduleToken, String notes,
+        String landingPageSource
     ) {
         Map<String, String> res = new Map<String, String>();
         Savepoint sp = Database.setSavepoint();
@@ -821,16 +903,24 @@ public without sharing class GuestSchedulerController {
                     FOR UPDATE
                 ];
                 if (origs.isEmpty()) {
-                    // SA miss — try Lead.IC_Reschedule_Token__c (post-cancel
-                    // rebook). If matched, dispatch to rebookICFromLead so a
-                    // NEW SA is created against the existing Lead (no new
-                    // Lead, no duplicate). The Lead's IC_Reschedule_Token__c
-                    // is cleared on success so the link is single-use.
+                    // SA miss — try the two Lead-side tokens in order:
+                    //   1. IC_Reschedule_Token__c → rebookICFromLead (post-
+                    //      cancel rebook against existing Lead).
+                    //   2. IC_Schedule_Token__c   → bookICFromScheduleToken
+                    //      (first-time schedule link generated when the
+                    //      Lead was created OUTSIDE the booking widget). No
+                    //      new Lead is created — the SA is booked against
+                    //      the Lead the AC sent the link to. Both single-
+                    //      use: the matched token is cleared on success.
                     leadRebook = lookupLeadByRebookToken(rescheduleToken);
+                    Lead leadFirstSchedule = null;
                     if (leadRebook == null) {
-                        res.put('success', 'false');
-                        res.put('error', 'LINK_ALREADY_USED');
-                        return res;
+                        leadFirstSchedule = lookupLeadByScheduleToken(rescheduleToken);
+                        if (leadFirstSchedule == null) {
+                            res.put('success', 'false');
+                            res.put('error', 'LINK_ALREADY_USED');
+                            return res;
+                        }
                     }
                     bType = 'IC';
                     DiscoveredConfig cfgLead = discover(bType);
@@ -841,8 +931,14 @@ public without sharing class GuestSchedulerController {
                         res.put('error', 'SLOT_UNAVAILABLE');
                         return res;
                     }
-                    rebookICFromLead(res, cfgLead, leadAssignment, leadRebook,
-                                     startDT, endDT, clientTimezone);
+                    if (leadRebook != null) {
+                        rebookICFromLead(res, cfgLead, leadAssignment, leadRebook,
+                                         startDT, endDT, clientTimezone, landingPageSource);
+                    } else {
+                        bookICFromScheduleToken(res, cfgLead, leadAssignment,
+                                                leadFirstSchedule, startDT, endDT,
+                                                clientTimezone, landingPageSource);
+                    }
                     return res;
                 }
                 originalSA = origs[0];
@@ -919,17 +1015,17 @@ public without sharing class GuestSchedulerController {
             }
 
             if (isICInPlaceReschedule) {
-                rescheduleICInPlace(res, originalSA, startDT, endDT);
+                rescheduleICInPlace(res, originalSA, startDT, endDT, landingPageSource);
             } else if (bType == 'IC') {
                 bookIC(res, cfg, assignment, startDT, endDT,
                        firstName, lastName, email, phone, studentGrade,
                        leadSource, guestEmails, clientTimezone,
                        utmSource, utmCampaign, utmMedium,
-                       utmAd, utmAdSet, notes);
+                       utmAd, utmAdSet, notes, landingPageSource);
             } else {
                 bookPDorFSS(res, cfg, assignment, bType, startDT, endDT,
                             contactId, opportunityId, clientTimezone,
-                            guestEmails, notes);
+                            guestEmails, notes, landingPageSource);
             }
 
             // Cross-link annotations only apply when reschedule was the
@@ -990,7 +1086,7 @@ public without sharing class GuestSchedulerController {
      */
     private static void rescheduleICInPlace(
         Map<String, String> res, ServiceAppointment originalSA,
-        DateTime startDT, DateTime endDT
+        DateTime startDT, DateTime endDT, String landingPageSource
     ) {
         DateTime saEndDT = startDT.addMinutes(60);
         String newToken = RescheduleTokenService.generateToken();
@@ -1003,6 +1099,16 @@ public without sharing class GuestSchedulerController {
         saUpd.ArrivalWindowStartTime = startDT;
         saUpd.ArrivalWindowEndTime   = saEndDT;
         saUpd.Reschedule_Token__c    = newToken;
+        // Is_Rescheduled__c is stamped by the before-save flow
+        // SA_Mark_Rescheduled_On_Time_Change, which fires when
+        // SchedStartTime + SchedEndTime both change — covers this LWC path
+        // AND any admin-direct SA time edit in Salesforce.
+        // Refresh the landing-page URL on reschedule — the family may have
+        // landed on a different page this time (the original is preserved on
+        // the Event/Lead/etc. timeline; the SA always reflects the latest).
+        if (String.isNotBlank(landingPageSource)) {
+            tryPut(saUpd, 'Landing_Page_Source__c', landingPageSource);
+        }
         update saUpd;
 
         // Best-effort Lead update so any Lead-side date-display fields stay
@@ -1065,7 +1171,8 @@ public without sharing class GuestSchedulerController {
      */
     private static void rebookICFromLead(
         Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
-        Lead leadRebook, DateTime startDT, DateTime endDT, String clientTimezone
+        Lead leadRebook, DateTime startDT, DateTime endDT, String clientTimezone,
+        String landingPageSource
     ) {
         Id saTerritoryId = (assignment.territoryId != null)
             ? assignment.territoryId : cfg.serviceTerritoryId;
@@ -1109,6 +1216,9 @@ public without sharing class GuestSchedulerController {
         // $Record.Lead__r.Email and fire the IC confirmation email — same
         // pattern as bookIC.
         tryPut(sa, 'Lead__c', leadRebook.Id);
+        // Stamp the landing-page URL the family arrived on so reporting can
+        // attribute the rebook back to a specific marketing page or campaign.
+        tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
         insert sa;
 
         AssignedResource ar = new AssignedResource();
@@ -1140,13 +1250,110 @@ public without sharing class GuestSchedulerController {
         stampActionUrls(res, sa.Reschedule_Token__c);
     }
 
+    /**
+     * First-time IC schedule against an existing Lead. Mirrors rebookICFromLead
+     * but is wired to the IC_Schedule_Token__c (not the rebook token):
+     *
+     *   - No new Lead is created — the SA hangs off the Lead the AC sent the
+     *     IC_Schedule_Link__c to.
+     *   - Lead.OwnerId + Lead.Assigned_Admission_Counsellor__c are stamped
+     *     with the round-robin AC user (per spec — owner reassigned on book).
+     *   - IC_Schedule_Token__c + IC_Schedule_Link__c are CLEARED so the link
+     *     is single-use; the duplicate-send guard on Lead create won't re-fire
+     *     because Lead.Service_Appointment__c is now populated.
+     *   - IC_Meeting_Rescheduled__c is intentionally NOT set — this is the
+     *     family's first IC, not a reschedule.
+     */
+    private static void bookICFromScheduleToken(
+        Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
+        Lead leadSched, DateTime startDT, DateTime endDT, String clientTimezone,
+        String landingPageSource
+    ) {
+        Id saTerritoryId = (assignment.territoryId != null)
+            ? assignment.territoryId : cfg.serviceTerritoryId;
+        DateTime saEndDT = startDT.addMinutes(60);
+
+        ServiceAppointment sa = new ServiceAppointment();
+        sa.ParentRecordId = leadSched.Id;
+        sa.ServiceTerritoryId = saTerritoryId;
+        sa.WorkTypeId = cfg.workTypeId;
+        sa.EarliestStartTime = startDT;
+        sa.DueDate = saEndDT;
+        sa.SchedStartTime = startDT;
+        sa.SchedEndTime = saEndDT;
+        sa.ArrivalWindowStartTime = startDT;
+        sa.ArrivalWindowEndTime = saEndDT;
+        sa.DurationType = cfg.durationType;
+        sa.AppointmentType = cfg.appointmentType;
+        sa.Status = 'Scheduled';
+        sa.Subject = SUBJECT_MAP.get('IC');
+        sa.Street = cfg.street;
+        sa.City = cfg.city;
+        sa.State = cfg.state;
+        sa.Phone = leadSched.Phone;
+        sa.Email = leadSched.Email;
+        sa.Meeting_Type__c = MEETING_TYPE_MAP.get('IC');
+        sa.AdditionalInformation = cfg.workTypeName;
+        sa.Admission_Counselor__c = assignment.userId;
+        if (String.isNotBlank(clientTimezone)) sa.TimeZone = normalizeTimezone(clientTimezone);
+        try {
+            Object g = leadSched.get('Student_Grade__c');
+            if (g != null) sa.Student_Grade__c = String.valueOf(g);
+        } catch (Exception ignored) { }
+        sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
+        String custName = ((leadSched.FirstName == null ? '' : leadSched.FirstName)
+                         + ' '
+                         + (leadSched.LastName == null ? '' : leadSched.LastName)).trim();
+        if (String.isNotBlank(custName)) {
+            tryPut(sa, 'Customer_Name__c', custName);
+        }
+        // Populate Lead lookup so Meeting_After_RTF can resolve
+        // $Record.Lead__r.Email and fire the IC confirmation email — same
+        // pattern as bookIC + rebookICFromLead.
+        tryPut(sa, 'Lead__c', leadSched.Id);
+        // Stamp the landing-page URL the family arrived on so reporting can
+        // attribute the booking back to a specific marketing page or campaign.
+        tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
+        insert sa;
+
+        AssignedResource ar = new AssignedResource();
+        ar.ServiceAppointmentId = sa.Id;
+        ar.ServiceResourceId = assignment.resourceId;
+        insert ar;
+
+        // Stamp the Lead with first-schedule outcome:
+        //   - Owner + AC = round-robin assigned user
+        //   - Status = IC Scheduled
+        //   - Service_Appointment__c = sa.Id (kills the link via the formula
+        //     guard AND prevents Lead_Generate_IC_Schedule_Token from re-firing)
+        //   - IC_Schedule_Token__c / IC_Schedule_Link__c cleared (single-use)
+        try {
+            Lead leadUpdate = new Lead(Id = leadSched.Id);
+            leadUpdate.OwnerId = assignment.userId;
+            try { leadUpdate.put('Assigned_Admission_Counsellor__c', assignment.userId); } catch (Exception ignored) { }
+            leadUpdate.Status = 'IC Scheduled';
+            try { leadUpdate.put('Meeting_Status__c', 'Scheduled'); } catch (Exception ignored) { }
+            try { leadUpdate.put('IC_Schedule_Token__c', null); } catch (Exception ignored) { }
+            try { leadUpdate.put('IC_Schedule_Link__c', null); } catch (Exception ignored) { }
+            try { leadUpdate.put('Scheduled_Meeting_DateTime__c', startDT); } catch (Exception ignored) { }
+            try { leadUpdate.put('Service_Appointment__c', sa.Id); } catch (Exception ignored) { }
+            update leadUpdate;
+        } catch (Exception ex) { }
+
+        res.put('success', 'true');
+        res.put('appointmentId', sa.Id);
+        res.put('leadId', leadSched.Id);
+        stampActionUrls(res, sa.Reschedule_Token__c);
+    }
+
     private static void bookIC(
         Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
         DateTime startDT, DateTime endDT,
         String firstName, String lastName, String email, String phone,
         String studentGrade, String leadSource, String guestEmails,
         String clientTimezone, String utmSource, String utmCampaign, String utmMedium,
-        String utmAd, String utmAdSet, String notes
+        String utmAd, String utmAdSet, String notes,
+        String landingPageSource
     ) {
         String cleanEmail = email.trim().toLowerCase();
         String cleanFirst = firstName.trim();
@@ -1243,6 +1450,11 @@ public without sharing class GuestSchedulerController {
             // live on the Lead (Guest_Emails__c) and are read back through
             // sa.Lead__r.Guest_Emails__c in the email-build path.
             tryPut(sa, 'Lead__c', mktLead.Id);
+            // Stamp the landing-page URL the family arrived on so reporting
+            // can attribute the booking back to a specific marketing page or
+            // campaign. tryPut keeps the deploy clean if Landing_Page_Source__c
+            // doesn't exist yet in this org.
+            tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
             insert sa;
 
             AssignedResource ar = new AssignedResource();
@@ -1280,7 +1492,7 @@ public without sharing class GuestSchedulerController {
         Map<String, String> res, DiscoveredConfig cfg, ResourceAssignment assignment,
         String bType, DateTime startDT, DateTime endDT,
         String contactId, String opportunityId, String clientTimezone,
-        String guestEmails, String notes
+        String guestEmails, String notes, String landingPageSource
     ) {
         List<String> guestList = parseGuestEmails(guestEmails);
         String meetingType = MEETING_TYPE_MAP.get(bType);
@@ -1375,7 +1587,28 @@ public without sharing class GuestSchedulerController {
         // practice. If a guest UI is added for PD/FSS later, persist guests
         // on the Contact (or related Account) — keep the SA UI free of
         // backend-only data.
+        // Stamp the landing-page URL the family arrived on so reporting
+        // can attribute the booking back to a specific marketing page or
+        // campaign. tryPut keeps the deploy clean if Landing_Page_Source__c
+        // doesn't exist yet in this org.
+        tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
         insert sa;
+
+        // Defensive Meeting_Type__c re-stamp: some orgs have an after-insert
+        // automation (workflow / process / flow) that overwrites Meeting_Type__c
+        // with the WorkType.Name (e.g. "Regular Meeting - 30 min"). Re-applying
+        // the canonical value via update fires AFTER any insert-triggered
+        // automation, so the SA's final state is the intended Meeting_Type
+        // (e.g. "FSS Onboarding", "Program Director - 60 Minutes"), not the
+        // WorkType name. Best-effort — swallow errors so booking still succeeds.
+        try {
+            ServiceAppointment mtFix = new ServiceAppointment(Id = sa.Id);
+            mtFix.Meeting_Type__c = meetingType;
+            update mtFix;
+        } catch (Exception mtEx) {
+            System.debug(LoggingLevel.WARN,
+                'Meeting_Type__c re-stamp failed for SA ' + sa.Id + ': ' + mtEx.getMessage());
+        }
 
         AssignedResource ar = new AssignedResource();
         ar.ServiceAppointmentId = sa.Id;
@@ -1404,32 +1637,27 @@ public without sharing class GuestSchedulerController {
             update pdSr;
         } catch (Exception srEx) { }
 
+        // PD / FSS assignment is OPPORTUNITY-level (each Opp owns its own
+        // counselor — multiple Opps under the same Account can be scheduled
+        // with different PDs / FSSs without trampling each other through a
+        // shared parent Contact). The Student-role OCR's Contact mirrors
+        // the Opportunity assignment, so the student's record reflects who
+        // is currently helping them. The Primary / parent Contact is NEVER
+        // written here.
         if (bType == 'PD' && String.isNotBlank(opportunityId)) {
             try {
                 Opportunity opp = [SELECT Id, Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
                 if (opp.Program_Director__c == null) { opp.Program_Director__c = assignment.userId; update opp; }
             } catch (Exception ex) { }
-            if (conId != null) {
-                try {
-                    Contact con = [SELECT Id, Program_Director__c FROM Contact WHERE Id = :conId LIMIT 1];
-                    if (con.Program_Director__c == null) { con.Program_Director__c = assignment.userId; update con; }
-                } catch (Exception ex) { }
-            }
+            stampStudentContact((Id) opportunityId, 'Program_Director__c', assignment.userId);
         }
 
-        if (bType == 'FSS') {
-            if (String.isNotBlank(opportunityId)) {
-                try {
-                    Opportunity opp = [SELECT Id, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-                    if (opp.Family_Success_Specialist__c == null) { opp.Family_Success_Specialist__c = assignment.userId; update opp; }
-                } catch (Exception ex) { }
-            }
-            if (conId != null) {
-                try {
-                    Contact con = [SELECT Id, Family_Success_Specialist__c FROM Contact WHERE Id = :conId LIMIT 1];
-                    if (con.Family_Success_Specialist__c == null) { con.Family_Success_Specialist__c = assignment.userId; update con; }
-                } catch (Exception ex) { }
-            }
+        if (bType == 'FSS' && String.isNotBlank(opportunityId)) {
+            try {
+                Opportunity opp = [SELECT Id, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
+                if (opp.Family_Success_Specialist__c == null) { opp.Family_Success_Specialist__c = assignment.userId; update opp; }
+            } catch (Exception ex) { }
+            stampStudentContact((Id) opportunityId, 'Family_Success_Specialist__c', assignment.userId);
         }
 
         if (isOneTimeUseType(bType) && String.isNotBlank(opportunityId)) {
@@ -1865,6 +2093,37 @@ public without sharing class GuestSchedulerController {
 
     private static void tryPut(SObject rec, String f, Object v) {
         try { rec.put(f, v); } catch (Exception ex) { }
+    }
+
+    /**
+     * Mirror an Opportunity-level user assignment (PD or FSS) onto the
+     * Student-role OCR's Contact. Best-effort: a missing Student OCR,
+     * missing Contact field, FLS issue, or validation rule must not
+     * roll back the booking itself, so the whole block is swallowed.
+     * Per spec, the Primary / parent Contact is never written here —
+     * only the Student.
+     */
+    private static void stampStudentContact(Id opportunityId, String contactFieldName, Id userId) {
+        if (opportunityId == null || userId == null || String.isBlank(contactFieldName)) return;
+        try {
+            List<OpportunityContactRole> ocrs = [
+                SELECT ContactId
+                FROM OpportunityContactRole
+                WHERE OpportunityId = :opportunityId
+                  AND Role = 'Student'
+                  AND ContactId != null
+                ORDER BY CreatedDate ASC
+                LIMIT 1
+            ];
+            if (ocrs.isEmpty()) return;
+            Contact sc = new Contact(Id = ocrs[0].ContactId);
+            tryPut(sc, contactFieldName, userId);
+            update sc;
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.WARN,
+                'stampStudentContact failed for opp=' + opportunityId
+                + ' field=' + contactFieldName + ': ' + ex.getMessage());
+        }
     }
 
     /**

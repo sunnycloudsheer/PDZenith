@@ -180,7 +180,7 @@
             <assignToReference>varSelectedAction</assignToReference>
             <operator>Assign</operator>
             <value>
-                <elementReference>capturedAction</elementReference>
+                <elementReference>MeetingTypeSelectionICNoSOM</elementReference>
             </value>
         </assignmentItems>
         <connector>
@@ -343,7 +343,7 @@
     </assignments>
     <choices>
         <name>choiceFirstSOM</name>
-        <choiceText>Book First SOM Call (60 min)</choiceText>
+        <choiceText>Book First SOM Call</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>first_som</stringValue>
@@ -351,7 +351,7 @@
     </choices>
     <choices>
         <name>choiceFollowUp</name>
-        <choiceText>Follow-up Call (30 min)</choiceText>
+        <choiceText>Book Follow-Up 30 Min Call</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>follow_up</stringValue>
@@ -359,7 +359,7 @@
     </choices>
     <choices>
         <name>choiceFSSLink</name>
-        <choiceText>FSS Scheduling Link</choiceText>
+        <choiceText>Send FSS Scheduling Link</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>fss_link</stringValue>
@@ -367,10 +367,18 @@
     </choices>
     <choices>
         <name>choicePDLink</name>
-        <choiceText>Email PD Scheduling Link</choiceText>
+        <choiceText>Send PD Scheduling Link</choiceText>
         <dataType>String</dataType>
         <value>
             <stringValue>pd_link</stringValue>
+        </value>
+    </choices>
+    <choices>
+        <name>choiceFSSFollowUp</name>
+        <choiceText>Book FSS Follow Up Call</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>fss_follow_up</stringValue>
         </value>
     </choices>
     <decisions>
@@ -379,9 +387,9 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
-            <targetReference>Send_FSS_Email</targetReference>
+            <targetReference>Select_FSS_Link_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>Not Sent - Proceed</defaultConnectorLabel>
+        <defaultConnectorLabel>Not Sent - Show FSS Confirmation</defaultConnectorLabel>
         <rules>
             <name>Both_Links_Sent_FSS</name>
             <conditionLogic>and</conditionLogic>
@@ -447,7 +455,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Force_Follow_Up</targetReference>
+                <targetReference>Select_Follow_Up_Screen</targetReference>
             </connector>
             <label>PD Already Assigned</label>
         </rules>
@@ -705,10 +713,9 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
-            <isGoTo>true</isGoTo>
-            <targetReference>Force_Follow_Up</targetReference>
+            <targetReference>Select_Follow_Up_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>Not Contract Signed - Auto Follow-up</defaultConnectorLabel>
+        <defaultConnectorLabel>Not Contract Signed - Show Follow-Up Option</defaultConnectorLabel>
         <rules>
             <name>Is_Contract_Signed_FSS</name>
             <conditionLogic>and</conditionLogic>
@@ -720,7 +727,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_FSS_Link_Sent</targetReference>
+                <targetReference>Check_Existing_FSS_Meeting</targetReference>
             </connector>
             <label>Contract Signed - FSS Link</label>
         </rules>
@@ -746,9 +753,34 @@
             </conditions>
             <connector>
                 <isGoTo>true</isGoTo>
-                <targetReference>Check_FSS_Link_Sent</targetReference>
+                <targetReference>Check_Existing_FSS_Meeting</targetReference>
             </connector>
             <label>Contract Signed - FSS Link</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Has_FSS_Meeting_Booked</name>
+        <label>Has FSS Meeting Booked?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Check_FSS_Link_Sent</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No FSS Meeting - Check Link Status</defaultConnectorLabel>
+        <rules>
+            <name>FSS_Meeting_Exists</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Check_Existing_FSS_Meeting</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Select_FSS_Follow_Up_Screen</targetReference>
+            </connector>
+            <label>FSS Meeting Booked - Show Follow-Up</label>
         </rules>
     </decisions>
     <decisions>
@@ -967,6 +999,41 @@
         </faultConnector>
         <inputReference>ServiceAppointment</inputReference>
     </recordCreates>
+    <recordLookups>
+        <name>Check_Existing_FSS_Meeting</name>
+        <label>Check Existing FSS Meeting</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Has_FSS_Meeting_Booked</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>ParentRecordId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Meeting_Type__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>FSS Onboarding</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Status</field>
+            <operator>NotEqualTo</operator>
+            <value>
+                <stringValue>Canceled</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>ServiceAppointment</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
     <recordLookups>
         <name>Check_Existing_First_SOM</name>
         <label>Check Existing First SOM</label>
@@ -1907,6 +1974,176 @@
                 </width>
             </styleProperties>
         </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>FSS_Follow_Up_Submitted_Screen</name>
+        <label>FSS Follow-Up Submitted</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>FSSFollowUpSubmittedMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;FSS Follow-Up Call request submitted.&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The assigned Family Success Specialist will be in touch to confirm the meeting time.&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Select_FSS_Follow_Up_Screen</name>
+        <label>Book Meeting</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>FSS_Follow_Up_Submitted_Screen</targetReference>
+        </connector>
+        <fields>
+            <name>FSSFollowUpHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSFollowUpRadio</name>
+            <choiceReferences>choiceFSSFollowUp</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>fss_follow_up</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Select_Follow_Up_Screen</name>
+        <label>Book Meeting</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Force_Follow_Up</targetReference>
+        </connector>
+        <fields>
+            <name>FollowUpHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FollowUpRadio</name>
+            <choiceReferences>choiceFollowUp</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>follow_up</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Select_FSS_Link_Screen</name>
+        <label>Book Meeting</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Send_FSS_Email</targetReference>
+        </connector>
+        <fields>
+            <name>FSSLinkHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSLinkRadio</name>
+            <choiceReferences>choiceFSSLink</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>fss_link</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>

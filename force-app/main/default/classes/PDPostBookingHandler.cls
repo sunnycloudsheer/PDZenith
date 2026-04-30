@@ -51,7 +51,8 @@ public without sharing class PDPostBookingHandler {
             WHERE Id IN :oppIds
         ]);
 
-        // Pre-query primary contacts for all Opportunities (no SOQL in loop)
+        // Pre-query primary contacts for all Opportunities (no SOQL in loop).
+        // Primary OCR is used for Event.WhoId (parent attends the meeting).
         Map<Id, Id> oppToContactId = new Map<Id, Id>();
         for (OpportunityContactRole ocr : [
             SELECT OpportunityId, ContactId
@@ -59,6 +60,89 @@ public without sharing class PDPostBookingHandler {
             WHERE OpportunityId IN :oppIds AND IsPrimary = true
         ]) {
             oppToContactId.put(ocr.OpportunityId, ocr.ContactId);
+        }
+
+        // Pre-query STUDENT-role OCRs for all Opportunities. These drive the
+        // Student-side Contact writes (Program_Director__c, Stage__c). Per
+        // spec the Primary / parent Contact is NEVER written here — the
+        // student's Contact is the single source of truth for their lifecycle.
+        // First Student wins per Opp in the rare case of duplicates.
+        Map<Id, Id> oppToStudentContactId = new Map<Id, Id>();
+        for (OpportunityContactRole ocr : [
+            SELECT OpportunityId, ContactId
+            FROM OpportunityContactRole
+            WHERE OpportunityId IN :oppIds
+              AND Role = 'Student'
+              AND ContactId != null
+            ORDER BY CreatedDate ASC
+        ]) {
+            if (!oppToStudentContactId.containsKey(ocr.OpportunityId)) {
+                oppToStudentContactId.put(ocr.OpportunityId, ocr.ContactId);
+            }
+        }
+
+        // Auto-create a Student-role OCR for any Opp that doesn't already
+        // have one. Heuristic: pick the first Contact on the Opp's Account
+        // that isn't the Primary OCR's Contact (typically the parent), and
+        // attach it as Role='Student'. Best-effort — if the Account has no
+        // other Contact, the Opp simply gets no Student-side Contact write
+        // and the rest of the booking proceeds normally.
+        Set<Id> oppsNeedingStudentOCR = new Set<Id>();
+        for (Id oppId : oppIds) {
+            if (!oppToStudentContactId.containsKey(oppId)) {
+                oppsNeedingStudentOCR.add(oppId);
+            }
+        }
+        if (!oppsNeedingStudentOCR.isEmpty()) {
+            Set<Id> accountIds = new Set<Id>();
+            for (Id oppId : oppsNeedingStudentOCR) {
+                Opportunity opp = oppMap.get(oppId);
+                if (opp != null && opp.AccountId != null) {
+                    accountIds.add(opp.AccountId);
+                }
+            }
+            Map<Id, List<Contact>> accountToContacts = new Map<Id, List<Contact>>();
+            if (!accountIds.isEmpty()) {
+                for (Contact c : [
+                    SELECT Id, AccountId
+                    FROM Contact
+                    WHERE AccountId IN :accountIds
+                    ORDER BY CreatedDate ASC
+                ]) {
+                    if (!accountToContacts.containsKey(c.AccountId)) {
+                        accountToContacts.put(c.AccountId, new List<Contact>());
+                    }
+                    accountToContacts.get(c.AccountId).add(c);
+                }
+            }
+            List<OpportunityContactRole> newStudentOCRs = new List<OpportunityContactRole>();
+            for (Id oppId : oppsNeedingStudentOCR) {
+                Opportunity opp = oppMap.get(oppId);
+                if (opp == null || opp.AccountId == null) continue;
+                List<Contact> candidates = accountToContacts.get(opp.AccountId);
+                if (candidates == null || candidates.isEmpty()) continue;
+                Id primaryContactId = oppToContactId.get(oppId);
+                for (Contact c : candidates) {
+                    if (primaryContactId != null && c.Id == primaryContactId) continue;
+                    newStudentOCRs.add(new OpportunityContactRole(
+                        OpportunityId = oppId,
+                        ContactId     = c.Id,
+                        Role          = 'Student'
+                    ));
+                    break; // first non-Primary Contact wins
+                }
+            }
+            if (!newStudentOCRs.isEmpty()) {
+                try {
+                    insert newStudentOCRs;
+                    for (OpportunityContactRole ocr : newStudentOCRs) {
+                        oppToStudentContactId.put(ocr.OpportunityId, ocr.ContactId);
+                    }
+                } catch (Exception ex) {
+                    System.debug(LoggingLevel.WARN,
+                        'Auto-create Student OCR failed: ' + ex.getMessage());
+                }
+            }
         }
 
         // Pre-query ServiceResources for all sticky PD users (no SOQL in loop)
@@ -79,12 +163,15 @@ public without sharing class PDPostBookingHandler {
         }
 
         // ── 3. Process each request, collecting DML for batching ─────────
-        List<ServiceAppointment> sasToUpdate      = new List<ServiceAppointment>();
+        List<ServiceAppointment> sasToUpdate       = new List<ServiceAppointment>();
         List<AssignedResource>   arsToInsert       = new List<AssignedResource>();
-        List<Event>              eventsToInsert     = new List<Event>();
-        List<ServiceResource>    resourcesToUpdate  = new List<ServiceResource>();
-        List<Opportunity>        oppsToUpdate       = new List<Opportunity>();
-        List<Contact>            contactsToUpdate   = new List<Contact>();
+        List<Event>              eventsToInsert    = new List<Event>();
+        List<ServiceResource>    resourcesToUpdate = new List<ServiceResource>();
+        List<Opportunity>        oppsToUpdate      = new List<Opportunity>();
+        // Student-Contact updates (PD stamp + Stage). Dedupe by Contact Id
+        // in case multiple Opps for the same student are processed in one
+        // batch — last write wins, matching Salesforce's own DML semantics.
+        Map<Id, Contact>         studentContactsById = new Map<Id, Contact>();
 
         // Track per-request data for result assembly
         List<PostBookingRequest> validRequests = new List<PostBookingRequest>();
@@ -180,16 +267,40 @@ public without sharing class PDPostBookingHandler {
                 // ── Build Opportunity update (PD stamp + stage) ──
                 Opportunity oppUpd = new Opportunity(Id = opp.Id);
                 oppUpd.Program_Director__c = pd.RelatedRecordId;
-                if (opp.StageName != 'SOM Scheduled') {
+                // First SOM call booked — flip the Opportunity stage to
+                // "SOM Scheduled". PD Follow-Up bookings (`followUp=true`)
+                // must leave the stage alone — by the time a follow-up
+                // happens the opp may already be in "SOM Completed",
+                // "Contract Sent", etc., and we don't want to drag it back.
+                // Don't downgrade from closed states either, and don't
+                // re-stamp if we're already at "SOM Scheduled".
+                Boolean isFirstSOMTransition = (!followUp
+                    && opp.StageName != 'SOM Scheduled'
+                    && opp.StageName != 'Closed Won'
+                    && opp.StageName != 'Closed Lost');
+                if (isFirstSOMTransition) {
                     oppUpd.StageName = 'SOM Scheduled';
                 }
                 oppsToUpdate.add(oppUpd);
 
-                // ── Build Contact update ──
-                if (contactId != null) {
-                    Contact conUpd = new Contact(Id = contactId);
-                    conUpd.Program_Director__c = pd.RelatedRecordId;
-                    contactsToUpdate.add(conUpd);
+                // ── Build Student-Contact update (PD stamp + Stage) ──
+                // Mirror PD assignment + lifecycle stage onto the
+                // Student-role OCR's Contact (NEVER the Primary / parent).
+                // Multiple Opps under the same Account each have their own
+                // Student OCR, so cross-program writes don't trample each
+                // other through a shared parent Contact.
+                Id studentContactId = oppToStudentContactId.get(opp.Id);
+                if (studentContactId != null) {
+                    Contact sc = studentContactsById.containsKey(studentContactId)
+                        ? studentContactsById.get(studentContactId)
+                        : new Contact(Id = studentContactId);
+                    tryPut(sc, 'Program_Director__c', pd.RelatedRecordId);
+                    if (isFirstSOMTransition) {
+                        // Mirror the "SOM Scheduled" Opp stage onto the
+                        // Student's Contact.Stage__c — same value on both sides.
+                        tryPut(sc, 'Stage__c', 'SOM Scheduled');
+                    }
+                    studentContactsById.put(studentContactId, sc);
                 }
 
                 // Store for result assembly
@@ -226,9 +337,15 @@ public without sharing class PDPostBookingHandler {
             try { update oppsToUpdate; }
             catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Opp batch update failed: ' + ex.getMessage()); }
         }
-        if (!contactsToUpdate.isEmpty()) {
-            try { update contactsToUpdate; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Contact batch update failed: ' + ex.getMessage()); }
+        // Student-Contact batch update — best-effort, never rolls back the
+        // booking itself if the Contact write fails (FLS, validation rule,
+        // org missing the Stage__c / Program_Director__c fields).
+        if (!studentContactsById.isEmpty()) {
+            try { update studentContactsById.values(); }
+            catch (Exception ex) {
+                System.debug(LoggingLevel.WARN,
+                    'Student Contact batch update failed: ' + ex.getMessage());
+            }
         }
 
         return results;

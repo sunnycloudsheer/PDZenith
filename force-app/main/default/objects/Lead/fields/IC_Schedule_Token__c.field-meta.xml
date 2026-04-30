@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>IC_Schedule_Token__c</fullName>
+    <caseSensitive>true</caseSensitive>
+    <description>BACKEND-ONLY. Single-use token populated on Lead create when no IC Service Appointment exists yet, by the Lead_Generate_IC_Schedule_Token record-triggered flow (which calls LeadICScheduleTokenStamper). Used to build IC_Schedule_Link__c so an AC / marketing user can share an initial-call booking link with the family. Cleared by GuestSchedulerController after a successful first-time IC schedule so the link cannot be re-used.</description>
+    <externalId>true</externalId>
+    <label>IC Schedule Token</label>
+    <length>64</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>

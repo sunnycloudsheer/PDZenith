@@ -52,7 +52,7 @@ public without sharing class SchedulingEmailSender {
             FROM Contact WHERE Id IN :contactIds
         ]);
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Name, Account.Name
+            SELECT Id, Name, Account.Name, StageName
             FROM Opportunity WHERE Id IN :oppIds
         ]);
 
@@ -150,10 +150,24 @@ public without sharing class SchedulingEmailSender {
                 emailsToSend.add(mail);
                 emailToResultIndex.add(i);
 
-                // Pre-build Opportunity link update
+                // Pre-build Opportunity link + stage update.
+                //   - PD link sent → stamp PD_Scheduling_Link__c (the
+                //     populated value also serves as the "email already
+                //     sent" guard via the flow's Check_PD_Link_Sent
+                //     decision) and flip StageName to
+                //     "SOM Scheduling Link Sent".
+                //   - FSS link sent → stamp FSS_Scheduling_Link__c (same
+                //     pattern: populated value is the duplicate-send guard
+                //     via the flow's Check_FSS_Link_Sent decision).
                 Opportunity oppUpd = new Opportunity(Id = req.opportunityId);
                 if (bType == 'PD') {
                     oppUpd.PD_Scheduling_Link__c = bookingLink;
+                    Opportunity oppRead = oppMap.get(req.opportunityId);
+                    if (oppRead != null && oppRead.StageName != 'SOM Scheduled'
+                        && oppRead.StageName != 'Closed Won'
+                        && oppRead.StageName != 'Closed Lost') {
+                        oppUpd.StageName = 'SOM Scheduling Link Sent';
+                    }
                 } else if (bType == 'FSS') {
                     oppUpd.FSS_Scheduling_Link__c = bookingLink;
                 }
