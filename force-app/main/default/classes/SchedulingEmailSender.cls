@@ -17,6 +17,9 @@ public without sharing class SchedulingEmailSender {
 
         @InvocableVariable(required=true label='Email Type (PD or FSS)')
         public String emailType;
+
+        @InvocableVariable(label='Skip Email (generate link only)')
+        public Boolean skipEmail;
     }
 
     public class EmailResult {
@@ -52,7 +55,8 @@ public without sharing class SchedulingEmailSender {
             FROM Contact WHERE Id IN :contactIds
         ]);
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Name, Account.Name, StageName
+            SELECT Id, Name, Account.Name, StageName,
+                   PD_Scheduling_Link__c, FSS_Scheduling_Link__c
             FROM Opportunity WHERE Id IN :oppIds
         ]);
 
@@ -68,13 +72,28 @@ public without sharing class SchedulingEmailSender {
 
         // ── 3. Build emails and collect DML ──────────────────────────────
         List<Messaging.SingleEmailMessage> emailsToSend = new List<Messaging.SingleEmailMessage>();
-        List<Opportunity> oppsToUpdate = new List<Opportunity>();
+        // Track Opp updates keyed by request index so we can selectively
+        // null out a request's link stamp if its email fails. Map (rather
+        // than parallel List) keeps index bookkeeping correct even when
+        // skipEmail=true on some requests but not others — those entries
+        // get an Opp update without an emailsToSend entry.
+        Map<Integer, Opportunity> oppsByRequestIndex = new Map<Integer, Opportunity>();
+        // One activity Task per successful Send-Email request, keyed by
+        // request index. Inserted only after Messaging.sendEmail confirms
+        // success — keeps the Opportunity activity timeline in sync with
+        // what was actually delivered. The Task carries both WhoId
+        // (Contact) and WhatId (Opportunity) so it shows on both
+        // timelines, regardless of whether the org has Enhanced Email
+        // enabled. setSaveAsActivity is intentionally false below to
+        // avoid the platform creating a duplicate auto-Task.
+        Map<Integer, Task> activityTasksByRequestIndex = new Map<Integer, Task>();
         // Track which index maps to which request for result assembly
         List<Integer> emailToResultIndex = new List<Integer>();
 
         for (Integer i = 0; i < requests.size(); i++) {
             EmailRequest req = requests[i];
             EmailResult res = new EmailResult();
+            Boolean skipEmail = (req.skipEmail != null && req.skipEmail);
             try {
                 String bType = (req.emailType != null) ? req.emailType.toUpperCase() : 'PD';
                 String templateDevName = TEMPLATE_MAP.get(bType);
@@ -82,73 +101,118 @@ public without sharing class SchedulingEmailSender {
                     throw new AuraHandledException('Unknown email type: ' + req.emailType);
                 }
 
-                EmailTemplate tmpl = templateCache.get(templateDevName);
-                if (tmpl == null) {
-                    throw new AuraHandledException(
-                        'Email template "' + templateDevName + '" not found. '
-                        + 'Please create it in Setup > Email Templates.');
+                // Determine the booking link:
+                //   - skipEmail=true  (Generate-Only): always mint a fresh
+                //     token. The button's purpose is to issue/refresh the
+                //     link, so callers expect a new value each click.
+                //   - skipEmail=false (Send-Email): reuse the link already
+                //     stamped on the Opportunity if populated. Don't churn
+                //     tokens just because someone wants to re-send the
+                //     email — the same link must keep working. Only mint
+                //     a fresh token when the field is blank, so the email
+                //     always carries a working URL.
+                Opportunity oppRead = oppMap.get(req.opportunityId);
+                String bookingLink = null;
+                if (!skipEmail && oppRead != null) {
+                    if (bType == 'PD' && String.isNotBlank(oppRead.PD_Scheduling_Link__c)) {
+                        bookingLink = oppRead.PD_Scheduling_Link__c;
+                    } else if (bType == 'FSS' && String.isNotBlank(oppRead.FSS_Scheduling_Link__c)) {
+                        bookingLink = oppRead.FSS_Scheduling_Link__c;
+                    }
+                }
+                if (String.isBlank(bookingLink)) {
+                    String token = BookingTokenUtil.encrypt(req.contactId, req.opportunityId);
+                    bookingLink = BOOKING_BASE_URL
+                        + '?type=' + bType
+                        + '&token=' + token;
                 }
 
-                Contact con = contactMap.get(req.contactId);
-                Opportunity opp = oppMap.get(req.opportunityId);
+                if (!skipEmail) {
+                    EmailTemplate tmpl = templateCache.get(templateDevName);
+                    if (tmpl == null) {
+                        throw new AuraHandledException(
+                            'Email template "' + templateDevName + '" not found. '
+                            + 'Please create it in Setup > Email Templates.');
+                    }
 
-                // Build the scheduling link with encrypted token
-                String token = BookingTokenUtil.encrypt(req.contactId, req.opportunityId);
-                String bookingLink = BOOKING_BASE_URL
-                    + '?type=' + bType
-                    + '&token=' + token;
+                    Contact con = contactMap.get(req.contactId);
+                    Opportunity opp = oppMap.get(req.opportunityId);
 
-                // Start from the raw template HTML and subject
-                String htmlBody  = tmpl.HtmlValue;
-                String subject   = tmpl.Subject;
-                String plainBody = tmpl.Body;
+                    // Start from the raw template HTML and subject
+                    String htmlBody  = tmpl.HtmlValue;
+                    String subject   = tmpl.Subject;
+                    String plainBody = tmpl.Body;
 
-                // Replace merge fields
-                if (con != null) {
-                    htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
-                    htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
-                    htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
-                    subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
-                    subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
-                    subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
+                    // Replace merge fields
+                    if (con != null) {
+                        htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
+                        htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
+                        htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
+                        subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
+                        subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
+                        subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
+                        if (plainBody != null) {
+                            plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
+                            plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
+                            plainBody = replaceMerge(plainBody, '{!Contact.Name}', con.Name);
+                        }
+                    }
+                    if (opp != null) {
+                        htmlBody = replaceMerge(htmlBody, '{!Opportunity.Name}', opp.Name);
+                        subject  = replaceMerge(subject, '{!Opportunity.Name}', opp.Name);
+                        if (opp.Account != null) {
+                            htmlBody = replaceMerge(htmlBody, '{!Opportunity.Account.Name}', opp.Account.Name);
+                        }
+                    }
+
+                    // Replace scheduling link placeholder
+                    htmlBody = htmlBody.replace(LINK_PLACEHOLDER, bookingLink);
                     if (plainBody != null) {
-                        plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
-                        plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
-                        plainBody = replaceMerge(plainBody, '{!Contact.Name}', con.Name);
+                        plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
                     }
-                }
-                if (opp != null) {
-                    htmlBody = replaceMerge(htmlBody, '{!Opportunity.Name}', opp.Name);
-                    subject  = replaceMerge(subject, '{!Opportunity.Name}', opp.Name);
-                    if (opp.Account != null) {
-                        htmlBody = replaceMerge(htmlBody, '{!Opportunity.Account.Name}', opp.Account.Name);
+
+                    // Build email message. setSaveAsActivity is false here
+                    // because we insert our own Task below — the manual
+                    // Task carries WhatId, which the platform's auto-Task
+                    // does not always populate reliably (Enhanced Email
+                    // orgs sometimes route through EmailMessage instead,
+                    // dropping the Opportunity link). Doing it manually
+                    // guarantees the email shows on the Opportunity's
+                    // activity timeline alongside the Contact's.
+                    Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+                    mail.setTargetObjectId(req.contactId);
+                    mail.setWhatId(req.opportunityId);
+                    mail.setSubject(subject);
+                    mail.setHtmlBody(htmlBody);
+                    if (plainBody != null) {
+                        mail.setPlainTextBody(plainBody);
                     }
-                }
+                    mail.setSaveAsActivity(false);
+                    mail.setUseSignature(false);
 
-                // Replace scheduling link placeholder
-                htmlBody = htmlBody.replace(LINK_PLACEHOLDER, bookingLink);
-                if (plainBody != null) {
-                    plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
-                }
+                    if (bType == 'FSS') {
+                        mail.setCcAddresses(new List<String>{ 'fss@zenithprepacademy.com' });
+                    }
 
-                // Build email message
-                Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
-                mail.setTargetObjectId(req.contactId);
-                mail.setWhatId(req.opportunityId);
-                mail.setSubject(subject);
-                mail.setHtmlBody(htmlBody);
-                if (plainBody != null) {
-                    mail.setPlainTextBody(plainBody);
-                }
-                mail.setSaveAsActivity(true);
-                mail.setUseSignature(false);
+                    emailsToSend.add(mail);
+                    emailToResultIndex.add(i);
 
-                if (bType == 'FSS') {
-                    mail.setCcAddresses(new List<String>{ 'fss@zenithprepacademy.com' });
+                    // Build the activity Task for this request. WhoId on
+                    // the Contact + WhatId on the Opportunity = a single
+                    // Task that appears on both timelines.
+                    Task t = new Task();
+                    t.WhoId        = req.contactId;
+                    t.WhatId       = req.opportunityId;
+                    t.Subject      = 'Email: ' + subject;
+                    t.Status       = 'Completed';
+                    t.Priority     = 'Normal';
+                    t.ActivityDate = Date.today();
+                    tryPut(t, 'Type', 'Email');
+                    t.Description  = (plainBody != null && plainBody.length() > 0)
+                        ? plainBody
+                        : htmlBody.replaceAll('<[^>]+>', ' ').replaceAll('\\s+', ' ').trim();
+                    activityTasksByRequestIndex.put(i, t);
                 }
-
-                emailsToSend.add(mail);
-                emailToResultIndex.add(i);
 
                 // Pre-build Opportunity link + stage update.
                 //   - PD link sent → stamp PD_Scheduling_Link__c (the
@@ -162,7 +226,6 @@ public without sharing class SchedulingEmailSender {
                 Opportunity oppUpd = new Opportunity(Id = req.opportunityId);
                 if (bType == 'PD') {
                     oppUpd.PD_Scheduling_Link__c = bookingLink;
-                    Opportunity oppRead = oppMap.get(req.opportunityId);
                     if (oppRead != null && oppRead.StageName != 'SOM Scheduled'
                         && oppRead.StageName != 'Closed Won'
                         && oppRead.StageName != 'Closed Lost') {
@@ -171,7 +234,7 @@ public without sharing class SchedulingEmailSender {
                 } else if (bType == 'FSS') {
                     oppUpd.FSS_Scheduling_Link__c = bookingLink;
                 }
-                oppsToUpdate.add(oppUpd);
+                oppsByRequestIndex.put(i, oppUpd);
 
                 res.success = true;
 
@@ -195,8 +258,12 @@ public without sharing class SchedulingEmailSender {
                             errMsg += err.getMessage() + ' ';
                         }
                         results[resultIdx].errorMessage = errMsg.trim();
-                        // Remove the corresponding Opportunity update since email failed
-                        oppsToUpdate[j] = null;
+                        // Drop this request's Opp link stamp so the next
+                        // retry isn't blocked by the duplicate-send guard.
+                        oppsByRequestIndex.remove(resultIdx);
+                        // Don't log a "completed email" Task for a send
+                        // that didn't actually go out.
+                        activityTasksByRequestIndex.remove(resultIdx);
                     }
                 }
             } catch (Exception ex) {
@@ -204,19 +271,29 @@ public without sharing class SchedulingEmailSender {
                 for (Integer idx : emailToResultIndex) {
                     results[idx].success = false;
                     results[idx].errorMessage = 'Email send failed: ' + ex.getMessage();
+                    oppsByRequestIndex.remove(idx);
+                    activityTasksByRequestIndex.remove(idx);
                 }
-                oppsToUpdate.clear();
+            }
+        }
+
+        // ── 4b. Insert activity Tasks for delivered emails ───────────────
+        // Best-effort: a Task insert failure must not bubble up and roll
+        // back the email + Opp link stamp. The email already went out;
+        // missing a timeline entry is recoverable, a thrown exception
+        // back to the flow is not.
+        if (!activityTasksByRequestIndex.isEmpty()) {
+            try { insert activityTasksByRequestIndex.values(); }
+            catch (Exception tEx) {
+                System.debug(LoggingLevel.WARN,
+                    'Email activity Task batch insert failed: ' + tEx.getMessage());
             }
         }
 
         // ── 5. Batch update Opportunity links ────────────────────────────
-        List<Opportunity> validOppUpdates = new List<Opportunity>();
-        for (Opportunity o : oppsToUpdate) {
-            if (o != null) validOppUpdates.add(o);
-        }
-        if (!validOppUpdates.isEmpty()) {
+        if (!oppsByRequestIndex.isEmpty()) {
             try {
-                update validOppUpdates;
+                update oppsByRequestIndex.values();
             } catch (Exception updEx) {
                 System.debug(LoggingLevel.WARN,
                     'Opportunity link batch update failed: ' + updEx.getMessage());
@@ -229,5 +306,9 @@ public without sharing class SchedulingEmailSender {
     private static String replaceMerge(String source, String mergeField, String value) {
         if (source == null) return source;
         return source.replace(mergeField, (value != null) ? value : '');
+    }
+
+    private static void tryPut(SObject rec, String fieldName, Object val) {
+        try { rec.put(fieldName, val); } catch (Exception ex) { }
     }
 }

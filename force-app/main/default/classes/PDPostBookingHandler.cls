@@ -296,9 +296,14 @@ public without sharing class PDPostBookingHandler {
                         : new Contact(Id = studentContactId);
                     tryPut(sc, 'Program_Director__c', pd.RelatedRecordId);
                     if (isFirstSOMTransition) {
-                        // Mirror the "SOM Scheduled" Opp stage onto the
-                        // Student's Contact.Stage__c — same value on both sides.
-                        tryPut(sc, 'Stage__c', 'SOM Scheduled');
+                        // Student-side stage uses a different label than the
+                        // Opp's stage. The Opp moves to "SOM Scheduled" (the
+                        // SOM is on the calendar), and the Student Contact
+                        // moves to "SOM Completed" — meaning, from the
+                        // student lifecycle's perspective, the SOM-scheduling
+                        // step is done. Same trigger, two different labels by
+                        // design.
+                        tryPut(sc, 'Stage__c', 'SOM Completed');
                     }
                     studentContactsById.put(studentContactId, sc);
                 }

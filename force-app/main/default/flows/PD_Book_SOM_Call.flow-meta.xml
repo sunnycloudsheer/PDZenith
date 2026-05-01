@@ -98,6 +98,89 @@
         </outputParameters>
     </actionCalls>
     <actionCalls>
+        <name>Generate_FSS_Link_Action</name>
+        <label>Generate FSS Scheduling Link</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
+        <connector>
+            <targetReference>FSS_Link_Generated_Screen</targetReference>
+        </connector>
+        <faultConnector>
+            <targetReference>Link_Generate_Error_Screen</targetReference>
+        </faultConnector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>opportunityId</name>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>contactId</name>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailType</name>
+            <value>
+                <stringValue>FSS</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>skipEmail</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
+    </actionCalls>
+    <actionCalls>
+        <name>Generate_PD_Link_Action</name>
+        <label>Generate PD Scheduling Link</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
+        <connector>
+            <targetReference>PD_Link_Generated_Screen</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Link_Generate_Error_Screen</targetReference>
+        </faultConnector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>opportunityId</name>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>contactId</name>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailType</name>
+            <value>
+                <stringValue>PD</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>skipEmail</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
+    </actionCalls>
+    <actionCalls>
         <name>Send_FSS_Email</name>
         <label>Send FSS Scheduling Email</label>
         <locationX>0</locationX>
@@ -185,6 +268,148 @@
         </assignmentItems>
         <connector>
             <targetReference>Route_Selection</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <name>Set_FSS_Initial_Fields</name>
+        <label>Set FSS Initial Fields</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.ParentRecordId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.ContactId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.AccountId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.ServiceTerritoryId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Service_Territory.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.WorkTypeId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Subject</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>FSS Follow Up - Zenith Prep Academy</stringValue>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Status</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Scheduled</stringValue>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Meeting_Type__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>FSS Follow Up</stringValue>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Opportunity__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.Family_Success_Specialist__c</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.AppointmentType</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type.DefaultAppointmentType</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.DurationType</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type.DurationType</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.DurationInMinutes</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type.DurationInMinutes</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.TimeZone</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>selectedTimezone</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.ArrivalWindowStartTime</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>ServiceAppointment.SchedStartTime</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.ArrivalWindowEndTime</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>ServiceAppointment.SchedEndTime</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Street</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Service_Territory.Street</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.City</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Service_Territory.City</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.State</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_FSS_Service_Territory.State</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>FSS_Review_Screen</targetReference>
         </connector>
     </assignments>
     <assignments>
@@ -381,53 +606,22 @@
             <stringValue>fss_follow_up</stringValue>
         </value>
     </choices>
-    <decisions>
-        <name>Check_FSS_Link_Sent</name>
-        <label>FSS Link Already Sent?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Select_FSS_Link_Screen</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Sent - Show FSS Confirmation</defaultConnectorLabel>
-        <rules>
-            <name>Both_Links_Sent_FSS</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Both_Links_Sent_Screen</targetReference>
-            </connector>
-            <label>Both Links Already Sent</label>
-        </rules>
-        <rules>
-            <name>FSS_Link_Already_Sent</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>FSS_Link_Already_Sent_Screen</targetReference>
-            </connector>
-            <label>FSS Link Already Sent</label>
-        </rules>
-    </decisions>
+    <choices>
+        <name>choiceFSSGenerate</name>
+        <choiceText>Generate FSS Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>fss_generate</stringValue>
+        </value>
+    </choices>
+    <choices>
+        <name>choicePDGenerate</name>
+        <choiceText>Generate PD Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>pd_generate</stringValue>
+        </value>
+    </choices>
     <decisions>
         <name>Check_PD_Assigned</name>
         <label>PD Already Assigned?</label>
@@ -458,53 +652,6 @@
                 <targetReference>Select_Follow_Up_Screen</targetReference>
             </connector>
             <label>PD Already Assigned</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>Check_PD_Link_Sent</name>
-        <label>PD Link Already Sent?</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Send_PD_Email</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Not Sent - Proceed</defaultConnectorLabel>
-        <rules>
-            <name>Both_Links_Sent_PD</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.FSS_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Both_Links_Sent_Screen</targetReference>
-            </connector>
-            <label>Both Links Already Sent</label>
-        </rules>
-        <rules>
-            <name>PD_Link_Already_Sent</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Opportunity_Record.PD_Scheduling_Link__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>PD_Link_Already_Sent_Screen</targetReference>
-            </connector>
-            <label>PD Link Already Sent</label>
         </rules>
     </decisions>
     <decisions>
@@ -713,6 +860,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
+            <isGoTo>true</isGoTo>
             <targetReference>Select_Follow_Up_Screen</targetReference>
         </defaultConnector>
         <defaultConnectorLabel>Not Contract Signed - Show Follow-Up Option</defaultConnectorLabel>
@@ -764,9 +912,10 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
-            <targetReference>Check_FSS_Link_Sent</targetReference>
+            <isGoTo>true</isGoTo>
+            <targetReference>Select_FSS_Link_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>No FSS Meeting - Check Link Status</defaultConnectorLabel>
+        <defaultConnectorLabel>No FSS Meeting - Show Link Options</defaultConnectorLabel>
         <rules>
             <name>FSS_Meeting_Exists</name>
             <conditionLogic>and</conditionLogic>
@@ -858,7 +1007,8 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>Check_PD_Link_Sent</targetReference>
+                <isGoTo>true</isGoTo>
+                <targetReference>Send_PD_Email</targetReference>
             </connector>
             <label>PD Scheduling Link</label>
         </rules>
@@ -881,9 +1031,49 @@
             </conditions>
             <connector>
                 <isGoTo>true</isGoTo>
-                <targetReference>Check_FSS_Link_Sent</targetReference>
+                <targetReference>Select_FSS_Link_Screen</targetReference>
             </connector>
             <label>FSS Scheduling Link</label>
+        </rules>
+        <rules>
+            <name>Is_PD_Generate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>varSelectedAction</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>pd_generate</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Generate_PD_Link_Action</targetReference>
+            </connector>
+            <label>Generate PD Scheduling Link</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Route_FSS_Link_Action</name>
+        <label>Route FSS Link Action</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Send_FSS_Email</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Send FSS Scheduling Link</defaultConnectorLabel>
+        <rules>
+            <name>Is_FSS_Generate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>FSSLinkRadio</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>fss_generate</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Generate_FSS_Link_Action</targetReference>
+            </connector>
+            <label>Generate FSS Scheduling Link</label>
         </rules>
     </decisions>
     <decisions>
@@ -937,6 +1127,161 @@
             <label>Config Found</label>
         </rules>
     </decisions>
+    <decisions>
+        <name>Check_FSS_Resource_Found</name>
+        <label>Check FSS Resource Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>No_FSS_Resource</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_Resource_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Service_Resource</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Territory_Member</targetReference>
+            </connector>
+            <label>FSS Resource Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_FSS_Territory_Found</name>
+        <label>Check FSS Territory Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>No_Service_Territory</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_Territory_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Service_Territory</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Work_Type</targetReference>
+            </connector>
+            <label>FSS Territory Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_FSS_Territory_Member_Found</name>
+        <label>Check FSS Territory Member Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>No_Territory_Member</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_Territory_Member_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Territory_Member</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Service_Territory</targetReference>
+            </connector>
+            <label>FSS Territory Member Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_FSS_Work_Type_Found</name>
+        <label>Check FSS Work Type Found</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>No_Work_Type</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_Work_Type_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Work_Type</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Work_Type_Member</targetReference>
+            </connector>
+            <label>FSS Work Type Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_FSS_WTG</name>
+        <label>Check FSS Work Type Group</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>No_Work_Type_Group</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_WTG_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Work_Type_Group</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Operating_Hours</targetReference>
+            </connector>
+            <label>FSS WTG Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Check_FSS_WTG_Member</name>
+        <label>Check FSS Work Type Group Member</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>No_Work_Type_Member</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Default</defaultConnectorLabel>
+        <rules>
+            <name>FSS_WTG_Member_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_FSS_Work_Type_Member</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_FSS_Work_Type_Group</targetReference>
+            </connector>
+            <label>FSS WTG Member Found</label>
+        </rules>
+    </decisions>
     <description>Books PD SOM (60 min) or Follow-up (30 min) calls. Uses weighted round-robin for first PD assignment, sticky routing for follow-ups.</description>
     <environments>Default</environments>
     <formulas>
@@ -987,6 +1332,110 @@
     </processMetadataValues>
     <processType>Flow</processType>
     <recordCreates>
+        <name>Create_FSS_Assigned_Resource</name>
+        <label>Create FSS Assigned Resource</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Create_FSS_Event</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>FSS_Appointment_Scheduled</targetReference>
+        </faultConnector>
+        <inputAssignments>
+            <field>ServiceAppointmentId</field>
+            <value>
+                <elementReference>ServiceAppointment.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ServiceResourceId</field>
+            <value>
+                <elementReference>Get_FSS_Service_Resource.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>AssignedResource</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+    <recordCreates>
+        <name>Create_FSS_Event</name>
+        <label>Create FSS Event</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>FSS_Appointment_Scheduled</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>FSS_Appointment_Scheduled</targetReference>
+        </faultConnector>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>FSS Follow Up - Zenith Prep Academy</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>StartDateTime</field>
+            <value>
+                <elementReference>ServiceAppointment.SchedStartTime</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>EndDateTime</field>
+            <value>
+                <elementReference>ServiceAppointment.SchedEndTime</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>OwnerId</field>
+            <value>
+                <elementReference>Get_Opportunity_Record.Family_Success_Specialist__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>WhatId</field>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>WhoId</field>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ShowAs</field>
+            <value>
+                <stringValue>Busy</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Location</field>
+            <value>
+                <stringValue>Zoom</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Event</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+    <recordCreates>
+        <name>Create_FSS_Service_Appointment</name>
+        <label>Create FSS Service Appointment</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Restamp_FSS_Meeting_Type</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>SA_Creation_Error</targetReference>
+        </faultConnector>
+        <inputReference>ServiceAppointment</inputReference>
+    </recordCreates>
+    <recordCreates>
         <name>Create_PD_Service_Appointment</name>
         <label>Create Service Appointment</label>
         <locationX>0</locationX>
@@ -1010,10 +1459,10 @@
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
-            <field>ParentRecordId</field>
+            <field>Opportunity__c</field>
             <operator>EqualTo</operator>
             <value>
-                <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+                <elementReference>recordId</elementReference>
             </value>
         </filters>
         <filters>
@@ -1045,10 +1494,10 @@
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
-            <field>ParentRecordId</field>
+            <field>Opportunity__c</field>
             <operator>EqualTo</operator>
             <value>
-                <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+                <elementReference>recordId</elementReference>
             </value>
         </filters>
         <filters>
@@ -1238,6 +1687,160 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
+        <name>Get_FSS_Operating_Hours</name>
+        <label>Get FSS Operating Hours</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>FSS_Select_Time_Screen</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Territory_Member.OperatingHoursId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>OperatingHours</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Service_Resource</name>
+        <label>Get FSS Service Resource</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_Resource_Found</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>RelatedRecordId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.Family_Success_Specialist__c</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>ServiceResource</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Service_Territory</name>
+        <label>Get FSS Service Territory</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_Territory_Found</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Territory_Member.ServiceTerritoryId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>ServiceTerritory</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Territory_Member</name>
+        <label>Get FSS Territory Member</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_Territory_Member_Found</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>ServiceResourceId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Service_Resource.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>ServiceTerritoryMember</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Work_Type</name>
+        <label>Get FSS Work Type</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_Work_Type_Found</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>OperatingHoursId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Territory_Member.OperatingHoursId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>WorkType</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Work_Type_Group</name>
+        <label>Get FSS Work Type Group</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_WTG</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type_Member.WorkTypeGroupId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>WorkTypeGroup</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_FSS_Work_Type_Member</name>
+        <label>Get FSS Work Type Member</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_FSS_WTG_Member</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>WorkTypeId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_FSS_Work_Type.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>WorkTypeGroupMember</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
         <name>Get_Primary_Contact</name>
         <label>Get Primary Contact</label>
         <locationX>0</locationX>
@@ -1265,31 +1868,41 @@
         <object>OpportunityContactRole</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
-    <runInMode>SystemModeWithoutSharing</runInMode>
-    <screens>
-        <name>Both_Links_Sent_Screen</name>
-        <label>Links Already Sent</label>
+    <recordUpdates>
+        <name>Restamp_FSS_Meeting_Type</name>
+        <label>Restamp FSS Meeting Type</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>BothLinksMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling links have already been shared.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
+        <connector>
+            <targetReference>Create_FSS_Assigned_Resource</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Create_FSS_Assigned_Resource</targetReference>
+        </faultConnector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>ServiceAppointment.Id</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Meeting_Type__c</field>
+            <value>
+                <stringValue>FSS Follow Up</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>FSS Follow Up - Zenith Prep Academy</stringValue>
+            </value>
+        </inputAssignments>
+        <object>ServiceAppointment</object>
+    </recordUpdates>
+    <runInMode>SystemModeWithoutSharing</runInMode>
     <screens>
         <name>Close_Won_Error_Screen</name>
         <label>Opportunity Closed</label>
@@ -1412,16 +2025,16 @@
         <showHeader>false</showHeader>
     </screens>
     <screens>
-        <name>FSS_Link_Already_Sent_Screen</name>
-        <label>FSS Link Already Sent</label>
+        <name>FSS_Link_Generated_Screen</name>
+        <label>FSS Link Generated</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <fields>
-            <name>FSSLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <name>FSSLinkGeneratedMsg</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;FSS scheduling link has been generated!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The FSS Scheduling Link field on the Opportunity has been updated. No email was sent.&lt;/p&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1432,6 +2045,56 @@
                 </width>
             </styleProperties>
         </fields>
+        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Link_Generate_Error_Screen</name>
+        <label>Link Generation Error</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>LinkGenerateErrorMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;An error occurred while generating the scheduling link. Please try again or contact the administrator.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>PD_Link_Generated_Screen</name>
+        <label>PD Link Generated</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>PDLinkGeneratedMsg</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;PD scheduling link has been generated!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The PD Scheduling Link field on the Opportunity has been updated. No email was sent.&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
         <showFooter>true</showFooter>
         <showHeader>false</showHeader>
     </screens>
@@ -1615,30 +2278,6 @@
         <fields>
             <name>PDErrorMsg</name>
             <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Could not assign a Program Director. Please ensure PD users have the Program Director profile and an active Service Resource.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
-            <fieldType>DisplayText</fieldType>
-            <styleProperties>
-                <verticalAlignment>
-                    <stringValue>top</stringValue>
-                </verticalAlignment>
-                <width>
-                    <stringValue>12</stringValue>
-                </width>
-            </styleProperties>
-        </fields>
-        <showFooter>true</showFooter>
-        <showHeader>false</showHeader>
-    </screens>
-    <screens>
-        <name>PD_Link_Already_Sent_Screen</name>
-        <label>PD Link Already Sent</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <allowBack>false</allowBack>
-        <allowFinish>true</allowFinish>
-        <allowPause>false</allowPause>
-        <fields>
-            <name>PDLinkSentMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Scheduling link has already been sent via email.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -1978,16 +2617,287 @@
         <showHeader>false</showHeader>
     </screens>
     <screens>
-        <name>FSS_Follow_Up_Submitted_Screen</name>
-        <label>FSS Follow-Up Submitted</label>
+        <name>FSS_Appointment_Scheduled</name>
+        <label>FSS Appointment Scheduled</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <allowBack>false</allowBack>
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <fields>
-            <name>FSSFollowUpSubmittedMsg</name>
-            <fieldText>&lt;blockquote&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;FSS Follow-Up Call request submitted.&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The assigned Family Success Specialist will be in touch to confirm the meeting time.&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
+            <name>FSSSuccessMessage</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;Your FSS Follow-Up Call is scheduled!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong&gt;Click here to see details: &lt;a href=&quot;/lightning/r/ServiceAppointment/{!ServiceAppointment.Id}/view&quot; rel=&quot;noopener noreferrer&quot; target=&quot;_blank&quot; style=&quot;color: rgb(28, 32, 195);&quot;&gt;Meeting Booked&lt;/a&gt;&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Save</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>FSS_Review_Screen</name>
+        <label>Review FSS Meeting Details</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>true</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>Create_FSS_Service_Appointment</targetReference>
+        </connector>
+        <fields>
+            <name>FSSReviewHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Review Meeting Details&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSDetailsHeader</name>
+            <fieldText>&lt;p&gt;&lt;strong style=&quot;font-size: 14px;&quot;&gt;Family Success Specialist:&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSNameField</name>
+            <fieldText>&lt;p&gt;{!Get_FSS_Service_Resource.Name}&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSGeneralInfoHeader</name>
+            <fieldText>&lt;p&gt;&lt;strong style=&quot;font-size: 14px;&quot;&gt;General Information:&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSFamilyAccountField</name>
+            <fieldText>&lt;p&gt;&lt;strong&gt;Family Account&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;{!Get_Opportunity_Record.Account.Name}&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSSubjectField</name>
+            <fieldText>&lt;p&gt;&lt;strong&gt;Subject&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;FSS Follow Up - Zenith Prep Academy&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSScheduledTimesHeader</name>
+            <fieldText>&lt;p&gt;&lt;strong style=&quot;font-size: 14px;&quot;&gt;Scheduled Times:&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSMeetingStartField</name>
+            <fieldText>&lt;p&gt;&lt;strong&gt;Meeting Start Time&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;{!startTime}&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>6</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>FSSMeetingEndField</name>
+            <fieldText>&lt;p&gt;&lt;strong&gt;Meeting End Time&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;{!endTime}&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>6</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>FSS_Select_Time_Screen</name>
+        <label>Select a Time</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>Set_FSS_Initial_Fields</targetReference>
+        </connector>
+        <fields>
+            <name>FSSSelectTimeSlot</name>
+            <extensionName>runtime_appointmentbooking:flowTimeslot</extensionName>
+            <fieldType>ComponentInstance</fieldType>
+            <inputParameters>
+                <name>isAnonymousBooking</name>
+                <value>
+                    <booleanValue>false</booleanValue>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>appointmentType</name>
+                <value>
+                    <elementReference>Get_FSS_Work_Type.DefaultAppointmentType</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>disableMultiResourceAndConcurrency</name>
+                <value>
+                    <booleanValue>false</booleanValue>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>isInbound</name>
+                <value>
+                    <booleanValue>false</booleanValue>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>filterByResources</name>
+                <value>
+                    <elementReference>Get_FSS_Service_Resource.Id</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>parentRecordId</name>
+                <value>
+                    <elementReference>Get_Opportunity_Record.AccountId</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>serviceResourceId</name>
+                <value>
+                    <elementReference>Get_FSS_Service_Resource.Id</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>serviceTerritoryId</name>
+                <value>
+                    <elementReference>Get_FSS_Service_Territory.Id</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>workType</name>
+                <value>
+                    <elementReference>Get_FSS_Work_Type</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>workTypeGroupId</name>
+                <value>
+                    <elementReference>Get_FSS_Work_Type_Group.Id</elementReference>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>showTimeZonePicklist</name>
+                <value>
+                    <booleanValue>true</booleanValue>
+                </value>
+            </inputParameters>
+            <inputParameters>
+                <name>appointmentMode</name>
+                <value>
+                    <stringValue>Regular</stringValue>
+                </value>
+            </inputParameters>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
+            <isRequired>true</isRequired>
+            <outputParameters>
+                <assignToReference>selectedTimezone</assignToReference>
+                <name>selectedTimezone</name>
+            </outputParameters>
+            <outputParameters>
+                <assignToReference>ServiceAppointment.SchedStartTime</assignToReference>
+                <name>selectedStartTime</name>
+            </outputParameters>
+            <outputParameters>
+                <assignToReference>ServiceAppointment.SchedEndTime</assignToReference>
+                <name>selectedEndTime</name>
+            </outputParameters>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>No_FSS_Resource</name>
+        <label>No FSS Service Resource</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>NoFSSResourceMsg</name>
+            <fieldText>&lt;blockquote&gt;&lt;p&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;No active Service Resource found for the assigned Family Success Specialist.&lt;/strong&gt;&lt;/p&gt;&lt;/blockquote&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -2010,11 +2920,11 @@
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <connector>
-            <targetReference>FSS_Follow_Up_Submitted_Screen</targetReference>
+            <targetReference>Get_FSS_Service_Resource</targetReference>
         </connector>
         <fields>
             <name>FSSFollowUpHeader</name>
-            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book PD Strategy Overview Meeting&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Book FSS Follow-Up Call&lt;/strong&gt;&lt;/p&gt;</fieldText>
             <fieldType>DisplayText</fieldType>
             <styleProperties>
                 <verticalAlignment>
@@ -2107,8 +3017,7 @@
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <connector>
-            <isGoTo>true</isGoTo>
-            <targetReference>Send_FSS_Email</targetReference>
+            <targetReference>Route_FSS_Link_Action</targetReference>
         </connector>
         <fields>
             <name>FSSLinkHeader</name>
@@ -2126,6 +3035,7 @@
         <fields>
             <name>FSSLinkRadio</name>
             <choiceReferences>choiceFSSLink</choiceReferences>
+            <choiceReferences>choiceFSSGenerate</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>fss_link</stringValue>
@@ -2175,6 +3085,7 @@
             <name>MeetingTypeSelectionICNoSOM</name>
             <choiceReferences>choiceFirstSOM</choiceReferences>
             <choiceReferences>choicePDLink</choiceReferences>
+            <choiceReferences>choicePDGenerate</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>first_som</stringValue>

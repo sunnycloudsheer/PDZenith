@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QuickAction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Generates the IC schedule token (if not already generated) and emails the Initial Consultation scheduling link to the Lead.</description>
+    <flowDefinition>Lead_Send_IC_Schedule_Link</flowDefinition>
+    <label>Send IC Scheduling Link</label>
+    <optionsCreateFeedItem>false</optionsCreateFeedItem>
+    <type>Flow</type>
+</QuickAction>
