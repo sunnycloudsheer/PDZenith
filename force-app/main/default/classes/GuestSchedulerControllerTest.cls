@@ -118,7 +118,7 @@ private class GuestSchedulerControllerTest {
     // Verifies booking config errors when no counselors exist.
     @IsTest
     static void testGetBookingConfig_NoCounselors() {
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(null);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(null, null, null, null, null, null);
         System.assertEquals(false, result.get('success'), 'Should fail with no counselors');
         System.assertNotEquals(null, result.get('error'), 'Should have error message');
     }
@@ -126,14 +126,14 @@ private class GuestSchedulerControllerTest {
     // Verifies booking config tolerates a zero open-window value.
     @IsTest
     static void testGetBookingConfig_ZeroOpenWindowDays() {
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(0);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(0, null, null, null, null, null);
         System.assertNotEquals(null, result, 'Result should not be null');
     }
 
     // Verifies booking config tolerates a negative open-window value.
     @IsTest
     static void testGetBookingConfig_NegativeOpenWindowDays() {
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(-5);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(-5, null, null, null, null, null);
         System.assertNotEquals(null, result, 'Result should not be null');
     }
 
@@ -141,14 +141,14 @@ private class GuestSchedulerControllerTest {
     @IsTest
     static void testGetAvailableSlots_NoCounselors() {
         String dateStr = String.valueOf(Date.today().addDays(3));
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr);
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr, null, null, null, null);
         System.assert(result.isEmpty(), 'Should return empty list with no counselors');
     }
 
     // Verifies getAvailableSlots returns empty for an unparsable date string.
     @IsTest
     static void testGetAvailableSlots_InvalidDate() {
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots('invalid-date');
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots('invalid-date', null, null, null, null);
         System.assert(result.isEmpty(), 'Should return empty list for invalid date');
     }
 
@@ -166,7 +166,11 @@ private class GuestSchedulerControllerTest {
                 startISO, endISO,
                 'John', 'Doe', 'john@test.com', '5551234567',
                 '10th Grade', 'Website', null,
-                'America/Chicago', null, null, null
+                'America/Chicago', null, null, null,
+                null, null,
+                null, null, null,
+                null, null,
+                null
             );
         } catch (AuraHandledException e) {
             exceptionThrown = true;
@@ -187,7 +191,11 @@ private class GuestSchedulerControllerTest {
             GuestSchedulerController.bookAppointment(
                 startISO, endISO,
                 'Test', 'User', 'test@test.com', '5550000000',
-                null, null, null, null, null, null, null
+                null, null, null, null, null, null, null,
+                null, null,
+                null, null, null,
+                null, null,
+                null
             );
         } catch (Exception e) {
             exceptionThrown = true;
@@ -208,7 +216,7 @@ private class GuestSchedulerControllerTest {
         buildFullSchedulingData(new List<User>{ counselorUser });
 
         Test.startTest();
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(null);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(null, null, null, null, null, null);
         Test.stopTest();
 
         System.assertEquals(true, result.get('success'), 'Should succeed: ' + result.get('error'));
@@ -237,7 +245,7 @@ private class GuestSchedulerControllerTest {
         buildFullSchedulingData(new List<User>{ counselorUser });
 
         Test.startTest();
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(7);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(7, null, null, null, null, null);
         Test.stopTest();
 
         System.assertEquals(true, result.get('success'), 'Should succeed: ' + result.get('error'));
@@ -260,7 +268,7 @@ private class GuestSchedulerControllerTest {
         String dateStr = String.valueOf(futureDate);
 
         Test.startTest();
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr);
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr, null, null, null, null);
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
@@ -308,7 +316,7 @@ private class GuestSchedulerControllerTest {
         String dateStr = String.valueOf(futureDate);
 
         Test.startTest();
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr);
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr, null, null, null, null);
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
@@ -339,7 +347,11 @@ private class GuestSchedulerControllerTest {
                 startISO, endISO,
                 'Jane', 'Smith', 'jane' + String.valueOf(DateTime.now().getTime()) + '@test.com', '5559876543',
                 '11th Grade', 'Website', 'guest1@test.com,guest2@test.com',
-                'America/Chicago', 'google', 'spring2026', 'cpc'
+                'America/Chicago', 'google', 'spring2026', 'cpc',
+                null, null,
+                null, null, null,
+                null, null,
+                null
             );
         } catch (AuraHandledException e) {
             System.assert(e.getMessage() != null, 'Exception message should exist');
@@ -389,7 +401,11 @@ private class GuestSchedulerControllerTest {
             result = GuestSchedulerController.bookAppointment(
                 startISO, endISO,
                 'Bob', 'Jones', 'bob' + String.valueOf(DateTime.now().getTime()) + '@test.com', '5551112222',
-                null, null, null, null, null, null, null
+                null, null, null, null, null, null, null,
+                null, null,
+                null, null, null,
+                null, null,
+                null
             );
         } catch (AuraHandledException e) {
             System.assert(e.getMessage() != null, 'Exception message should exist');
@@ -438,7 +454,11 @@ private class GuestSchedulerControllerTest {
             startISO, endISO,
             'Blocked', 'User', 'blocked@test.com', '5553334444',
             '9th Grade', 'Website', null,
-            'America/Chicago', null, null, null
+            'America/Chicago', null, null, null,
+            null, null,
+            null, null, null,
+            null, null,
+            null
         );
         Test.stopTest();
 
@@ -481,7 +501,11 @@ private class GuestSchedulerControllerTest {
                 startISO, endISO,
                 'Multi', 'Resource', 'multi' + String.valueOf(DateTime.now().getTime()) + '@test.com', '5556667777',
                 '12th Grade', 'Referral', null,
-                'America/Chicago', null, null, null
+                'America/Chicago', null, null, null,
+                null, null,
+                null, null, null,
+                null, null,
+                null
             );
         } catch (AuraHandledException e) {
             System.assert(e.getMessage() != null, 'Exception message should exist');
@@ -537,7 +561,7 @@ private class GuestSchedulerControllerTest {
         String dateStr = String.valueOf(futureDate);
 
         Test.startTest();
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr);
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr, null, null, null, null);
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
@@ -556,7 +580,7 @@ private class GuestSchedulerControllerTest {
         buildFullSchedulingData(new List<User>{ counselorUser });
 
         Test.startTest();
-        Map<String, Object> result = GuestSchedulerController.getBookingConfig(5);
+        Map<String, Object> result = GuestSchedulerController.getBookingConfig(5, null, null, null, null, null);
         Test.stopTest();
 
         System.assertEquals(true, result.get('success'), 'Should succeed: ' + result.get('error'));
@@ -583,7 +607,7 @@ private class GuestSchedulerControllerTest {
         String dateStr = String.valueOf(Date.today());
 
         Test.startTest();
-        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr);
+        List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots(dateStr, null, null, null, null);
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
