@@ -1,26 +1,4 @@
-/**
- * @File Name          : ZoomMeetingEmailService.cls
- * @Description        : Sends the meeting invite / update / cancellation email
- *                       with the .ics calendar file attached using the correct
- *                       MIME type (text/calendar; method=REQUEST|CANCEL).
- *
- *                       IMPORTANT — Content-Type handling
- *                       -------------------------------------------------------
- *                       Outlook, Google Calendar and Apple Calendar detect a
- *                       calendar invite by looking at the attachment's
- *                       Content-Type. Setting it to:
- *                           text/calendar; method=REQUEST; charset=UTF-8
- *                       causes Gmail to render the native "Yes/No/Maybe"
- *                       interactive block and Outlook to treat it as a
- *                       real calendar invite (Accept / Decline buttons)
- *                       rather than a plain file attachment.
- *
- *                       On CANCEL we switch to "method=CANCEL" which
- *                       instructs the client to REMOVE the existing event.
- *
- * @Author             : Amit Yadav
- * @Created On         : April 2026
- */
+// Sends meeting invite/update/cancellation emails with the .ics calendar attached using the correct MIME type.
 public class ZoomMeetingEmailService {
 
     public enum InviteType { NEW_BOOKING, RESCHEDULE, CANCELLATION }
@@ -32,48 +10,25 @@ public class ZoomMeetingEmailService {
 
     public class SendInput {
         public InviteType inviteType;
-        public String icsContent;         // Output of ZoomIcsBuilder.build(...)
-        public String toEmail;            // Primary recipient (family)
-        public List<String> ccEmails;     // Parents / counselors
-        public String orgWideEmailId;     // OrgWideEmailAddress Id (optional)
+        public String icsContent;
+        public String toEmail;
+        public List<String> ccEmails;
+        public String orgWideEmailId;
         public String subject;
         public String htmlBody;
         public String plainBody;
-        /**
-         * EmailTemplate Id. When set, the template renders the subject +
-         * body (merge fields resolved via targetObjectId / relatedWhatId)
-         * and subject / htmlBody / plainBody on this input are ignored.
-         * Use for CREATE to drive the Zenith Meeting Scheduled lightning
-         * template directly, so Setup-side edits propagate without a deploy.
-         */
         public Id templateId;
-        public Id relatedWhatId;          // ServiceAppointment Id for email logging
-        public Id targetObjectId;         // Contact Id for email logging
-        /**
-         * When true the email is logged as an Activity on the record.
-         * Requires targetObjectId to be a valid Lead/Contact/User Id.
-         */
+        public Id relatedWhatId;
+        public Id targetObjectId;
         public Boolean logEmailOnSend;
     }
 
-    /**
-     * Send a batch of calendar-invite emails in ONE Messaging.sendEmail
-     * invocation. Bulk-safe: the 10-invocation-per-transaction email limit
-     * is per call to Messaging.sendEmail, not per message, so batching lets
-     * us deliver unlimited messages from a single invocable call.
-     *
-     * Order of results matches order of inputs. An input that fails
-     * validation (blank TO / blank ICS) gets a failure result at the
-     * corresponding position — the rest of the batch still sends.
-     */
+    // Sends a batch of calendar-invite emails in a single Messaging.sendEmail invocation.
     public static List<SendResult> sendBulk(List<SendInput> inputs) {
         List<SendResult> results = new List<SendResult>();
         if (inputs == null || inputs.isEmpty()) return results;
 
         List<Messaging.SingleEmailMessage> messages = new List<Messaging.SingleEmailMessage>();
-        // Parallel list: sendable[i] == true  → messages[?]  maps back to inputs[i]
-        // If sendable[i] == false, we already recorded the failure in results
-        // and skipped adding to messages.
         List<Boolean> sendable = new List<Boolean>();
 
         for (SendInput inp : inputs) {
@@ -97,10 +52,6 @@ public class ZoomMeetingEmailService {
         try {
             sendResults = Messaging.sendEmail(messages, false);
         } catch (Exception e) {
-            // Whole batch threw — mark every sendable slot as failed and
-            // log to the debug log so the failure is visible (it was
-            // previously only attached to in-memory result objects that
-            // the flow caller silently discards).
             System.debug(LoggingLevel.ERROR,
                 'Messaging.sendEmail BATCH FAILURE — ' + messages.size()
                 + ' message(s) — ' + e.getTypeName() + ': ' + e.getMessage()
@@ -114,8 +65,6 @@ public class ZoomMeetingEmailService {
             return results;
         }
 
-        // Re-align sendResults (only has entries for sendable messages) with
-        // the original inputs/results index space.
         Integer sentIdx = 0;
         for (Integer i = 0; i < inputs.size(); i++) {
             if (!sendable[i]) continue;
@@ -133,20 +82,13 @@ public class ZoomMeetingEmailService {
         return results;
     }
 
-    /**
-     * Single-message send. Delegates to sendBulk() so behaviour is identical
-     * whether called once or in a batch. Retained for backwards compatibility
-     * and simpler call sites where the caller has exactly one input.
-     */
+    // Single-message send convenience wrapper that delegates to sendBulk.
     public static SendResult send(SendInput inp) {
         List<SendResult> out = sendBulk(new List<SendInput>{ inp });
         return out.isEmpty() ? new SendResult() : out[0];
     }
 
-    /**
-     * Build (but do not send) a Messaging.SingleEmailMessage from a SendInput.
-     * Throws ZoomEmailException on missing required fields.
-     */
+    // Builds (but does not send) a Messaging.SingleEmailMessage from a SendInput.
     private static Messaging.SingleEmailMessage buildMessage(SendInput inp) {
         if (String.isBlank(inp.toEmail)) {
             throw new ZoomEmailException('Primary recipient email is required.');
@@ -157,31 +99,19 @@ public class ZoomMeetingEmailService {
 
         Messaging.SingleEmailMessage msg = new Messaging.SingleEmailMessage();
 
-        // --- recipients ---
         msg.setToAddresses(new List<String>{ inp.toEmail });
         if (inp.ccEmails != null && !inp.ccEmails.isEmpty()) {
             msg.setCcAddresses(dedupAndClean(inp.ccEmails, inp.toEmail));
         }
 
-        // --- sender ---
         if (String.isNotBlank(inp.orgWideEmailId)) {
             msg.setOrgWideEmailAddressId(inp.orgWideEmailId);
         }
 
-        // --- targeting (must be set BEFORE template merge so the
-        //     template resolves Recipient / Related fields correctly) ---
         if (inp.targetObjectId != null) {
             msg.setTargetObjectId(inp.targetObjectId);
             msg.setTreatTargetObjectAsRecipient(false);
         }
-        // Salesforce platform constraint: when targetObjectId is a Lead AND
-        // setSaveAsActivity is true, setting WhatId triggers
-        //   "WhatId is not available with saveAsActivity for sending emails to Leads"
-        // and aborts the send. Template merge fields still render correctly
-        // because renderStoredEmailTemplate (called below) resolves the
-        // {{{ServiceAppointment.*}}} fields against relatedWhatId and bakes
-        // them into the rendered subject/body — so dropping WhatId on the
-        // outgoing message itself doesn't lose any merge content.
         Boolean isLeadTarget = inp.targetObjectId != null
             && String.valueOf(inp.targetObjectId).startsWith('00Q');
         Boolean wantsSaveAsActivity = inp.logEmailOnSend == true
@@ -191,26 +121,12 @@ public class ZoomMeetingEmailService {
             msg.setWhatId(inp.relatedWhatId);
         }
 
-        // --- subject / body ---
         if (inp.templateId != null) {
-            // Render the Lightning Email Template explicitly. We can't use
-            // setTemplateId() because Salesforce won't merge the recipient's
-            // {{{ServiceAppointment.Zoom_Link__c}}} from the DB unless the
-            // record is already saved (Fix #1 handles that). Note:
-            // renderStoredEmailTemplate ALREADY wraps Lightning templates
-            // with their Enhanced Letterhead — do NOT re-prepend it here
-            // (double-letterhead was the original CREATE rendering bug).
             renderTemplateOntoMessage(msg, inp);
         } else {
             msg.setSubject(inp.subject);
             if (String.isNotBlank(inp.htmlBody)) {
                 String body = inp.htmlBody;
-                // RESCHEDULE-with-ContactId uses the Lightning "Meeting
-                // Rescheduled Email Template" (rendered via the templateId
-                // path above, with the letterhead baked in). This branch
-                // only runs for the lead-based fallback (no ContactId) —
-                // wrap the in-Apex copy with the Setup-side Zenith Prep
-                // Lightning Letterhead so the brand chrome matches.
                 if (inp.inviteType == InviteType.RESCHEDULE) {
                     body = wrapWithZenithLetterhead(body);
                 }
@@ -220,11 +136,6 @@ public class ZoomMeetingEmailService {
                 msg.setPlainTextBody(inp.plainBody);
             }
         }
-        // setSaveAsActivity(true) requires a valid targetObjectId on a record
-        // type that supports activities (Lead, Contact, User). If the Lead has
-        // already been converted between booking and the Zoom hydration, this
-        // call throws and silently aborts the entire batch. Wrap it so the
-        // worst case is "email sent but not logged as an Activity".
         try {
             msg.setSaveAsActivity(inp.logEmailOnSend == true && inp.targetObjectId != null);
         } catch (Exception e) {
@@ -235,7 +146,6 @@ public class ZoomMeetingEmailService {
         }
         msg.setUseSignature(false);
 
-        // --- .ics attachment with correct content-type ---
         String icsMethod = (inp.inviteType == InviteType.CANCELLATION) ? 'CANCEL' : 'REQUEST';
 
         Messaging.EmailFileAttachment ics = new Messaging.EmailFileAttachment();
@@ -250,6 +160,7 @@ public class ZoomMeetingEmailService {
         return msg;
     }
 
+    // Renders a stored Lightning Email Template onto the message; falls back to setTemplateId on error.
     private static void renderTemplateOntoMessage(
         Messaging.SingleEmailMessage msg, SendInput inp
     ) {
@@ -259,11 +170,6 @@ public class ZoomMeetingEmailService {
                 inp.templateId, inp.targetObjectId, inp.relatedWhatId
             );
         } catch (Exception e) {
-            // Render failed — fall back to the template-driven send so the
-            // email still goes out (without recipient-aware merge resolution).
-            // Logging the failure so silent template misconfiguration (wrong
-            // template Id, converted Lead, missing merge field permissions)
-            // is visible in debug logs instead of vanishing.
             System.debug(LoggingLevel.WARN,
                 'renderStoredEmailTemplate FAILED templateId=' + inp.templateId
                 + ' targetObjectId=' + inp.targetObjectId
@@ -283,9 +189,6 @@ public class ZoomMeetingEmailService {
         }
     }
 
-    // Cache the "Zenith Prep Lightning Letterhead" lookup across the
-    // transaction — RESCHEDULE batches reuse the same wrap, no point
-    // re-querying per email.
     private static EnhancedLetterhead cachedZenithLetterhead;
     private static Boolean zenithLetterheadResolved = false;
 
@@ -311,13 +214,11 @@ public class ZoomMeetingEmailService {
             ];
             if (!lhs.isEmpty()) cachedZenithLetterhead = lhs[0];
         } catch (Exception e) {
-            // Letterhead not accessible — leave the body unwrapped rather
-            // than failing the email send.
         }
         return cachedZenithLetterhead;
     }
 
-    /** Remove the TO email from CCs, remove blanks and duplicates. */
+    // Removes the TO email from CCs, plus blanks and duplicates.
     private static List<String> dedupAndClean(List<String> ccEmails, String toEmail) {
         Set<String> seen = new Set<String>();
         List<String> out = new List<String>();
@@ -325,7 +226,7 @@ public class ZoomMeetingEmailService {
         for (String e : ccEmails) {
             if (String.isBlank(e)) continue;
             String norm = e.toLowerCase().trim();
-            if (norm == toLower) continue;   // already a TO
+            if (norm == toLower) continue;
             if (seen.contains(norm)) continue;
             seen.add(norm);
             out.add(e.trim());
@@ -335,13 +236,7 @@ public class ZoomMeetingEmailService {
 
     public class ZoomEmailException extends Exception {}
 
-    // =========================================================================
-    //  FLOW INVOCABLE
-    // =========================================================================
-    /**
-     * Input wrapper for the flow-callable email send. Salesforce's flow
-     * Apex-action picker reads @InvocableVariable fields off this class.
-     */
+    // Input wrapper for the flow-callable email send.
     public class FlowSendInput {
         @InvocableVariable(
             required=true
@@ -350,12 +245,7 @@ public class ZoomMeetingEmailService {
         public Id serviceAppointmentId;
     }
 
-    /**
-     * Send the Zenith Meeting Scheduled lightning template + .ics calendar
-     * invite to student / verified parents / assigned ES. Designed to be
-     * called from Meeting_After_RTF in place of the emailSimple action so
-     * the flow can attach the .ics that emailSimple can't.
-     */
+    // Flow-invocable: sends the Zenith Meeting Scheduled template plus .ics invite for the given Service Appointments.
     @InvocableMethod(
         label='Send Zenith Meeting Scheduled Email With ICS'
         description='Sends the Zenith Meeting Scheduled lightning template plus the calendar (.ics) invite to student, verified parents, and the assigned Educational Strategist so the event lands on every recipient\'s calendar.'

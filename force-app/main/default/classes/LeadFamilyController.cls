@@ -1,11 +1,4 @@
-/**
- * Controller for the leadStudentManager and leadParentGuardianManager LWCs.
- *
- * Students:  up to 3, stored in Student 1/2/3 fields on Lead.
- * Adults:    up to 2 — Primary Parent in Parent_1_* fields (the Lead itself
- *            represents this person); Second Adult (Parent or Guardian) in
- *            Parent_2_* + Second_Adult_Type__c.
- */
+// Controller for the leadStudentManager and leadParentGuardianManager LWCs — manages up to 3 students and 2 adults stored in Lead fields.
 public with sharing class LeadFamilyController {
 
     public static final Integer MAX_STUDENTS = 3;
@@ -13,11 +6,10 @@ public with sharing class LeadFamilyController {
     private static final String ROLE_PRIMARY = 'Primary';
     private static final String ROLE_SECOND  = 'Second';
 
-    // ─── DTOs ────────────────────────────────────────────────────────
     public class StudentList {
         @AuraEnabled public Id leadId;
         @AuraEnabled public List<StudentDTO> students;
-        @AuraEnabled public Integer maxAllowed;   // derived from No_of_Student_Enrolling_Today__c
+        @AuraEnabled public Integer maxAllowed;
     }
 
     public class ParentList {
@@ -34,22 +26,22 @@ public with sharing class LeadFamilyController {
         @AuraEnabled public String email;
         @AuraEnabled public String grade;
         @AuraEnabled public Boolean populated;
-        @AuraEnabled public String studentId;  // Lead.Student_ID_N__c, "S-XXXXXXXX"
+        @AuraEnabled public String studentId;
     }
 
     public class AdultDTO {
-        @AuraEnabled public String role;       // 'Primary' or 'Second'
-        @AuraEnabled public String type;       // 'Parent' or 'Guardian'
+        @AuraEnabled public String role;
+        @AuraEnabled public String type;
         @AuraEnabled public String firstName;
         @AuraEnabled public String lastName;
         @AuraEnabled public String fullName;
         @AuraEnabled public String email;
         @AuraEnabled public String phone;
         @AuraEnabled public Boolean populated;
-        @AuraEnabled public String parentId;   // Lead.Parent_1_ID__c or Parent_2_ID__c, "P-XXXXXXXX"
+        @AuraEnabled public String parentId;
     }
 
-    // ─── Student Reads/Writes ────────────────────────────────────────
+    // Returns the Lead's student roster + the cap derived from No_of_Student_Enrolling_Today__c.
     @AuraEnabled(cacheable=true)
     public static StudentList getStudents(Id leadId) {
         Lead ld = queryLead(leadId);
@@ -64,6 +56,7 @@ public with sharing class LeadFamilyController {
         return out;
     }
 
+    // Creates / updates a student row, enforces the cap, and stamps a Student ID on first save.
     @AuraEnabled
     public static StudentList saveStudent(Id leadId, Integer slot, String firstName, String lastName, String email, String grade) {
         validateSlot(slot);
@@ -91,8 +84,7 @@ public with sharing class LeadFamilyController {
             }
         }
         applyStudentToLead(ld, slot, fn, ln, em, gr);
-        // Ensure this slot has a Student ID assigned. Generated once and never
-        // regenerated, so editing the same student preserves the existing ID.
+        // Generated once per slot; never regenerated, so the ID survives edits.
         if (String.isBlank(getStudentIdForSlot(ld, slot))) {
             setStudentIdForSlot(ld, slot, generateUniqueId('S'));
         }
@@ -100,6 +92,7 @@ public with sharing class LeadFamilyController {
         return getStudents(leadId);
     }
 
+    // Clears the named student slot (Student ID is intentionally preserved is part of slot, but slot is cleared).
     @AuraEnabled
     public static StudentList deleteStudent(Id leadId, Integer slot) {
         validateSlot(slot);
@@ -109,7 +102,7 @@ public with sharing class LeadFamilyController {
         return getStudents(leadId);
     }
 
-    // ─── Parent Reads/Writes ─────────────────────────────────────────
+    // Returns the Primary parent (mirrored from Lead.FirstName/etc) and Second adult.
     @AuraEnabled(cacheable=true)
     public static ParentList getParents(Id leadId) {
         Lead ld = queryLead(leadId);
@@ -120,6 +113,7 @@ public with sharing class LeadFamilyController {
         return out;
     }
 
+    // Saves the Primary or Second adult; Primary writes to Lead.FirstName/etc (the source for Parent_1_* sync).
     @AuraEnabled
     public static ParentList saveParent(Id leadId, String role, String adultType, String firstName, String lastName, String email, String phone) {
         String rl = safeTrim(role);
@@ -140,16 +134,11 @@ public with sharing class LeadFamilyController {
         Lead ld = queryLead(leadId);
 
         if (rl == ROLE_PRIMARY) {
-            // Primary is always a Parent by definition. The Parent_1_* fields
-            // are auto-synced from Lead.FirstName / LastName / Email / Phone
-            // by LeadParent1SyncTrigger, so we update those source fields
-            // (writing directly to Parent_1_* would be reverted by the sync).
+            // Primary is always a Parent; Parent_1_* fields are auto-synced from these source fields.
             ld.FirstName = fn;
             ld.LastName  = ln;
             ld.Email     = em;
             ld.Phone     = ph;
-            // Generate Parent 1 ID here too if a save sneaks past the LWC's
-            // on-load ensure step (e.g. a save fired before connectedCallback).
             if (String.isBlank(ld.Parent_1_ID__c)) {
                 ld.Parent_1_ID__c = generateUniqueId('P');
             }
@@ -169,12 +158,7 @@ public with sharing class LeadFamilyController {
         return getParents(leadId);
     }
 
-    /**
-     * Called by leadParentGuardianManager on first load so the primary parent
-     * always has a Parent 1 ID without waiting for a save. Idempotent: only
-     * generates an ID if one isn't already present, then returns the latest
-     * ParentList so the LWC can refresh its view.
-     */
+    // Idempotent: stamps Parent 1 ID on first LWC load if missing.
     @AuraEnabled
     public static ParentList ensurePrimaryParentId(Id leadId) {
         Lead ld = queryLead(leadId);
@@ -190,6 +174,7 @@ public with sharing class LeadFamilyController {
         return out;
     }
 
+    // Clears a Primary or Second adult (Lead.LastName is required, so Primary cannot be fully blanked).
     @AuraEnabled
     public static ParentList deleteParent(Id leadId, String role) {
         String rl = safeTrim(role);
@@ -198,9 +183,6 @@ public with sharing class LeadFamilyController {
         }
         Lead ld = queryLead(leadId);
         if (rl == ROLE_PRIMARY) {
-            // Lead.LastName is required, so we can't fully blank the primary —
-            // clear FirstName / Email / Phone (which the sync trigger then
-            // mirrors onto Parent_1_*) and leave LastName intact.
             ld.FirstName = null;
             ld.Email     = null;
             ld.Phone     = null;
@@ -214,7 +196,6 @@ public with sharing class LeadFamilyController {
         return getParents(leadId);
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────
     private static Lead queryLead(Id leadId) {
         if (leadId == null) throw buildError('Lead Id is required.');
         List<Lead> results = [
@@ -234,14 +215,8 @@ public with sharing class LeadFamilyController {
         return results[0];
     }
 
-    /**
-     * Generates a "{prefix}-XXXXXXXX" identifier (8 hex chars taken from a
-     * fresh AES key, ≈ 4 billion combinations) for use as a Parent or Student
-     * ID. Used at LWC save time and on lead-load for the primary parent.
-     */
+    // Generates a "{prefix}-XXXXXXXX" identifier (~4 billion combinations) for a Parent or Student row.
     private static String generateUniqueId(String prefix) {
-        // Crypto.generateAesKey(128) returns a 16-byte Blob; convert to hex
-        // (32 chars) and take the first 8 for the suffix.
         String hex = EncodingUtil.convertToHex(Crypto.generateAesKey(128)).toUpperCase();
         return prefix + '-' + hex.substring(0, 8);
     }

@@ -1,3 +1,4 @@
+// Issues reschedule/cancel tokens for ServiceAppointments and provides the public Aura endpoints used by the booking site to validate or cancel a meeting.
 public without sharing class RescheduleTokenService {
 
     private static final String BOOKING_BASE_URL =
@@ -7,14 +8,13 @@ public without sharing class RescheduleTokenService {
         'Canceled', 'Cannot Complete', 'Completed'
     };
 
+    // Generates a 256-bit random hex token (64 chars) used for SA reschedule + IC schedule URLs.
     public static String generateToken() {
         Blob random = Crypto.generateAesKey(256);
         return EncodingUtil.convertToHex(random);
     }
 
-    // CancellationReason is a restricted picklist; if the supplied value is not in the
-    // picklist Salesforce throws INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST. Try the user value
-    // first, then fall back to a generic value, then to whatever string was passed in.
+    // CancellationReason is a restricted picklist — try the supplied reason, then known fallback values.
     public static void tryPutCancellationReason(ServiceAppointment sa, String reasonText) {
         List<String> attempts = new List<String>{
             reasonText,
@@ -28,6 +28,7 @@ public without sharing class RescheduleTokenService {
         }
     }
 
+    // Validates a reschedule token and returns the SA details + reschedule booking URL for the public site.
     @AuraEnabled
     public static Map<String, Object> validateAndGetAppointment(String token) {
         Map<String, Object> result = new Map<String, Object>();
@@ -69,9 +70,7 @@ public without sharing class RescheduleTokenService {
             result.put('appointmentId', sa.Id);
             result.put('startTime', sa.SchedStartTime != null
                 ? sa.SchedStartTime.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'') : null);
-            // Show the actually-assigned counselor (role-specific field) —
-            // Owner can be a queue/admin set by Scheduler auto-assignment and
-            // doesn't reflect who the family was booked with.
+            // Prefer the assigned counselor over Owner — Owner can be a queue.
             String assignedName = null;
             String mtForName = (sa.Meeting_Type__c != null) ? sa.Meeting_Type__c : '';
             if (mtForName.startsWith('Program Director')
@@ -98,6 +97,7 @@ public without sharing class RescheduleTokenService {
         }
     }
 
+    // Cancels the SA tied to the given token, expires the Zoom meeting, and triggers the cancel-email flow.
     @AuraEnabled
     public static Map<String, String> cancelAppointment(String token, String reason) {
         Map<String, String> result = new Map<String, String>();
@@ -127,16 +127,11 @@ public without sharing class RescheduleTokenService {
                 return result;
             }
 
-            // Use the customer-facing cancel status so Meeting_After_RTF's
-            // family-cancel rule fires and sends the cancellation email + .ics.
-            // Falls back to the existing 'Meeting Canceled by Student' value
-            // if the org's Status picklist hasn't been extended with the
-            // Customer entry — both values are matched by the flow rule.
+            // Customer-facing cancel status fires the family-cancel rule in Meeting_After_RTF.
             sa.Status = 'Meeting Canceled by Customer';
             String reasonText = String.isNotBlank(reason) ? reason : 'Not specified';
             String existingDesc = (sa.Description != null) ? (sa.Description + '\n') : '';
             sa.Description = existingDesc + 'Cancellation reason: ' + reasonText;
-            // CancellationReason is required by a validation rule when Status = 'Canceled'.
             tryPutCancellationReason(sa, reasonText);
             sa.Reschedule_Token__c = null;
             try {
@@ -154,21 +149,12 @@ public without sharing class RescheduleTokenService {
                     }
                 }
                 if (!badPicklist) throw de;
-                // Org doesn't have the 'Meeting Canceled by Customer' picklist
-                // value — retry with the canonical 'Meeting Canceled by Student'
-                // value. Either way the family-cancel flow rule still fires.
+                // Fallback for orgs without the new picklist value.
                 sa.Status = 'Meeting Canceled by Student';
                 update sa;
             }
 
-            // Expire the Zoom join URL by deleting the meeting on Zoom's side.
-            // Reschedule + cancel links are already invalidated above by clearing
-            // Reschedule_Token__c, but the Zoom join URL in the original
-            // confirmation email keeps working until we DELETE the meeting via
-            // the Zoom API. Done in a Queueable because callouts can't run in
-            // the same transaction as the DML above. Best-effort — failures are
-            // logged inside the Queueable and don't surface to the caller (they
-            // already saw their cancellation succeed at the SA level).
+            // Async-delete the Zoom meeting so the join URL stops working.
             try {
                 System.enqueueJob(new ZoomMeetingManager.ZoomCancelQueueable(
                     new Set<Id>{ sa.Id }

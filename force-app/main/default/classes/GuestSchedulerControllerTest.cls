@@ -115,8 +115,7 @@ private class GuestSchedulerControllerTest {
         return futureDate;
     }
 
-    // ─── Negative / Error Path Tests ───
-
+    // Verifies booking config errors when no counselors exist.
     @IsTest
     static void testGetBookingConfig_NoCounselors() {
         Map<String, Object> result = GuestSchedulerController.getBookingConfig(null);
@@ -124,18 +123,21 @@ private class GuestSchedulerControllerTest {
         System.assertNotEquals(null, result.get('error'), 'Should have error message');
     }
 
+    // Verifies booking config tolerates a zero open-window value.
     @IsTest
     static void testGetBookingConfig_ZeroOpenWindowDays() {
         Map<String, Object> result = GuestSchedulerController.getBookingConfig(0);
         System.assertNotEquals(null, result, 'Result should not be null');
     }
 
+    // Verifies booking config tolerates a negative open-window value.
     @IsTest
     static void testGetBookingConfig_NegativeOpenWindowDays() {
         Map<String, Object> result = GuestSchedulerController.getBookingConfig(-5);
         System.assertNotEquals(null, result, 'Result should not be null');
     }
 
+    // Verifies getAvailableSlots returns empty when there are no counselors.
     @IsTest
     static void testGetAvailableSlots_NoCounselors() {
         String dateStr = String.valueOf(Date.today().addDays(3));
@@ -143,12 +145,14 @@ private class GuestSchedulerControllerTest {
         System.assert(result.isEmpty(), 'Should return empty list with no counselors');
     }
 
+    // Verifies getAvailableSlots returns empty for an unparsable date string.
     @IsTest
     static void testGetAvailableSlots_InvalidDate() {
         List<Map<String, String>> result = GuestSchedulerController.getAvailableSlots('invalid-date');
         System.assert(result.isEmpty(), 'Should return empty list for invalid date');
     }
 
+    // Verifies bookAppointment throws AuraHandledException when no counselors exist.
     @IsTest
     static void testBookAppointment_NoCounselors() {
         DateTime startDT = DateTime.now().addDays(7);
@@ -170,6 +174,7 @@ private class GuestSchedulerControllerTest {
         System.assert(exceptionThrown, 'Should throw AuraHandledException when no counselors exist');
     }
 
+    // Verifies bookAppointment fails gracefully when optional fields are absent.
     @IsTest
     static void testBookAppointment_MissingOptionalFields() {
         DateTime startDT = DateTime.now().addDays(7);
@@ -190,8 +195,7 @@ private class GuestSchedulerControllerTest {
         System.assert(exceptionThrown, 'Should throw an exception');
     }
 
-    // ─── Positive Path Tests (require Admission Counsellor profile) ───
-
+    // Verifies booking config returns the expected metadata when fully seeded.
     @IsTest
     static void testGetBookingConfig_Success() {
         Id profileId = getAdmissionProfileId();
@@ -220,6 +224,7 @@ private class GuestSchedulerControllerTest {
         System.assertNotEquals(null, result.get('slotIntervalMinutes'), 'Slot interval should be present');
     }
 
+    // Verifies a custom open-window value flows through to targetAvailDays.
     @IsTest
     static void testGetBookingConfig_WithCustomOpenWindow() {
         Id profileId = getAdmissionProfileId();
@@ -239,6 +244,7 @@ private class GuestSchedulerControllerTest {
         System.assertEquals(7, result.get('targetAvailDays'), 'Should use custom open window days');
     }
 
+    // Verifies getAvailableSlots returns slots on a weekday with seeded data.
     @IsTest
     static void testGetAvailableSlots_WithData() {
         Id profileId = getAdmissionProfileId();
@@ -265,6 +271,7 @@ private class GuestSchedulerControllerTest {
         }
     }
 
+    // Verifies events and ResourceAbsence rows reduce the busy-resource availability.
     @IsTest
     static void testGetAvailableSlots_WithBusyResource() {
         Id profileId = getAdmissionProfileId();
@@ -278,7 +285,6 @@ private class GuestSchedulerControllerTest {
 
         Date futureDate = getNextWeekday();
 
-        // Block some hours with an event
         DateTime blockStart = DateTime.newInstanceGmt(futureDate, Time.newInstance(14, 0, 0, 0));
         DateTime blockEnd = blockStart.addHours(2);
         Event blockingEvent = new Event(
@@ -290,7 +296,6 @@ private class GuestSchedulerControllerTest {
         );
         insert blockingEvent;
 
-        // Also create a ResourceAbsence to cover that code path
         List<ServiceResource> resources = (List<ServiceResource>) data.get('serviceResources');
         ResourceAbsence ra = new ResourceAbsence(
             ResourceId = resources[0].Id,
@@ -309,6 +314,7 @@ private class GuestSchedulerControllerTest {
         System.assertNotEquals(null, result, 'Result should not be null');
     }
 
+    // Verifies a happy-path booking creates the expected Lead and Event.
     @IsTest
     static void testBookAppointment_Success() {
         Id profileId = getAdmissionProfileId();
@@ -321,14 +327,11 @@ private class GuestSchedulerControllerTest {
         buildFullSchedulingData(new List<User>{ counselorUser });
 
         Date futureDate = getNextWeekday();
-        // Pick 15:00 UTC = 10:00 AM Chicago (well within 6AM-10PM operating hours)
         DateTime startDT = DateTime.newInstanceGmt(futureDate, Time.newInstance(15, 0, 0, 0));
         DateTime endDT = startDT.addHours(1);
         String startISO = startDT.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'');
         String endISO = endDT.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'');
 
-        // Assign the counselor as a queue/owner capable user by giving lead ownership
-        // Use PermissionSet or just run as admin context (without sharing class handles access)
         Test.startTest();
         Map<String, String> result;
         try {
@@ -339,7 +342,6 @@ private class GuestSchedulerControllerTest {
                 'America/Chicago', 'google', 'spring2026', 'cpc'
             );
         } catch (AuraHandledException e) {
-            // Lead ownership may fail due to profile permissions - still covers bookAppointment code
             System.assert(e.getMessage() != null, 'Exception message should exist');
             Test.stopTest();
             return;
@@ -351,20 +353,19 @@ private class GuestSchedulerControllerTest {
             System.assertNotEquals(null, result.get('leadId'), 'Lead Id should be present');
             System.assertNotEquals(null, result.get('eventId'), 'Event Id should be present');
 
-            // Verify Lead
             List<Lead> leads = [SELECT Id, FirstName, LastName, Email, Phone, Company, LeadSource
                                 FROM Lead WHERE Id = :result.get('leadId')];
             System.assertEquals(1, leads.size(), 'Lead should exist');
             System.assertEquals('Smith Household', leads[0].Company);
             System.assertEquals('Website', leads[0].LeadSource);
 
-            // Verify Event
             List<Event> events = [SELECT Id, Subject FROM Event WHERE Id = :result.get('eventId')];
             System.assertEquals(1, events.size(), 'Event should exist');
             System.assertEquals('Initial Consultation - Zenith Prep Academy', events[0].Subject);
         }
     }
 
+    // Verifies the Lead.LeadSource defaults to Website when none is supplied.
     @IsTest
     static void testBookAppointment_WithDefaultLeadSource() {
         Id profileId = getAdmissionProfileId();
@@ -403,6 +404,7 @@ private class GuestSchedulerControllerTest {
         }
     }
 
+    // Verifies bookAppointment returns SLOT_UNAVAILABLE when the slot is fully blocked.
     @IsTest
     static void testBookAppointment_SlotUnavailable() {
         Id profileId = getAdmissionProfileId();
@@ -426,7 +428,6 @@ private class GuestSchedulerControllerTest {
         );
         insert blockingEvent;
 
-        // Try to book during the blocked time
         DateTime startDT = DateTime.newInstanceGmt(futureDate, Time.newInstance(15, 0, 0, 0));
         DateTime endDT = startDT.addHours(1);
         String startISO = startDT.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\'');
@@ -445,6 +446,7 @@ private class GuestSchedulerControllerTest {
         System.assertEquals('SLOT_UNAVAILABLE', result.get('error'), 'Error should be SLOT_UNAVAILABLE');
     }
 
+    // Verifies round-robin selection across multiple resources.
     @IsTest
     static void testBookAppointment_MultipleResources_RoundRobin() {
         Id profileId = getAdmissionProfileId();
@@ -457,7 +459,6 @@ private class GuestSchedulerControllerTest {
         User counselor2 = createCounselorUser(profileId, 'I');
         buildFullSchedulingData(new List<User>{ counselor1, counselor2 });
 
-        // Give counselor1 an existing event so round-robin should prefer counselor2
         Event existingEvent = new Event(
             Subject = 'Prior Meeting',
             StartDateTime = DateTime.now().addDays(1),
@@ -495,6 +496,7 @@ private class GuestSchedulerControllerTest {
         }
     }
 
+    // Verifies ServiceAppointment-based busy time is honored by getAvailableSlots.
     @IsTest
     static void testGetAvailableSlots_WithServiceAppointmentBusy() {
         Id profileId = getAdmissionProfileId();
@@ -511,7 +513,6 @@ private class GuestSchedulerControllerTest {
 
         Date futureDate = getNextWeekday();
 
-        // Create a ServiceAppointment to block time via SA busy map
         Account tempAcct = new Account(Name = 'Temp Account');
         insert tempAcct;
 
@@ -540,9 +541,9 @@ private class GuestSchedulerControllerTest {
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
-        // The 14:00-15:00 UTC slot should be filtered out
     }
 
+    // Verifies availableDates is populated and date format is yyyy-MM-dd.
     @IsTest
     static void testGetBookingConfig_AvailableDatesComputed() {
         Id profileId = getAdmissionProfileId();
@@ -562,12 +563,12 @@ private class GuestSchedulerControllerTest {
         List<String> availDates = (List<String>) result.get('availableDates');
         System.assertNotEquals(null, availDates, 'Available dates should not be null');
         System.assert(!availDates.isEmpty(), 'Should have at least one available date');
-        // Verify date format yyyy-MM-dd
         String firstDate = availDates[0];
         System.assertEquals(10, firstDate.length(), 'Date should be in yyyy-MM-dd format');
         System.assert(firstDate.contains('-'), 'Date should contain dashes');
     }
 
+    // Verifies getAvailableSlots applies advance-hours filtering for today.
     @IsTest
     static void testGetAvailableSlots_TodayWithAdvanceHours() {
         Id profileId = getAdmissionProfileId();
@@ -579,7 +580,6 @@ private class GuestSchedulerControllerTest {
         User counselorUser = createCounselorUser(profileId, 'L');
         buildFullSchedulingData(new List<User>{ counselorUser });
 
-        // Test with today's date - should filter out past slots and apply advance hours
         String dateStr = String.valueOf(Date.today());
 
         Test.startTest();
@@ -587,6 +587,5 @@ private class GuestSchedulerControllerTest {
         Test.stopTest();
 
         System.assertNotEquals(null, result, 'Result should not be null');
-        // Slots should only be in the future + advance hours
     }
 }

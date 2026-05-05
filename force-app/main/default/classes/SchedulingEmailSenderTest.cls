@@ -1,20 +1,3 @@
-/**
- * Coverage for SchedulingEmailSender.
- *
- * Branches exercised:
- *   1. Generate-Only PD (skipEmail=true) — link generated, stamped on
- *      Opportunity, no email queued, no Task/EmailMessage created.
- *   2. Generate-Only FSS                — same as PD but stamps the FSS
- *      link field instead.
- *   3. Send-Email PD with no existing link — fresh token minted, email
- *      sent, Opp.PD_Scheduling_Link__c stamped, StageName flipped to
- *      "SOM Link Sent".
- *   4. Send-Email PD when Opp.PD_Scheduling_Link__c is already populated
- *      → reuse the existing link in the email; do NOT mint a new token.
- *   5. Unknown emailType                → result.success=false.
- *   6. Bulk batch with same Opp twice   → mergedOpps dedup avoids
- *      DUPLICATE_VALUE on the Opportunity update.
- */
 @isTest
 private class SchedulingEmailSenderTest {
 
@@ -22,8 +5,6 @@ private class SchedulingEmailSenderTest {
     static void setupData() {
         Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
 
-        // Insert PD + FSS templates only when missing — keeps the test
-        // safe in orgs that already have them via metadata deploy.
         Map<String, EmailTemplate> existing = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
@@ -89,6 +70,7 @@ private class SchedulingEmailSenderTest {
         return req;
     }
 
+    // Verifies generate-only PD stamps the link without sending an email.
     @isTest
     static void generateOnly_PD_stampsLinkAndSkipsEmail() {
         Contact c = [SELECT Id FROM Contact LIMIT 1];
@@ -115,6 +97,7 @@ private class SchedulingEmailSenderTest {
             'PD link must contain expected query string');
     }
 
+    // Verifies generate-only FSS stamps the FSS link and leaves the PD link untouched.
     @isTest
     static void generateOnly_FSS_stampsFSSLink() {
         Contact c = [SELECT Id FROM Contact LIMIT 1];
@@ -137,6 +120,7 @@ private class SchedulingEmailSenderTest {
             'PD link must remain null when only FSS link is generated');
     }
 
+    // Verifies the Send-Email PD path stamps a fresh link and flips StageName to "SOM Link Sent".
     @isTest
     static void sendEmail_PD_freshLink_stampsLinkAndStage() {
         Contact c = [SELECT Id FROM Contact LIMIT 1];
@@ -160,12 +144,12 @@ private class SchedulingEmailSenderTest {
             'Send-Email PD must flip StageName to "SOM Link Sent" from "SOM Ready"');
     }
 
+    // Verifies the Send-Email PD path reuses an existing link and does not mint a new token.
     @isTest
     static void sendEmail_PD_reusesExistingLink() {
         Contact c = [SELECT Id FROM Contact LIMIT 1];
         Opportunity o = [SELECT Id FROM Opportunity LIMIT 1];
 
-        // Pre-stamp the link — Send path should reuse it, not mint a new one.
         String preExistingLink = 'https://existing.example.com/booking?type=PD&token=PRE_EXISTING';
         update new Opportunity(Id = o.Id, PD_Scheduling_Link__c = preExistingLink);
 
@@ -184,6 +168,7 @@ private class SchedulingEmailSenderTest {
             'Send-Email path must reuse the existing PD link, not mint a new one');
     }
 
+    // Verifies an unknown emailType returns success=false.
     @isTest
     static void unknownEmailType_returnsError() {
         Contact c = [SELECT Id FROM Contact LIMIT 1];
@@ -201,12 +186,9 @@ private class SchedulingEmailSenderTest {
             'Unknown emailType must return success=false');
     }
 
+    // Verifies a bulk batch with the same Opp twice does not raise DUPLICATE_VALUE on Opportunity update.
     @isTest
     static void bulk_sameOppTwice_noDuplicateValueError() {
-        // Two requests for the same Opp (PD generate + FSS generate) must
-        // collapse into ONE Opportunity update via the mergedOpps dedup
-        // — without it, a List<Opportunity> with two entries sharing an
-        // Id throws DUPLICATE_VALUE on update.
         Contact c = [SELECT Id FROM Contact LIMIT 1];
         Opportunity o = [SELECT Id FROM Opportunity LIMIT 1];
 
@@ -227,6 +209,7 @@ private class SchedulingEmailSenderTest {
         System.assertNotEquals(null, reread.FSS_Scheduling_Link__c, 'FSS link should be set');
     }
 
+    // Verifies an empty input list returns an empty result list.
     @isTest
     static void emptyInput_returnsEmptyList() {
         Test.startTest();

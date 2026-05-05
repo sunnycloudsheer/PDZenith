@@ -1,12 +1,4 @@
-/**
- * Sends the Initial Consultation scheduling email to a Lead using the
- * IC_Scheduling_Email template. The link is read from
- * Lead.IC_Schedule_Link__c, which the Lead_Send_IC_Schedule_Link screen
- * flow stamps via LeadICScheduleTokenStamper before invoking this sender.
- *
- * Lives in its own class because Salesforce only allows one
- * @InvocableMethod per Apex class.
- */
+// Sends the IC scheduling email to a Lead using the IC_Scheduling_Email template and the link stamped on Lead.IC_Schedule_Link__c.
 public without sharing class LeadICEmailSender {
 
     private static final String LINK_PLACEHOLDER = '[[SCHEDULING_LINK]]';
@@ -131,6 +123,7 @@ public without sharing class LeadICEmailSender {
         return results;
     }
 
+    // Null-safe merge-field replacement.
     private static String replaceMerge(String source, String mergeField, String value) {
         if (source == null) return source;
         return source.replace(mergeField, (value != null) ? value : '');

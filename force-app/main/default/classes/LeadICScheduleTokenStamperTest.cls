@@ -1,24 +1,8 @@
-/**
- * Coverage for LeadICScheduleTokenStamper.
- *
- * Three branches are exercised:
- *   1. Empty input list                    → empty result list.
- *   2. Lead in 'New' status, no SA, blank token → fresh token + link.
- *   3. Lead with Status='IC Scheduled' (site-booked Lead)
- *                                          → guard returns empty Result
- *                                            (no token / link generated).
- *   4. Lead already carrying a token       → guard returns empty Result
- *                                            (don't churn an existing
- *                                             token mid-flow).
- */
 @isTest
 private class LeadICScheduleTokenStamperTest {
 
     @TestSetup
     static void setupLeads() {
-        // Three Leads representing the three guard scenarios. Single
-        // insert keeps the SOQL+DML count under governor budget for the
-        // bulk test below.
         insert new List<Lead>{
             new Lead(
                 FirstName = 'New',  LastName = 'Lead',
@@ -39,6 +23,7 @@ private class LeadICScheduleTokenStamperTest {
         };
     }
 
+    // Verifies an empty input list yields an empty output list.
     @isTest
     static void emptyInput_returnsEmptyList() {
         Test.startTest();
@@ -48,6 +33,7 @@ private class LeadICScheduleTokenStamperTest {
         System.assertEquals(0, out.size(), 'Empty input must produce empty output');
     }
 
+    // Verifies a fresh Lead receives a token and a properly-formatted scheduling link.
     @isTest
     static void freshLead_getsTokenAndLink() {
         Lead newLead = [SELECT Id FROM Lead WHERE Status = 'New' AND IC_Schedule_Token__c = null LIMIT 1];
@@ -69,6 +55,7 @@ private class LeadICScheduleTokenStamperTest {
         System.assert(r.link.endsWith(r.token), 'Link must end with the generated token');
     }
 
+    // Verifies a site-booked Lead (Status=IC Scheduled) is skipped by the stamper.
     @isTest
     static void siteBookedLead_isSkipped() {
         Lead siteLead = [SELECT Id FROM Lead WHERE Status = 'IC Scheduled' LIMIT 1];
@@ -88,6 +75,7 @@ private class LeadICScheduleTokenStamperTest {
             'Site-booked Lead must NOT receive a fresh link');
     }
 
+    // Verifies a Lead with a pre-existing token is skipped (no churn).
     @isTest
     static void leadWithExistingToken_isSkipped() {
         Lead existing = [SELECT Id FROM Lead WHERE IC_Schedule_Token__c != null LIMIT 1];
@@ -105,11 +93,9 @@ private class LeadICScheduleTokenStamperTest {
             'Lead that already has a token must not get a fresh one (no churn)');
     }
 
+    // Verifies bulk input uses a single SOQL guard regardless of batch size.
     @isTest
     static void bulkInput_oneSoqlForAllLeads() {
-        // Confirm the bulk SOQL guard — one SELECT covers every request
-        // regardless of batch size. Any future regression that puts SOQL
-        // back inside the loop will fail this assertion at scale.
         List<Lead> all = [SELECT Id FROM Lead];
         List<LeadICScheduleTokenStamper.Request> requests = new List<LeadICScheduleTokenStamper.Request>();
         for (Lead l : all) {
@@ -126,8 +112,6 @@ private class LeadICScheduleTokenStamperTest {
         Test.stopTest();
 
         System.assertEquals(requests.size(), out.size(), 'Result list size must match input');
-        // Allow a small margin (SF describe / lookup overhead) but assert
-        // we are NOT firing one SOQL per request.
         Integer queriesUsed = afterQueries - beforeQueries;
         System.assert(queriesUsed <= 2,
             'Generate should issue <= 2 SOQL regardless of batch size, used: ' + queriesUsed);

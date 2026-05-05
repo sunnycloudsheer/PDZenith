@@ -1,37 +1,20 @@
-/**
- * Controller for the opportunityPipeline LWC.
- * - Updates Opportunity.StageName + Opportunity.Pipeline_Group__c together
- *   so the path UI and the record stay consistent.
- * - Optionally chains a second update (used when Closed Won auto-advances
- *   into the Billing group).
- * - Mirrors selected stages onto the primary OpportunityContactRole's
- *   Contact (Stage__c, Billing_status__c).
- */
+// Controller for the opportunityPipeline LWC: updates Stage + Pipeline_Group together and mirrors selected stages onto the primary Contact.
 public with sharing class OpportunityPipelineController {
 
     private static final String CONTACT_STAGE_FIELD   = 'Stage__c';
     private static final String CONTACT_BILLING_FIELD = 'Billing_status__c';
 
-    // Opportunity StageName  →  Contact.Stage__c API name (org-specific)
+    // Opportunity StageName → Contact.Stage__c picklist API value (org-specific).
     private static final Map<String, String> OPP_TO_CONTACT_STAGE = new Map<String, String>{
-        'FSS Onboarding'          => '1083265542',  // FSS Onboarding
-        'In Program'              => '266117751',   // In Program
-        'Paused - Not Delinquent' => '936529426',   // Paused
-        'Terminated'              => '1029396323',  // Terminated
-        'Terminated - MBG'        => '1077888160',  // Terminated - MBG
-        'Closed Won'              => '266117751'    // In Program
+        'FSS Onboarding'          => '1083265542',
+        'In Program'              => '266117751',
+        'Paused - Not Delinquent' => '936529426',
+        'Terminated'              => '1029396323',
+        'Terminated - MBG'        => '1077888160',
+        'Closed Won'              => '266117751'
     };
 
-    /**
-     * Updates StageName + Pipeline_Group__c, optionally chained with a second
-     * update for the Closed Won → Billing transition.
-     *
-     * @param opportunityId          required — record to update
-     * @param stageName              required — first StageName to apply
-     * @param pipelineGroup          optional — Pipeline_Group__c value (kept consistent)
-     * @param advanceToStageName     optional — second StageName applied in same call
-     * @param advanceToPipelineGroup optional — second Pipeline_Group__c value
-     */
+    // Updates Stage + Pipeline_Group, optionally chained for Closed Won → Billing transition.
     @AuraEnabled
     public static Opportunity updateOpportunityStage(
         Id opportunityId,
@@ -60,8 +43,6 @@ public with sharing class OpportunityPipelineController {
 
             syncPrimaryContact(opportunityId, finalStage, finalGroup);
 
-            // Return the post-update state so the LWC can refresh its UI
-            // immediately, without waiting for the LDS wire to revalidate.
             return [
                 SELECT Id, StageName, Pipeline_Group__c
                 FROM Opportunity
@@ -82,11 +63,7 @@ public with sharing class OpportunityPipelineController {
         return o;
     }
 
-    /**
-     * Mirrors the new opportunity stage onto the primary contact's
-     * Stage__c (mapped) and Billing_status__c (when group = Billing).
-     * Bulkified: a single SOQL + at most one DML.
-     */
+    // Mirrors the new Stage onto the primary Contact's Stage__c and Billing_status__c (when group=Billing).
     @TestVisible
     private static void syncPrimaryContact(Id opportunityId, String stageName, String pipelineGroup) {
         Id contactId = primaryContactId(opportunityId);
@@ -121,10 +98,7 @@ public with sharing class OpportunityPipelineController {
         return null;
     }
 
-    /**
-     * Lightweight check — keeps the class compilable in orgs that don't
-     * have these custom Contact fields. Cached per transaction.
-     */
+    // Field-existence check cached per transaction; keeps class compilable in orgs missing the custom fields.
     private static Map<String, Boolean> fieldExistsCache = new Map<String, Boolean>();
     private static Boolean fieldExists(String objectName, String fieldName) {
         String key = objectName + '.' + fieldName;
@@ -136,6 +110,7 @@ public with sharing class OpportunityPipelineController {
         return exists;
     }
 
+    // Extracts the user-friendly message from a DML validation-rule exception.
     private static String parseDmlMessage(DmlException e) {
         String msg = e.getMessage();
         Pattern p = Pattern.compile('FIELD_CUSTOM_VALIDATION_EXCEPTION,\\s*(.+?)(?::\\s*\\[|$)');

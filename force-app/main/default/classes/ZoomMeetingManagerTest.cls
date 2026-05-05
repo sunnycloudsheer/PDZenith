@@ -1,9 +1,6 @@
 @IsTest
 public class ZoomMeetingManagerTest {
 
-    // =========================================================================
-    //  MOCK
-    // =========================================================================
     private class ZoomMock implements HttpCalloutMock {
         public Integer createStatusCode = 201;
         public Integer updateStatusCode = 204;
@@ -46,9 +43,6 @@ public class ZoomMeetingManagerTest {
         }
     }
 
-    // =========================================================================
-    //  DATA FIXTURES
-    // =========================================================================
     private static ServiceAppointment buildAppointment() {
         return buildAppointment('Initial Call', true, null);
     }
@@ -77,8 +71,6 @@ public class ZoomMeetingManagerTest {
             EarliestStartTime = Datetime.newInstanceGmt(2026, 6, 10, 15, 0, 0),
             DueDate           = Datetime.newInstanceGmt(2026, 6, 10, 17, 0, 0)
         );
-        // Meeting_Type__c is a restricted picklist in this org — don't populate.
-        // classifyMeetingRole() falls back to Subject, so Subject alone drives role.
         if (setHost) {
             sa.put('Educational_Strategist__c', UserInfo.getUserId());
         }
@@ -98,9 +90,6 @@ public class ZoomMeetingManagerTest {
         return ZoomMeetingManager.manage(new List<ZoomMeetingManager.InputWrapper>{ ip });
     }
 
-    /** Lead-based SA fixture — no Contact, no Account, just a Lead parent.
-     *  Lead.OwnerId is the running user so Lead.Owner host resolution
-     *  deterministically picks that user. */
     private static ServiceAppointment buildLeadAppointment() {
         Lead lead = new Lead(
             FirstName = 'Prospect', LastName = 'Student',
@@ -125,9 +114,7 @@ public class ZoomMeetingManagerTest {
         return sa;
     }
 
-    // =========================================================================
-    //  TESTS — ICS BUILDER
-    // =========================================================================
+    // Verifies a REQUEST .ics contains the required calendar properties.
     @IsTest
     static void ics_build_request_contains_required_properties() {
         ZoomIcsBuilder.IcsInput inp = new ZoomIcsBuilder.IcsInput();
@@ -156,6 +143,7 @@ public class ZoomMeetingManagerTest {
         System.assert(ics.contains('BEGIN:VALARM'));
     }
 
+    // Verifies a CANCEL .ics marks the event as cancelled and drops VALARM.
     @IsTest
     static void ics_build_cancel_marks_event_cancelled() {
         ZoomIcsBuilder.IcsInput inp = new ZoomIcsBuilder.IcsInput();
@@ -179,6 +167,7 @@ public class ZoomMeetingManagerTest {
             'Cancelled events should not carry reminders');
     }
 
+    // Verifies the .ics builder rejects input missing the UID.
     @IsTest
     static void ics_build_fails_without_uid() {
         ZoomIcsBuilder.IcsInput inp = new ZoomIcsBuilder.IcsInput();
@@ -193,6 +182,7 @@ public class ZoomMeetingManagerTest {
         }
     }
 
+    // Verifies the .ics builder line-folds long descriptions.
     @IsTest
     static void ics_line_folding_handles_long_description() {
         ZoomIcsBuilder.IcsInput inp = new ZoomIcsBuilder.IcsInput();
@@ -212,9 +202,7 @@ public class ZoomMeetingManagerTest {
         System.assert(ics.contains('DESCRIPTION:'), 'Expected DESCRIPTION line');
     }
 
-    // =========================================================================
-    //  TESTS — EMAIL SERVICE
-    // =========================================================================
+    // Verifies the email service builds a calendar attachment without errors.
     @IsTest
     static void email_service_builds_attachment_with_calendar_content_type() {
         ZoomMeetingEmailService.SendInput s = new ZoomMeetingEmailService.SendInput();
@@ -233,6 +221,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals(null, r.errorMessage);
     }
 
+    // Verifies the email service rejects a missing TO address.
     @IsTest
     static void email_service_rejects_missing_to() {
         ZoomMeetingEmailService.SendInput s = new ZoomMeetingEmailService.SendInput();
@@ -244,6 +233,7 @@ public class ZoomMeetingManagerTest {
         System.assert(r.errorMessage != null);
     }
 
+    // Verifies the email service rejects missing ICS content.
     @IsTest
     static void email_service_rejects_missing_ics_content() {
         ZoomMeetingEmailService.SendInput s = new ZoomMeetingEmailService.SendInput();
@@ -255,6 +245,7 @@ public class ZoomMeetingManagerTest {
         System.assert(r.errorMessage.contains('ICS'));
     }
 
+    // Verifies the email service dedups CC addresses and drops the duplicate of the TO address.
     @IsTest
     static void email_service_dedups_cc_and_drops_to_duplicate() {
         ZoomMeetingEmailService.SendInput s = new ZoomMeetingEmailService.SendInput();
@@ -280,6 +271,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals(true, r.success);
     }
 
+    // Verifies the cancellation invite type uses METHOD:CANCEL semantics.
     @IsTest
     static void email_service_cancellation_uses_cancel_method() {
         ZoomMeetingEmailService.SendInput s = new ZoomMeetingEmailService.SendInput();
@@ -296,9 +288,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals(true, r.success);
     }
 
-    // =========================================================================
-    //  TESTS — MANAGER entry guards
-    // =========================================================================
+    // Verifies the manager tolerates null and empty input lists.
     @IsTest
     static void manager_handles_null_inputs() {
         Test.setMock(HttpCalloutMock.class, new ZoomMock());
@@ -309,6 +299,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals(0, outs.size());
     }
 
+    // Verifies the manager filters out inputs with null Ids before dispatch.
     @IsTest
     static void manager_skips_inputs_with_null_ids() {
         ZoomMeetingManager.InputWrapper ip = new ZoomMeetingManager.InputWrapper();
@@ -324,6 +315,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals(0, outs.size(), 'Null Id should be filtered before dispatch');
     }
 
+    // Verifies the manager reports an error when the ServiceAppointment is missing.
     @IsTest
     static void manager_reports_missing_service_appointment() {
         ZoomMeetingManager.InputWrapper ip = new ZoomMeetingManager.InputWrapper();
@@ -341,9 +333,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('not found'));
     }
 
-    // =========================================================================
-    //  TESTS — MANAGER CREATE / UPDATE / CANCEL
-    // =========================================================================
+    // Verifies CREATE succeeds and populates Zoom meeting fields on the output.
     @IsTest
     static void manager_create_succeeds_and_populates_meeting_fields() {
         ServiceAppointment sa = buildAppointment();
@@ -362,6 +352,7 @@ public class ZoomMeetingManagerTest {
         System.assertNotEquals(null, o.icsUid);
     }
 
+    // Verifies a null action defaults to CREATE.
     @IsTest
     static void manager_default_action_is_create() {
         ServiceAppointment sa = buildAppointment();
@@ -376,6 +367,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('SUCCESS', outs[0].status);
     }
 
+    // Verifies CREATE returns ERROR when the Zoom create call fails.
     @IsTest
     static void manager_create_fails_on_zoom_error() {
         ServiceAppointment sa = buildAppointment();
@@ -392,6 +384,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('Zoom create failed'));
     }
 
+    // Verifies UPDATE succeeds and produces a non-negative sequence.
     @IsTest
     static void manager_update_succeeds_and_increments_sequence() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '999888777');
@@ -403,22 +396,13 @@ public class ZoomMeetingManagerTest {
 
         System.assertEquals('SUCCESS', outs[0].status, 'errorMessage=' + outs[0].errorMessage);
         System.assertEquals('999888777', outs[0].meetingId);
-        // Sequence is now derived from (SystemModstamp - CreatedDate) in
-        // seconds, so the exact value depends on elapsed time — just
-        // assert it's a populated non-negative integer. Monotonic-increase
-        // across real reschedules is enforced by SystemModstamp itself.
         System.assertNotEquals(null, outs[0].icsSequence);
         System.assert(outs[0].icsSequence >= 0, 'icsSequence must be >= 0');
     }
 
+    // Verifies UPDATE on a Lead-based SA uses the in-Apex copy fallback.
     @IsTest
     static void manager_update_lead_based_uses_inapex_copy() {
-        // Lead-based SAs have no Contact, so queueInvite's RESCHEDULE
-        // branch falls back to the in-Apex buildSubject / buildHtmlBody /
-        // buildPlainBody helpers (the "Meeting Rescheduled Email Template"
-        // is keyed off ContactId for merge resolution). This exercises
-        // those fallback branches so coverage still hits them after the
-        // template path was wired up for ContactId-based reschedules.
         ServiceAppointment sa = buildLeadAppointment();
         sa.put('Zoom_Meeting_ID__c', '777666555');
         sa.put('Zoom_Join_URL__c',  'https://zoom.us/j/777666555');
@@ -435,6 +419,7 @@ public class ZoomMeetingManagerTest {
         System.assertNotEquals(null, outs[0].icsSequence);
     }
 
+    // Verifies UPDATE falls back to CREATE when no Zoom meeting Id is present.
     @IsTest
     static void manager_update_falls_back_to_create_when_no_zoom_id() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, null);
@@ -449,6 +434,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('123456789', outs[0].meetingId);
     }
 
+    // Verifies a 404 on UPDATE causes a fallback CREATE.
     @IsTest
     static void manager_update_404_falls_back_to_create() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '404GONE');
@@ -465,6 +451,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('CREATE', outs[0].action);
     }
 
+    // Verifies UPDATE returns ERROR when the Zoom update call fails (non-404).
     @IsTest
     static void manager_update_returns_error_on_zoom_failure() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '111');
@@ -481,6 +468,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('Zoom update failed'));
     }
 
+    // Verifies CANCEL deletes the Zoom meeting and reports SUCCESS.
     @IsTest
     static void manager_cancel_deletes_meeting_and_sends_cancellation() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '555444333');
@@ -494,28 +482,21 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('555444333', outs[0].meetingId);
     }
 
+    // Verifies the cancel-email Invocable runs without exception for a valid SA.
     @IsTest
     static void cancel_email_action_invocable_sends_via_template() {
-        // Service_Appointment_Status_Change_Email_Notification calls this
-        // Invocable in place of emailSimple so it can attach the
-        // METHOD:CANCEL .ics that purges the event from calendars.
         ServiceAppointment sa = buildAppointment('Initial Call', true, '555444333');
 
         ZoomMeetingCancelEmailAction.Input ip = new ZoomMeetingCancelEmailAction.Input();
         ip.serviceAppointmentId = sa.Id;
-        // Any non-null Id is fine — sendBulk in the email service tries to
-        // use it as templateId and will fall through gracefully under tests
-        // because EmailTemplate isn't accessible without seeAllData.
         ip.emailTemplateId = sa.Id;
 
         Test.startTest();
         ZoomMeetingCancelEmailAction.send(new List<ZoomMeetingCancelEmailAction.Input>{ ip });
         Test.stopTest();
-
-        // No exception thrown; method completes. Coverage on the Invocable
-        // wrapper + the manager's sendCancellationsForSavedAppointments path.
     }
 
+    // Verifies the cancel-email Invocable handles null and empty input gracefully.
     @IsTest
     static void cancel_email_action_invocable_handles_empty_input() {
         Test.startTest();
@@ -527,6 +508,7 @@ public class ZoomMeetingManagerTest {
         Test.stopTest();
     }
 
+    // Verifies CANCEL is SKIPPED when the SA has neither a Zoom Id nor a UID.
     @IsTest
     static void manager_cancel_skipped_when_no_zoom_id_or_uid() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, null);
@@ -539,6 +521,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('SKIPPED', outs[0].status);
     }
 
+    // Verifies CANCEL treats a Zoom 404 as idempotent SUCCESS.
     @IsTest
     static void manager_cancel_tolerates_zoom_404() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '777');
@@ -555,6 +538,7 @@ public class ZoomMeetingManagerTest {
             '404 on delete should be treated as idempotent success');
     }
 
+    // Verifies CANCEL returns ERROR when the Zoom delete call fails (non-404).
     @IsTest
     static void manager_cancel_reports_error_on_zoom_failure() {
         ServiceAppointment sa = buildAppointment('Initial Call', true, '888');
@@ -571,6 +555,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('Zoom delete failed'));
     }
 
+    // Verifies an unknown action label returns ERROR.
     @IsTest
     static void manager_unknown_action_reports_error() {
         ServiceAppointment sa = buildAppointment();
@@ -584,9 +569,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('Unknown action'));
     }
 
-    // =========================================================================
-    //  TESTS — MANAGER validation
-    // =========================================================================
+    // Verifies the manager rejects an SA missing SchedStartTime.
     @IsTest
     static void manager_rejects_missing_times() {
         ServiceAppointment sa = buildAppointment();
@@ -602,6 +585,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('SchedStartTime'));
     }
 
+    // Verifies the manager rejects an SA whose attendee Contact has no Email.
     @IsTest
     static void manager_rejects_missing_attendee_email() {
         ServiceAppointment sa = buildAppointment();
@@ -618,9 +602,7 @@ public class ZoomMeetingManagerTest {
         System.assert(outs[0].errorMessage.contains('attendee email'));
     }
 
-    // =========================================================================
-    //  TESTS — classify role by Subject
-    // =========================================================================
+    // Verifies Subject "Family Success Onboarding" is classified as the FSS role.
     @IsTest
     static void manager_classifies_fss_role() {
         ServiceAppointment sa = buildAppointment('Family Success Onboarding', true, null);
@@ -633,6 +615,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('FSS', outs[0].resolvedRole);
     }
 
+    // Verifies Subject "Program Director check-in" is classified as the PD role.
     @IsTest
     static void manager_classifies_pd_role() {
         ServiceAppointment sa = buildAppointment('Program Director check-in', true, null);
@@ -645,6 +628,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('PD', outs[0].resolvedRole);
     }
 
+    // Verifies Subject "Initial Consultation" is classified as the AC role.
     @IsTest
     static void manager_classifies_ac_role_via_initial_consultation() {
         ServiceAppointment sa = buildAppointment('Initial Consultation', true, null);
@@ -657,6 +641,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('AC', outs[0].resolvedRole);
     }
 
+    // Verifies an unrecognized Subject defaults to the ES role.
     @IsTest
     static void manager_defaults_to_es_role() {
         ServiceAppointment sa = buildAppointment('Weekly Strategy Session', true, null);
@@ -669,9 +654,7 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('ES', outs[0].resolvedRole);
     }
 
-    // =========================================================================
-    //  TESTS — Substitute ES (only applies to ES role)
-    // =========================================================================
+    // Verifies an active Substitute__c overrides the ES host source.
     @IsTest
     static void manager_active_substitute_wins_for_es_role() {
         ServiceAppointment sa = buildAppointment('Weekly Strategy Session', true, null);
@@ -694,10 +677,9 @@ public class ZoomMeetingManagerTest {
             'Active substitute should override SA.Educational_Strategist__c');
     }
 
+    // Verifies Substitute__c is ignored for non-ES roles even when active.
     @IsTest
     static void manager_substitute_ignored_for_non_es_role() {
-        // PD call — classifyMeetingRole returns PD. Even with an active
-        // Substitute__c (ES-only), the host must resolve via PD fields.
         ServiceAppointment sa = buildAppointment('Program Director check-in', true, null);
         sa.put('Program_Director__c', UserInfo.getUserId());
         update sa;
@@ -719,9 +701,7 @@ public class ZoomMeetingManagerTest {
             'Substitute__c is ES-only — PD role must not consult it');
     }
 
-    // =========================================================================
-    //  TESTS — Lead-based SA (pre-conversion, no Contact)
-    // =========================================================================
+    // Verifies a Lead-based SA resolves the host via Lead.Owner.
     @IsTest
     static void manager_lead_sa_uses_lead_owner_as_host() {
         ServiceAppointment sa = buildLeadAppointment();
@@ -734,7 +714,6 @@ public class ZoomMeetingManagerTest {
         System.assertEquals('SUCCESS', outs[0].status, 'errorMessage=' + outs[0].errorMessage);
         System.assertEquals('Lead.Owner', outs[0].resolvedHostSource,
             'Lead-based SA must resolve host via Lead.Owner, not via role chain');
-        // Attendee (TO) is the Lead.Email — not a Contact.
         System.assertEquals('123456789', outs[0].meetingId);
     }
 

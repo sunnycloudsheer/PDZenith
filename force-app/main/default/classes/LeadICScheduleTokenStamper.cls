@@ -1,21 +1,4 @@
-/**
- * Generates a fresh, single-use IC schedule token + the full booking URL
- * for one or more Lead Ids.
- *
- * Called from the record-triggered flow Lead_Generate_IC_Schedule_Token,
- * which fires on Lead create when:
- *   - IC_Schedule_Token__c is blank, AND
- *   - Service_Appointment__c is blank, AND
- *   - IsConverted = false.
- *
- * The flow assigns the returned token + link onto the same Lead record so
- * an AC / marketing user can copy IC_Schedule_Link__c and share an
- * initial-call booking URL with the family.
- *
- * Token generation reuses RescheduleTokenService.generateToken() (256-bit
- * random, hex-encoded, 64 chars) so the same uniqueness guarantees apply
- * as the existing IC reschedule + SA reschedule tokens.
- */
+// Generates a fresh IC schedule token + booking URL for a Lead; called from Lead_Generate_IC_Schedule_Token flow.
 public without sharing class LeadICScheduleTokenStamper {
 
     private static final String BOOKING_BASE_URL =
@@ -30,6 +13,7 @@ public without sharing class LeadICScheduleTokenStamper {
         @InvocableVariable public String link;
     }
 
+    // Returns a fresh 64-char IC schedule token + booking URL per request, skipping site-booked Leads.
     @InvocableMethod(
         label='Generate IC Schedule Token'
         description='Returns a fresh 64-char IC schedule token + full booking URL per request. Called from the Lead_Generate_IC_Schedule_Token flow.'
@@ -39,12 +23,6 @@ public without sharing class LeadICScheduleTokenStamper {
         List<Result> out = new List<Result>();
         if (requests == null || requests.isEmpty()) return out;
 
-        // Bulk-fetch the Leads so we can apply the same site-booked guard
-        // the Lead_Generate_IC_Schedule_Token flow uses, but at the Apex
-        // layer too. Defense-in-depth: future callers, anonymous Apex,
-        // direct REST invocations, or a flow that's missing the start
-        // filter all hit this guard, so a Lead created by the booking
-        // site never accidentally gets a fresh "schedule again" link.
         Set<Id> leadIds = new Set<Id>();
         for (Request req : requests) {
             if (req != null && req.leadId != null) leadIds.add(req.leadId);
@@ -66,17 +44,7 @@ public without sharing class LeadICScheduleTokenStamper {
             Lead ld = (req != null && req.leadId != null)
                 ? leadMap.get(req.leadId) : null;
 
-            // Skip generation when the Lead is already booked through the
-            // site portal. Returning a Result with null token/link is the
-            // signal to the calling flow's Stamp step that nothing should
-            // be written — and because the auto-flow's start filter
-            // already excludes Leads with a populated token, this null
-            // write only ever lands on Leads whose token was already null
-            // (no data loss).
-            //   - Status='IC Scheduled'      → site booking happened
-            //   - Meeting_Status__c='Scheduled' → site booking happened
-            //   - Service_Appointment__c set → SA already linked
-            //   - IC_Schedule_Token__c set   → don't churn the existing token
+            // Skip Leads already booked via the site so existing tokens are not churned.
             Boolean isSiteBooked = ld != null && (
                 'IC Scheduled'.equals(ld.Status)
                 || 'Scheduled'.equals(ld.Meeting_Status__c)

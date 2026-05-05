@@ -46,6 +46,7 @@ public with sharing class PDRoundRobinHandler {
         Boolean isSticky = false;
     }
 
+    // Returns the PD assignment per Opportunity, using sticky if set, otherwise weighted round-robin.
     @InvocableMethod(
         label='Get PD Assignment (Round Robin or Sticky)'
         description='Determines which PD should handle this Opportunity. Uses sticky if already assigned, otherwise weighted round-robin.'
@@ -54,20 +55,17 @@ public with sharing class PDRoundRobinHandler {
     public static List<PDResult> getAssignedPD(List<PDRequest> requests) {
         List<PDResult> results = new List<PDResult>();
 
-        // ── 1. Bulk-collect all Opportunity IDs ──────────────────────────
         Set<Id> oppIds = new Set<Id>();
         for (PDRequest req : requests) {
             oppIds.add(req.opportunityId);
         }
 
-        // ── 2. Pre-query all Opportunities OUTSIDE the loop ──────────────
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
             SELECT Id, Program_Director__c
             FROM Opportunity
             WHERE Id IN :oppIds
         ]);
 
-        // ── 3. Pre-query PD Users and ServiceResources for sticky check ──
         Set<Id> stickyPDUserIds = new Set<Id>();
         for (Opportunity opp : oppMap.values()) {
             if (opp.Program_Director__c != null) {
@@ -75,7 +73,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // Validate which sticky PD users have the correct profile
         Set<Id> validPDUserIds = new Set<Id>();
         if (!stickyPDUserIds.isEmpty()) {
             for (User u : [
@@ -88,7 +85,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // Map PD user -> ServiceResource for sticky assignments
         Map<Id, Id> pdUserToResourceId = new Map<Id, Id>();
         if (!validPDUserIds.isEmpty()) {
             for (ServiceResource sr : [
@@ -99,7 +95,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // ── 4. Process each request using pre-queried data ───────────────
         for (PDRequest req : requests) {
             PDResult res = new PDResult();
             try {
@@ -112,7 +107,6 @@ public with sharing class PDRoundRobinHandler {
                 Id selectedResourceId;
                 Boolean isSticky = false;
 
-                // Check sticky assignment from pre-queried maps (no SOQL in loop)
                 if (opp.Program_Director__c != null
                     && validPDUserIds.contains(opp.Program_Director__c)) {
                     Id stickyResId = pdUserToResourceId.get(opp.Program_Director__c);
@@ -146,6 +140,7 @@ public with sharing class PDRoundRobinHandler {
         return results;
     }
 
+    // Resolves territory, work type, and operating hours from a chosen ServiceResource.
     private static DiscoveredPD discoverFromResource(Id resourceId, Boolean isFollowUp) {
         DiscoveredPD cfg = new DiscoveredPD();
         cfg.serviceResourceId = resourceId;
@@ -218,7 +213,6 @@ public with sharing class PDRoundRobinHandler {
             }
         } catch (Exception e) { }
 
-        // Validate which OH actually have TimeSlot records
         Set<Id> allOHIds = new Set<Id>();
         for (ServiceTerritoryMember stm : stmList) {
             if (stm.ServiceTerritory.OperatingHoursId != null) allOHIds.add(stm.ServiceTerritory.OperatingHoursId);
@@ -237,7 +231,6 @@ public with sharing class PDRoundRobinHandler {
         ServiceTerritoryMember bestStm = null;
         Id matchedWorkTypeId = null;
 
-        // Priority 1: territory with matching WorkType AND valid operating hours
         for (ServiceTerritoryMember stm : stmList) {
             if (territoryToWorkType.containsKey(stm.ServiceTerritoryId)
                 && hasValidOH(stm, validOHIds)) {
@@ -247,7 +240,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // Priority 2: territory with matching WorkType (any OH)
         if (bestStm == null) {
             for (ServiceTerritoryMember stm : stmList) {
                 if (territoryToWorkType.containsKey(stm.ServiceTerritoryId)) {
@@ -258,7 +250,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // Priority 3: territory with valid operating hours
         if (bestStm == null) {
             for (ServiceTerritoryMember stm : stmList) {
                 if (hasValidOH(stm, validOHIds)) {
@@ -268,7 +259,6 @@ public with sharing class PDRoundRobinHandler {
             }
         }
 
-        // Priority 4: any territory
         if (bestStm == null) {
             bestStm = stmList[0];
         }
@@ -296,11 +286,13 @@ public with sharing class PDRoundRobinHandler {
         return cfg;
     }
 
+    // True when the territory member has an operating hours record with valid TimeSlots.
     private static Boolean hasValidOH(ServiceTerritoryMember stm, Set<Id> validOHIds) {
         return (stm.ServiceTerritory.OperatingHoursId != null && validOHIds.contains(stm.ServiceTerritory.OperatingHoursId))
             || (stm.OperatingHoursId != null && validOHIds.contains(stm.OperatingHoursId));
     }
 
+    // Finds the most appropriate WorkType for the given duration, territory, and operating hours.
     private static Id discoverWorkType(Boolean isFollowUp, Id territoryId, Id operatingHoursId) {
         String preferredName = isFollowUp ? 'PD Follow-up - 30min' : 'PD SOM Meeting - 1hr';
 
@@ -351,6 +343,7 @@ public with sharing class PDRoundRobinHandler {
         return null;
     }
 
+    // Picks the active PD ServiceResource with the lowest weight-adjusted appointment load.
     private static Id selectByWeightedRoundRobin() {
         Set<Id> pdUserIds = new Set<Id>();
         for (User u : [

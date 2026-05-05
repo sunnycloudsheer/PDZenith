@@ -1,18 +1,4 @@
-/**
- * ZoomMeetingService — Scheduled Meeting + .ICS Calendar Invite
- * Supports: NEW_BOOKING | RESCHEDULE | CANCELLATION
- * Uses: Named Credential 'Zoom_App'
- *
- * ✅ FIX 1: Added sendMeetingEmail() — Salesforce sends Zoom join link directly
- *           (does NOT rely on Zoom's own registrant email which is account-setting dependent)
- * ✅ FIX 2: generateNewBookingIcs() added — .ics with METHOD:REQUEST for calendar invite
- * ✅ FIX 3: saveIcsAsContentVersion() now called inside createMeeting() after success
- * ✅ FIX 4: Removed registration_type + approval_type from Zoom body
- *           (these caused Zoom to gate join_url behind approval flow, breaking direct link)
- * ✅ FIX 5: Registrant loop removed — was unreliable for email delivery; Salesforce email used instead
- * ✅ FIX 6: RESCHEDULE action now sends updated .ics with incremented SEQUENCE
- * ✅ FIX 7: ContentVersion + ContentDocumentLink now correctly linked in all flows
- */
+// Scheduled-meeting + .ICS calendar invite service (NEW_BOOKING / RESCHEDULE / CANCELLATION) over Named Credential 'Zoom_App'.
 public class ZoomMeetingService {
 
     public enum InviteAction { NEW_BOOKING, RESCHEDULE, CANCELLATION }
@@ -56,9 +42,7 @@ public class ZoomMeetingService {
         public MeetingResponse() { this.success = false; }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // MAIN ENTRY POINT
-    // ─────────────────────────────────────────────────────────────
+    // Invocable entry point — creates / patches / cancels a Zoom meeting and dispatches the branded email + .ics.
     @InvocableMethod(label = 'Create Zoom Meeting' callout = true)
     public static List<MeetingResponse> createMeeting(List<MeetingConfig> configs) {
         MeetingConfig   cfg  = configs[0];
@@ -72,13 +56,11 @@ public class ZoomMeetingService {
 
             String actionStr = (cfg.action != null) ? cfg.action : 'NEW_BOOKING';
 
-            // Generate or reuse UID
             String icsUid = String.isNotBlank(cfg.existingUid)
                 ? cfg.existingUid
                 : generateUniqueId();
             resp.icsUid = icsUid;
 
-            // ── CANCELLATION — No Zoom API call needed, just send cancel email ──
             if (actionStr == 'CANCELLATION') {
                 resp.success = true;
                 if (cfg.recipientEmails != null && !cfg.recipientEmails.isEmpty()) {
@@ -87,7 +69,6 @@ public class ZoomMeetingService {
                 return new List<MeetingResponse>{ resp };
             }
 
-            // ── Zoom Meeting Create/Update via API ──
             String encodedHost = EncodingUtil.urlEncode(
                 String.isNotBlank(cfg.organizerEmail) ? cfg.organizerEmail : 'me',
                 'UTF-8'
@@ -95,9 +76,7 @@ public class ZoomMeetingService {
 
             HttpRequest req = new HttpRequest();
 
-            // ✅ FIX: For RESCHEDULE, PATCH the existing meeting instead of POST
             if (actionStr == 'RESCHEDULE' && String.isNotBlank(cfg.existingUid)) {
-                // existingUid should hold the Zoom numeric meeting ID for RESCHEDULE
                 req.setEndpoint('callout:Zoom_App/meetings/' + cfg.existingUid);
                 req.setMethod('PATCH');
             } else {
@@ -113,12 +92,10 @@ public class ZoomMeetingService {
             System.debug('Zoom Status: ' + res.getStatusCode());
             System.debug('Zoom Body:   ' + res.getBody());
 
-            // ✅ FIX: 201 = created (POST), 204 = updated (PATCH) — handle both
             if (res.getStatusCode() == 201 || res.getStatusCode() == 204) {
                 resp.success = true;
 
                 if (res.getStatusCode() == 201) {
-                    // New meeting — parse response body for IDs and URLs
                     Map<String, Object> data =
                         (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
 
@@ -130,32 +107,22 @@ public class ZoomMeetingService {
                     System.debug('Meeting Created — ID: ' + resp.meetingId);
 
                 } else {
-                    // PATCH returns 204 with no body — retain existing data
                     resp.meetingId = cfg.existingUid;
                     System.debug('Meeting Updated (PATCH) — ID: ' + resp.meetingId);
                 }
 
-                // ────────────────────────────────────────────────────────────
-                // ✅ FIX 1 — SEND EMAIL WITH ZOOM LINK VIA SALESFORCE
-                // This is the main fix: we no longer rely on Zoom's registrant
-                // email system (which depends on Zoom account email settings).
-                // Salesforce sends the email directly with join link + .ics.
-                // ────────────────────────────────────────────────────────────
                 if (cfg.recipientEmails != null && !cfg.recipientEmails.isEmpty()) {
-                    // ✅ FIX 2 — Generate proper .ics for NEW_BOOKING / RESCHEDULE
                     String icsContent = generateNewBookingIcs(cfg, icsUid, resp.joinUrl, actionStr);
 
-                    // ✅ FIX 3 — Save .ics to Salesforce Files (ContentVersion)
                     String fileName = String.isNotBlank(cfg.topic)
                         ? cfg.topic.replaceAll('[^a-zA-Z0-9 _-]', '')
                         : 'ZoomMeeting';
                     resp.contentDocumentId = saveIcsAsContentVersion(
                         icsContent,
                         fileName,
-                        null   // Pass a record ID here to link e.g. '5001000000AbCdE'
+                        null
                     );
 
-                    // ✅ SEND THE ACTUAL EMAIL to contacts with join URL + .ics
                     sendMeetingEmail(cfg, resp, icsUid, icsContent, actionStr);
                 }
 
@@ -174,11 +141,7 @@ public class ZoomMeetingService {
         return new List<MeetingResponse>{ resp };
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // ✅ FIX 1 — NEW METHOD: Send Zoom meeting email via Salesforce
-    // This sends the join URL + .ics attachment directly from Salesforce.
-    // Works for both NEW_BOOKING and RESCHEDULE.
-    // ─────────────────────────────────────────────────────────────
+    // Sends the branded Zoom invitation email with .ics attachment for NEW_BOOKING / RESCHEDULE.
     private static void sendMeetingEmail(
         MeetingConfig   cfg,
         MeetingResponse resp,
@@ -196,20 +159,16 @@ public class ZoomMeetingService {
                 Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
                 mail.setToAddresses(new List<String>{ emailAddr.trim() });
 
-                // Subject differs for reschedule vs new booking
                 String subject = (actionStr == 'RESCHEDULE')
                     ? 'Updated: ' + cfg.topic
                     : 'Invitation: ' + cfg.topic;
                 mail.setSubject(subject);
 
-                // ✅ HTML body with join URL, time, password (if any)
                 mail.setHtmlBody(buildMeetingEmailHtml(cfg, resp, actionStr));
 
-                // ✅ Attach the .ics so calendar clients show Accept/Decline
                 Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
                 att.setFileName(cfg.topic + '.ics');
                 att.setBody(Blob.valueOf(icsContent));
-                // METHOD=REQUEST for new/update so calendar clients show invite popup
                 att.setContentType('text/calendar; method=REQUEST; charset=UTF-8');
                 mail.setFileAttachments(
                     new List<Messaging.EmailFileAttachment>{ att }
@@ -227,9 +186,7 @@ public class ZoomMeetingService {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // ✅ FIX 1 — NEW METHOD: HTML email body for new/reschedule invite
-    // ─────────────────────────────────────────────────────────────
+    // Builds the HTML body for the new-booking / reschedule invitation email.
     private static String buildMeetingEmailHtml(
         MeetingConfig   cfg,
         MeetingResponse resp,
@@ -286,19 +243,16 @@ public class ZoomMeetingService {
             + 'border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);'
             + 'font-family:\'Segoe UI\',Arial,sans-serif">'
 
-            // Banner
             + '<div style="background:' + bannerColor + ';padding:36px 32px;text-align:center">'
             + '<h1 style="color:#fff;margin:0 0 6px;font-size:22px;font-weight:700">'
             + bannerIcon + '&nbsp; ' + bannerTitle + '</h1>'
             + '<p style="color:rgba(255,255,255,.85);margin:0;font-size:13px">' + bannerSub + '</p>'
             + '</div>'
 
-            // Body
             + '<div style="padding:32px">'
             + '<p style="font-size:15px;color:#222">Hi,</p>'
             + '<p style="font-size:14px;color:#444">You are invited to the following Zoom meeting:</p>'
 
-            // Meeting details card
             + '<div style="background:#f8faff;border:1px solid #dde8f5;border-radius:8px;'
             + 'padding:20px 24px;margin:20px 0">'
             + '<p style="font-size:18px;font-weight:700;color:#1a202c;margin:0 0 10px">'
@@ -315,25 +269,19 @@ public class ZoomMeetingService {
             + agendaBlock
             + joinBlock
 
-            // Calendar tip
             + '<div style="background:#f0fff4;border-left:4px solid #22c55e;border-radius:0 6px 6px 0;'
             + 'padding:12px 16px;font-size:13px;color:#166534;margin-top:16px">'
             + '&#128197;&nbsp; <strong>Add to Calendar:</strong> '
             + 'A calendar invite (.ics) is attached. Open it to add this meeting to your calendar.</div>'
             + '</div>'
 
-            // Footer
             + '<div style="background:#f7faff;border-top:1px solid #e8edf3;padding:18px 32px;'
             + 'text-align:center;font-size:11px;color:#9aa5b4">'
             + 'Sent via Salesforce &nbsp;|&nbsp; Please do not reply</div>'
             + '</div></body></html>';
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // ✅ FIX 2 — NEW METHOD: Generate .ICS for NEW_BOOKING / RESCHEDULE
-    // Previously missing — cancellation had one but not new bookings.
-    // METHOD:REQUEST = calendar clients show Accept / Tentative / Decline.
-    // ─────────────────────────────────────────────────────────────
+    // Generates the METHOD:REQUEST .ics body for a new booking or reschedule.
     private static String generateNewBookingIcs(
         MeetingConfig cfg,
         String        uid,
@@ -344,7 +292,6 @@ public class ZoomMeetingService {
         String  tz  = String.isNotBlank(cfg.familyTimezone) ? cfg.familyTimezone : 'UTC';
         Integer seq = (cfg.sequenceNumber != null) ? cfg.sequenceNumber : 0;
 
-        // For reschedule, SEQUENCE must be > previous value so clients update their copy
         if (actionStr == 'RESCHEDULE' && seq == 0) {
             seq = 1;
         }
@@ -364,7 +311,6 @@ public class ZoomMeetingService {
         String orgName  = String.isNotBlank(cfg.organizerName)
             ? cfg.organizerName  : 'Meeting Organizer';
 
-        // Build description with Zoom join link so it appears in calendar body
         String description = 'Join Zoom Meeting:\\n' + (String.isNotBlank(joinUrl) ? joinUrl : '');
         if (String.isNotBlank(cfg.agenda)) {
             description += '\\n\\nAgenda:\\n' + cfg.agenda;
@@ -375,7 +321,7 @@ public class ZoomMeetingService {
         ics += 'VERSION:2.0'                                            + CR;
         ics += 'PRODID:-//YourOrg//Salesforce//EN'                     + CR;
         ics += 'CALSCALE:GREGORIAN'                                     + CR;
-        ics += 'METHOD:REQUEST'                                         + CR; // ✅ REQUEST = invite popup
+        ics += 'METHOD:REQUEST'                                         + CR;
         ics += buildTzBlock(tz, CR);
         ics += 'BEGIN:VEVENT'                                           + CR;
         ics += 'UID:'      + uid                                        + CR;
@@ -386,14 +332,13 @@ public class ZoomMeetingService {
             ics += 'DTEND;TZID='   + tz + ':' + dtEnd                  + CR;
         }
         ics += 'SUMMARY:'     + cleanIcsText(cfg.topic)                + CR;
-        ics += 'DESCRIPTION:' + cleanIcsText(description)              + CR; // ✅ Zoom link in body
+        ics += 'DESCRIPTION:' + cleanIcsText(description)              + CR;
         if (String.isNotBlank(joinUrl)) {
-            ics += 'URL:'     + joinUrl                                 + CR; // ✅ URL property for calendar
+            ics += 'URL:'     + joinUrl                                 + CR;
         }
         ics += 'STATUS:CONFIRMED'                                       + CR;
         ics += 'ORGANIZER;CN=' + cleanIcsText(orgName)
              + ':mailto:' + orgEmail                                    + CR;
-        // Add all recipients as attendees
         if (cfg.recipientEmails != null) {
             for (String ea : cfg.recipientEmails) {
                 if (String.isNotBlank(ea)) {
@@ -409,9 +354,7 @@ public class ZoomMeetingService {
         return ics;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // SAVE ICS AS ContentVersion (Files) + Link to a Record
-    // ─────────────────────────────────────────────────────────────
+    // Saves the .ics blob as a ContentVersion file and optionally links it to a record.
     public static String saveIcsAsContentVersion(
         String  icsContent,
         String  fileName,
@@ -451,17 +394,11 @@ public class ZoomMeetingService {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // ✅ FIX 4 — ZOOM REQUEST BODY
-    // Removed: registration_type, approval_type
-    // Reason: These settings require registrants to "register" first before
-    //         getting the join URL. Since we're sending join_url from Salesforce
-    //         directly, we do NOT want registration gating the join link.
-    // ─────────────────────────────────────────────────────────────
+    // Builds the JSON body for the Zoom Create/Update Meeting REST call.
     private static Map<String, Object> buildZoomBody(MeetingConfig cfg) {
         Map<String, Object> body = new Map<String, Object>();
         body.put('topic',      cfg.topic);
-        body.put('type',       2);   // 2 = Scheduled meeting
+        body.put('type',       2);
         body.put('duration',   cfg.duration != null ? cfg.duration : 60);
         body.put('start_time', cfg.startTime.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''));
         body.put('timezone',   String.isNotBlank(cfg.familyTimezone)
@@ -478,15 +415,11 @@ public class ZoomMeetingService {
                                             ? cfg.muteParticipantsOnEntry : true);
         settings.put('waiting_room',      true);
         settings.put('auto_recording',    'none');
-        // ✅ FIX 4: NO registration_type or approval_type here.
-        // With these removed, join_url works immediately without approval step.
         body.put('settings', settings);
         return body;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // CANCELLATION EMAIL
-    // ─────────────────────────────────────────────────────────────
+    // Sends the cancellation email with METHOD:CANCEL .ics so calendar clients remove the event.
     private static void sendCancellationEmail(MeetingConfig cfg, String uid) {
         try {
             String icsContent = generateCancelIcs(cfg, uid);
@@ -522,9 +455,7 @@ public class ZoomMeetingService {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // CANCEL .ICS GENERATOR
-    // ─────────────────────────────────────────────────────────────
+    // Generates the METHOD:CANCEL .ics body that removes the event from recipients' calendars.
     private static String generateCancelIcs(MeetingConfig cfg, String uid) {
         String CR  = '\r\n';
         String tz  = String.isNotBlank(cfg.familyTimezone) ? cfg.familyTimezone : 'UTC';
@@ -579,9 +510,7 @@ public class ZoomMeetingService {
         return ics;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // CANCELLATION HTML EMAIL
-    // ─────────────────────────────────────────────────────────────
+    // Builds the HTML body used for the cancellation email.
     private static String buildCancelEmailHtml(MeetingConfig cfg) {
         String timeDisplay = '';
         if (cfg.startTime != null) {
@@ -622,9 +551,7 @@ public class ZoomMeetingService {
             + '</div></body></html>';
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // TIMEZONE BLOCK
-    // ─────────────────────────────────────────────────────────────
+    // Returns a VTIMEZONE block matching the given IANA tz id (default: UTC).
     private static String buildTzBlock(String tz, String CR) {
         if (tz == 'America/New_York' || tz == 'America/Detroit'
          || tz == 'America/Indiana/Indianapolis') {
@@ -882,7 +809,6 @@ public class ZoomMeetingService {
             b += 'END:VTIMEZONE'                           + CR;
             return b;
         }
-        // Default UTC
         String b = '';
         b += 'BEGIN:VTIMEZONE'         + CR;
         b += 'TZID:UTC'                + CR;
@@ -896,13 +822,12 @@ public class ZoomMeetingService {
         return b;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // UTILITY METHODS
-    // ─────────────────────────────────────────────────────────────
+    // Formats a DateTime into the basic-form ICS timestamp (yyyyMMddTHHmmss).
     private static String toIcsDate(DateTime dt) {
         return dt.formatGmt('yyyyMMdd') + 'T' + dt.formatGmt('HHmmss');
     }
 
+    // Escapes backslash / semicolon / comma per RFC 5545 ICS text rules.
     private static String cleanIcsText(String txt) {
         if (String.isBlank(txt)) return '';
         txt = txt.replace('\\', '\\\\');
@@ -911,6 +836,7 @@ public class ZoomMeetingService {
         return txt;
     }
 
+    // Generates a globally-unique UID (UUID-shaped) for the ICS event.
     private static String generateUniqueId() {
         String hex = EncodingUtil.convertToHex(Crypto.generateAesKey(128));
         return hex.substring(0, 8)  + '-'

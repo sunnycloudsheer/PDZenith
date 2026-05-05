@@ -21,6 +21,7 @@ public without sharing class PDPostBookingHandler {
         @InvocableVariable public Id      serviceResourceId;
     }
 
+    // Runs after SA creation: assigns PD, builds AssignedResource and Event, and stamps related records.
     @InvocableMethod(
         label='PD Post-Booking Handler'
         description='Runs after SA creation. Assigns PD via sticky/round-robin, creates AssignedResource and Event, stamps Opportunity, Contact and SA.'
@@ -29,7 +30,6 @@ public without sharing class PDPostBookingHandler {
     public static List<PostBookingResult> handlePostBooking(List<PostBookingRequest> requests) {
         List<PostBookingResult> results = new List<PostBookingResult>();
 
-        // ── 1. Bulk-collect IDs ──────────────────────────────────────────
         Set<Id> saIds  = new Set<Id>();
         Set<Id> oppIds = new Set<Id>();
         for (PostBookingRequest req : requests) {
@@ -37,7 +37,6 @@ public without sharing class PDPostBookingHandler {
             oppIds.add(req.opportunityId);
         }
 
-        // ── 2. Pre-query all shared data OUTSIDE the loop ────────────────
         Map<Id, ServiceAppointment> saMap = new Map<Id, ServiceAppointment>([
             SELECT Id, SchedStartTime, SchedEndTime, ServiceTerritoryId,
                    ParentRecordId, ContactId, AccountId, WorkTypeId
@@ -51,8 +50,6 @@ public without sharing class PDPostBookingHandler {
             WHERE Id IN :oppIds
         ]);
 
-        // Pre-query primary contacts for all Opportunities (no SOQL in loop).
-        // Primary OCR is used for Event.WhoId (parent attends the meeting).
         Map<Id, Id> oppToContactId = new Map<Id, Id>();
         for (OpportunityContactRole ocr : [
             SELECT OpportunityId, ContactId
@@ -62,11 +59,6 @@ public without sharing class PDPostBookingHandler {
             oppToContactId.put(ocr.OpportunityId, ocr.ContactId);
         }
 
-        // Pre-query STUDENT-role OCRs for all Opportunities. These drive the
-        // Student-side Contact writes (Program_Director__c, Stage__c). Per
-        // spec the Primary / parent Contact is NEVER written here — the
-        // student's Contact is the single source of truth for their lifecycle.
-        // First Student wins per Opp in the rare case of duplicates.
         Map<Id, Id> oppToStudentContactId = new Map<Id, Id>();
         for (OpportunityContactRole ocr : [
             SELECT OpportunityId, ContactId
@@ -81,12 +73,6 @@ public without sharing class PDPostBookingHandler {
             }
         }
 
-        // Auto-create a Student-role OCR for any Opp that doesn't already
-        // have one. Heuristic: pick the first Contact on the Opp's Account
-        // that isn't the Primary OCR's Contact (typically the parent), and
-        // attach it as Role='Student'. Best-effort — if the Account has no
-        // other Contact, the Opp simply gets no Student-side Contact write
-        // and the rest of the booking proceeds normally.
         Set<Id> oppsNeedingStudentOCR = new Set<Id>();
         for (Id oppId : oppIds) {
             if (!oppToStudentContactId.containsKey(oppId)) {
@@ -145,7 +131,6 @@ public without sharing class PDPostBookingHandler {
             }
         }
 
-        // Pre-query ServiceResources for all sticky PD users (no SOQL in loop)
         Set<Id> stickyPDUserIds = new Set<Id>();
         for (Opportunity opp : oppMap.values()) {
             if (opp.Program_Director__c != null) {
@@ -162,25 +147,12 @@ public without sharing class PDPostBookingHandler {
             }
         }
 
-        // ── 3. Process each request, collecting DML for batching ─────────
         List<ServiceAppointment> sasToUpdate       = new List<ServiceAppointment>();
         List<AssignedResource>   arsToInsert       = new List<AssignedResource>();
         List<Event>              eventsToInsert    = new List<Event>();
         List<ServiceResource>    resourcesToUpdate = new List<ServiceResource>();
-        // Opportunity updates keyed by Opp Id so two requests for the same
-        // Opp in a single bulk invocation collapse to one update. Without
-        // this, `update oppsToUpdate` throws DUPLICATE_VALUE because the
-        // same Id appears twice in the same DML call.
         Map<Id, Opportunity>     oppsByOppId = new Map<Id, Opportunity>();
-        // Student-Contact updates (PD stamp + Stage). Dedupe by Contact Id
-        // in case multiple Opps for the same student are processed in one
-        // batch — last write wins, matching Salesforce's own DML semantics.
         Map<Id, Contact>         studentContactsById = new Map<Id, Contact>();
-        // ServiceResource cache so we don't fire SOQL inside the loop for
-        // each `selectedResourceId`. Same SR may be the sticky pick for
-        // multiple requests in a bulk batch — cache keeps SOQL ≈ unique
-        // resources, not unique requests. Stays bulkified within the
-        // 100-query governor budget for normal batch sizes.
         Map<Id, ServiceResource> resourceCache = new Map<Id, ServiceResource>();
 
         for (Integer i = 0; i < requests.size(); i++) {
@@ -204,7 +176,6 @@ public without sharing class PDPostBookingHandler {
 
                 Id contactId = oppToContactId.get(opp.Id);
 
-                // Determine sticky resource from pre-queried map
                 Id stickyResourceId = null;
                 if (opp.Program_Director__c != null) {
                     stickyResourceId = pdUserToResourceId.get(opp.Program_Director__c);
@@ -217,12 +188,6 @@ public without sharing class PDPostBookingHandler {
                     );
                 }
 
-                // Resolve the selected ServiceResource. Cache hits avoid
-                // a per-request SOQL query (the original code fired one
-                // SELECT per loop iteration which compounded with the
-                // queries inside selectPD and breached the 100-query
-                // governor on bulk invocations). On a miss, query once
-                // and remember.
                 ServiceResource pd = resourceCache.get(selectedResourceId);
                 if (pd == null) {
                     List<ServiceResource> srLookup = [
@@ -239,27 +204,23 @@ public without sharing class PDPostBookingHandler {
                     resourceCache.put(selectedResourceId, pd);
                 }
 
-                // ── Build SA update ──
                 sa.Meeting_Type__c     = meetingType;
                 sa.Subject             = meetingType + ' - Zenith Prep Academy';
                 sa.OwnerId            = pd.RelatedRecordId;
                 sa.Opportunity__c      = opp.Id;
                 sa.Program_Director__c = pd.RelatedRecordId;
 
-                // Find best territory for the PD
                 Id pdTerritoryId = findPDTerritory(pd.Id, pd.RelatedRecordId, followUp);
                 if (pdTerritoryId != null) {
                     sa.ServiceTerritoryId = pdTerritoryId;
                 }
                 sasToUpdate.add(sa);
 
-                // ── Build AssignedResource ──
                 AssignedResource ar = new AssignedResource();
                 ar.ServiceAppointmentId = sa.Id;
                 ar.ServiceResourceId    = pd.Id;
                 arsToInsert.add(ar);
 
-                // ── Build Event ──
                 Event evt         = new Event();
                 evt.Subject       = meetingType + ' - Zenith Prep Academy';
                 evt.StartDateTime = sa.SchedStartTime;
@@ -279,21 +240,12 @@ public without sharing class PDPostBookingHandler {
                 tryPut(evt, 'Service_Appointment__c', sa.Id);
                 eventsToInsert.add(evt);
 
-                // ── Build ServiceResource count update ──
                 pd.Appointment_Count__c = (pd.Appointment_Count__c != null)
                     ? pd.Appointment_Count__c + 1 : 1;
                 resourcesToUpdate.add(pd);
 
-                // ── Build Opportunity update (PD stamp + stage) ──
                 Opportunity oppUpd = new Opportunity(Id = opp.Id);
                 oppUpd.Program_Director__c = pd.RelatedRecordId;
-                // First SOM call booked — flip the Opportunity stage to
-                // "SOM Scheduled". PD Follow-Up bookings (`followUp=true`)
-                // must leave the stage alone — by the time a follow-up
-                // happens the opp may already be in "SOM Completed",
-                // "Contract Sent", etc., and we don't want to drag it back.
-                // Don't downgrade from closed states either, and don't
-                // re-stamp if we're already at "SOM Scheduled".
                 Boolean isFirstSOMTransition = (!followUp
                     && opp.StageName != 'SOM Scheduled'
                     && opp.StageName != 'Closed Won'
@@ -301,17 +253,8 @@ public without sharing class PDPostBookingHandler {
                 if (isFirstSOMTransition) {
                     oppUpd.StageName = 'SOM Scheduled';
                 }
-                // Map keyed by Opp Id collapses duplicate updates from
-                // batch invocations (same Opp Id in two requests would
-                // otherwise throw DUPLICATE_VALUE on update).
                 oppsByOppId.put(opp.Id, oppUpd);
 
-                // ── Build Student-Contact update (PD stamp + Stage) ──
-                // Mirror PD assignment + lifecycle stage onto the
-                // Student-role OCR's Contact (NEVER the Primary / parent).
-                // Multiple Opps under the same Account each have their own
-                // Student OCR, so cross-program writes don't trample each
-                // other through a shared parent Contact.
                 Id studentContactId = oppToStudentContactId.get(opp.Id);
                 if (studentContactId != null) {
                     Contact sc = studentContactsById.containsKey(studentContactId)
@@ -319,16 +262,11 @@ public without sharing class PDPostBookingHandler {
                         : new Contact(Id = studentContactId);
                     tryPut(sc, 'Program_Director__c', pd.RelatedRecordId);
                     if (isFirstSOMTransition) {
-                        // Mirror the Opp's "SOM Scheduled" stage onto the
-                        // Student-role Contact's Stage__c — both sides use
-                        // the same label so the student record reflects
-                        // exactly the lifecycle state of their Opp.
                         tryPut(sc, 'Stage__c', 'SOM Scheduled');
                     }
                     studentContactsById.put(studentContactId, sc);
                 }
 
-                // Store for result assembly
                 res.success           = true;
                 res.pdName            = pd.Name;
                 res.pdUserId          = pd.RelatedRecordId;
@@ -341,12 +279,6 @@ public without sharing class PDPostBookingHandler {
             results.add(res);
         }
 
-        // ── 4. Execute all DML in bulk OUTSIDE the loop ──────────────────
-        // All writes use Database.*(records, allOrNone=false) so a single
-        // bad row (validation rule, FLS, race condition) doesn't poison
-        // the entire batch — the rest still persists. Row-level errors
-        // are logged at WARN; we never throw because PD post-booking is a
-        // best-effort downstream step (the SA itself is already saved).
         if (!sasToUpdate.isEmpty()) {
             logSaveErrors('SA update',  Database.update(sasToUpdate, false));
         }
@@ -364,9 +296,6 @@ public without sharing class PDPostBookingHandler {
             logSaveErrors('Opportunity update',
                 Database.update(oppsByOppId.values(), false));
         }
-        // Student-Contact batch update — best-effort, never rolls back the
-        // booking itself if the Contact write fails (FLS, validation rule,
-        // org missing the Stage__c / Program_Director__c fields).
         if (!studentContactsById.isEmpty()) {
             logSaveErrors('Student Contact update',
                 Database.update(studentContactsById.values(), false));
@@ -375,10 +304,7 @@ public without sharing class PDPostBookingHandler {
         return results;
     }
 
-    // Walks Database.SaveResult[] and logs each row-level failure to the
-    // debug log at WARN. Used by every batch DML in the post-booking
-    // pipeline so a partial failure surfaces in logs without aborting
-    // the rest of the batch.
+    // Logs row-level DML failures at WARN without aborting the rest of the batch.
     private static void logSaveErrors(String label, Database.SaveResult[] saveResults) {
         if (saveResults == null) return;
         for (Integer i = 0; i < saveResults.size(); i++) {
@@ -393,15 +319,11 @@ public without sharing class PDPostBookingHandler {
         }
     }
 
-    /**
-     * Find the best territory for the PD, checking assigned territory first,
-     * then falling back to primary territory type.
-     */
+    // Finds the best territory for the PD by duration match, with primary territory fallback.
     private static Id findPDTerritory(Id resourceId, Id pdUserId, Boolean isFollowUp) {
         String durationTag = isFollowUp ? '30' : '60';
         Date today = Date.today();
 
-        // Try assigned territory matching duration
         for (ServiceTerritoryMember stm : [
             SELECT ServiceTerritoryId FROM ServiceTerritoryMember
             WHERE ServiceResourceId = :resourceId
@@ -415,7 +337,6 @@ public without sharing class PDPostBookingHandler {
             return stm.ServiceTerritoryId;
         }
 
-        // Fall back to primary territory
         for (ServiceTerritoryMember stm : [
             SELECT ServiceTerritoryId FROM ServiceTerritoryMember
             WHERE ServiceResourceId = :resourceId
@@ -431,6 +352,7 @@ public without sharing class PDPostBookingHandler {
         return null;
     }
 
+    // Returns the sticky resource if available, otherwise round-robins by load and conflict.
     private static Id selectPD(Id stickyResourceId, DateTime startDT, DateTime endDT) {
         if (stickyResourceId != null) {
             List<ServiceResource> stickyCheck = [
@@ -455,6 +377,7 @@ public without sharing class PDPostBookingHandler {
         return selectByWeightedRoundRobin(startDT, endDT);
     }
 
+    // True when the resource has no SA, Event, or Absence conflict in the time window.
     private static Boolean isResourceAvailable(Id resourceId, Id userId, DateTime startDT, DateTime endDT) {
         Integer saConflicts = [
             SELECT COUNT() FROM AssignedResource
@@ -487,6 +410,7 @@ public without sharing class PDPostBookingHandler {
         return true;
     }
 
+    // Picks the lowest-load available PD ServiceResource for the given time window.
     private static Id selectByWeightedRoundRobin(DateTime startDT, DateTime endDT) {
         Set<Id> pdUserIds = new Set<Id>();
         for (User u : [
@@ -534,7 +458,6 @@ public without sharing class PDPostBookingHandler {
         }
         if (validResources.isEmpty()) return null;
 
-        // Bulk-check conflicts for ALL valid resources at once
         Set<Id> busyResources = new Set<Id>();
 
         for (AssignedResource arec : [
@@ -595,6 +518,7 @@ public without sharing class PDPostBookingHandler {
         return bestId;
     }
 
+    // Safely sets a field on an SObject, swallowing any field-access exception.
     private static void tryPut(SObject rec, String f, Object v) {
         try { rec.put(f, v); } catch (Exception ex) { }
     }

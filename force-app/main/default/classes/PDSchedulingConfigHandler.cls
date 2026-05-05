@@ -36,13 +36,13 @@ public without sharing class PDSchedulingConfigHandler {
         public String errorMessage;
     }
 
-    // Cached data from getLowestLoadResource for reuse in getSchedulingConfig
     private static String cachedAllResourceIds;
     private static Id cachedBestTerritoryId;
     private static Id cachedBestResourceInTerritory;
     private static Map<Id, Set<Id>> cachedTerritoryToResources;
     private static Map<Id, ServiceResource> cachedResourceMap;
 
+    // Returns territory, work type, and resource set used by flowTimeslot for PD scheduling.
     @InvocableMethod(
         label='Get PD Scheduling Config'
         description='Returns territory, WorkType, and resource for flowTimeslot. Always restricts timeslots to one PD.'
@@ -95,17 +95,10 @@ public without sharing class PDSchedulingConfigHandler {
                     }
                 }
 
-                // For non-sticky (first booking), use the best territory from round-robin
-                // which has the most PD members — gives flowTimeslot more resources to check.
-                // Also switch the anchor to the best resource within that territory, because
-                // flowTimeslot uses serviceResourceId as the PRIMARY resource to show slots for.
-                // If the global lowest-load resource is not properly configured for scheduling,
-                // the component shows an empty calendar even though other resources are available.
                 if (targetTerritoryId == null && !isSticky && cachedBestTerritoryId != null) {
                     targetTerritoryId = cachedBestTerritoryId;
                     if (cachedBestResourceInTerritory != null) {
                         anchorResourceId = cachedBestResourceInTerritory;
-                        // Re-fetch the resource record for the new anchor
                         sr = [
                             SELECT Id, RelatedRecordId, Name
                             FROM ServiceResource
@@ -118,7 +111,6 @@ public without sharing class PDSchedulingConfigHandler {
                 if (targetTerritoryId == null) {
                     Date today = Date.today();
 
-                    // Look at the chosen PD's own territories
                     Set<Id> stmResourceIds = new Set<Id>{ anchorResourceId };
 
                     List<ServiceTerritoryMember> stmList = [
@@ -132,7 +124,6 @@ public without sharing class PDSchedulingConfigHandler {
                         ORDER BY CreatedDate ASC
                     ];
 
-                    // Collect OH IDs and validate TimeSlots
                     Map<Id, Id> stmTerritoryToOH = new Map<Id, Id>();
                     for (ServiceTerritoryMember stm : stmList) {
                         Id ohId = stm.ServiceTerritory.OperatingHoursId != null
@@ -220,11 +211,6 @@ public without sharing class PDSchedulingConfigHandler {
                     throw new AuraHandledException('No Service Territory found for the selected Program Director.');
                 }
 
-                // IMPORTANT: Do NOT override anchorResourceId with the territory's first-created
-                // member. That was the Rebecca bug — the lowest-load PD got picked, then the
-                // "territory owner" was substituted back in right before the timeslot component
-                // rendered. We keep the round-robin winner as the primary resource.
-
                 if (targetWorkTypeId == null) {
                     try {
                         for (ServiceTerritoryWorkType stwt : [
@@ -266,7 +252,6 @@ public without sharing class PDSchedulingConfigHandler {
                     throw new AuraHandledException('No Work Type found for ' + targetDuration + '-minute duration.');
                 }
 
-                // Ensure the selected territory has valid OperatingHours with TimeSlot records
                 ServiceTerritory st = [
                     SELECT Id, OperatingHoursId FROM ServiceTerritory
                     WHERE Id = :targetTerritoryId LIMIT 1
@@ -337,9 +322,6 @@ public without sharing class PDSchedulingConfigHandler {
 
                 res.workTypeGroupId = ensureWorkTypeGroup(targetWorkTypeId);
 
-                // Build allResourceIds: only include resources that are MEMBERS of the
-                // selected territory. flowTimeslot ignores resources not in the territory,
-                // so passing non-members produces an empty calendar.
                 if (isSticky) {
                     res.allResourceIds = String.valueOf(anchorResourceId);
                 } else {
@@ -364,23 +346,16 @@ public without sharing class PDSchedulingConfigHandler {
         return results;
     }
 
-    /**
-     * Returns comma-separated resource IDs that are active members of the given
-     * territory. Always includes the anchorResourceId. This ensures flowTimeslot
-     * only receives resources it can actually schedule in the territory.
-     */
+    // Returns the comma-separated resource IDs that are active members of the territory, always including the anchor.
     private static String buildTerritoryResourceIds(Id territoryId, Id anchorResourceId) {
-        // Use cached data from getLowestLoadResource if available
         if (cachedTerritoryToResources != null && cachedTerritoryToResources.containsKey(territoryId)) {
             Set<Id> members = cachedTerritoryToResources.get(territoryId);
-            // Always include anchor
             members.add(anchorResourceId);
             List<String> ids = new List<String>();
             for (Id rId : members) ids.add(String.valueOf(rId));
             return String.join(ids, ',');
         }
 
-        // Fallback: query territory members directly
         Date today = Date.today();
         Set<Id> memberIds = new Set<Id>();
         memberIds.add(anchorResourceId);
@@ -398,6 +373,7 @@ public without sharing class PDSchedulingConfigHandler {
         return String.join(ids, ',');
     }
 
+    // Returns the sticky PD ServiceResource for the Opportunity, or null if none qualifies.
     private static Id getStickyResource(Id opportunityId) {
         if (opportunityId == null) return null;
 
@@ -424,6 +400,7 @@ public without sharing class PDSchedulingConfigHandler {
         return srList.isEmpty() ? null : srList[0].Id;
     }
 
+    // Picks the lowest-load PD resource and caches the best territory and member set for reuse.
     private static Id getLowestLoadResource(Integer targetDuration, String durationLabel) {
         Set<Id> pdUserIds = new Set<Id>();
         for (User u : [
@@ -449,13 +426,8 @@ public without sharing class PDSchedulingConfigHandler {
         Map<Id, Set<Id>> resourceToTerritories = new Map<Id, Set<Id>>();
         Map<Id, String> territoryNameMap = new Map<Id, String>();
         Map<Id, Id> territoryToOHId = new Map<Id, Id>();
-        // Track which resources belong to which territory (reverse map)
         Map<Id, Set<Id>> territoryToResourceIds = new Map<Id, Set<Id>>();
 
-        // Track the effective OH per resource PER territory (member OH > territory OH).
-        // flowTimeslot uses the member-level OH for the SPECIFIC territory passed,
-        // so we need to know which OH each resource has in each territory.
-        // Key = "resourceId:territoryId", Value = OperatingHoursId
         Map<String, Id> resourceTerritoryToOH = new Map<String, Id>();
 
         for (ServiceTerritoryMember stm : [
@@ -477,29 +449,23 @@ public without sharing class PDSchedulingConfigHandler {
             if (ohId != null) {
                 territoryToOHId.put(stm.ServiceTerritoryId, ohId);
             }
-            // Track the effective OH for this resource IN THIS territory
             Id memberOH = (stm.OperatingHoursId != null)
                 ? stm.OperatingHoursId : stm.ServiceTerritory.OperatingHoursId;
             if (memberOH != null) {
                 String key = stm.ServiceResourceId + ':' + stm.ServiceTerritoryId;
                 resourceTerritoryToOH.put(key, memberOH);
             }
-            // Build reverse map: territory -> resources
             if (!territoryToResourceIds.containsKey(stm.ServiceTerritoryId)) {
                 territoryToResourceIds.put(stm.ServiceTerritoryId, new Set<Id>());
             }
             territoryToResourceIds.get(stm.ServiceTerritoryId).add(stm.ServiceResourceId);
         }
 
-        // Cache for later use in buildTerritoryResourceIds
         cachedTerritoryToResources = territoryToResourceIds;
 
-        // Collect ALL OperatingHours IDs
         Set<Id> allOHIds = new Set<Id>(territoryToOHId.values());
         allOHIds.addAll(resourceTerritoryToOH.values());
 
-        // Count distinct weekday coverage per OperatingHours.
-        // OH with 5+ distinct days = "fully configured" (Mon-Fri at minimum).
         Set<Id> validOHIds = new Set<Id>();
         Map<Id, Integer> ohDayCount = new Map<Id, Integer>();
         if (!allOHIds.isEmpty()) {
@@ -524,7 +490,6 @@ public without sharing class PDSchedulingConfigHandler {
             }
         }
 
-        // Build set of territories with valid OH (has TimeSlot records)
         Set<Id> territoriesWithValidOH = new Set<Id>();
         for (Id tId : territoryToOHId.keySet()) {
             if (validOHIds.contains(territoryToOHId.get(tId))) {
@@ -532,7 +497,6 @@ public without sharing class PDSchedulingConfigHandler {
             }
         }
 
-        // Build set of resources that have at least one territory with valid OH
         Set<Id> resourcesWithValidOH = new Set<Id>();
         for (Id srId : resourceToTerritories.keySet()) {
             for (Id tId : resourceToTerritories.get(srId)) {
@@ -587,18 +551,15 @@ public without sharing class PDSchedulingConfigHandler {
         }
 
         List<String> allIds = new List<String>();
-        // Two-tier round-robin: prefer resources with full OH coverage (5+ weekdays)
-        // so the primary resource always has slots to show in flowTimeslot.
-        Id      bestFullId   = null;   // Best among resources with full OH
+        Id      bestFullId   = null;
         Decimal bestFullLoad = null;
-        Id      bestAnyId    = null;   // Best among all valid resources (fallback)
+        Id      bestAnyId    = null;
         Decimal bestAnyLoad  = null;
 
         for (ServiceResource sr : resources) {
             Set<Id> srTerritories = resourceToTerritories.get(sr.Id);
             if (srTerritories == null || srTerritories.isEmpty()) continue;
 
-            // Skip resources whose territories have no valid operating hours with TimeSlots
             if (!resourcesWithValidOH.isEmpty() && !resourcesWithValidOH.contains(sr.Id)) continue;
 
             if (!matchingTerritories.isEmpty()) {
@@ -626,15 +587,11 @@ public without sharing class PDSchedulingConfigHandler {
         Id bestId = bestAnyId;
         cachedAllResourceIds = String.join(allIds, ',');
 
-        // Cache the resource list for later use when selecting the best resource
-        // within the best territory
         cachedResourceMap = new Map<Id, ServiceResource>();
         for (ServiceResource sr : resources) {
             cachedResourceMap.put(sr.Id, sr);
         }
 
-        // Also collect territories that have STWT for the target duration.
-        // These are more reliable than name-only matches for flowTimeslot.
         Set<Id> territoriesWithSTWT = new Set<Id>();
         if (!allTerritoryIds.isEmpty()) {
             try {
@@ -648,14 +605,10 @@ public without sharing class PDSchedulingConfigHandler {
             } catch (Exception e) { }
         }
 
-        // Find the best territory: prefer one with valid OH + STWT + most PD members.
-        // This territory is used for first-booking so flowTimeslot shows slots
-        // from multiple PDs, not just the anchor resource's territory.
         cachedBestTerritoryId = null;
         cachedBestResourceInTerritory = null;
         Integer bestMemberCount = 0;
 
-        // Priority 1: matching territories with valid OH AND confirmed STWT linkage
         for (Id tId : matchingTerritories) {
             if (!territoriesWithValidOH.contains(tId)) continue;
             if (!territoriesWithSTWT.contains(tId)) continue;
@@ -666,7 +619,6 @@ public without sharing class PDSchedulingConfigHandler {
                 cachedBestTerritoryId = tId;
             }
         }
-        // Priority 2: matching territories with valid OH (name match or STWT)
         if (cachedBestTerritoryId == null) {
             bestMemberCount = 0;
             for (Id tId : matchingTerritories) {
@@ -679,7 +631,6 @@ public without sharing class PDSchedulingConfigHandler {
                 }
             }
         }
-        // Priority 3: any territory with valid OH and max members
         if (cachedBestTerritoryId == null) {
             bestMemberCount = 0;
             for (Id tId : territoriesWithValidOH) {
@@ -692,11 +643,6 @@ public without sharing class PDSchedulingConfigHandler {
             }
         }
 
-        // Select the best resource WITHIN the best territory via weighted round-robin.
-        // KEY: check each resource's OH for THIS SPECIFIC TERRITORY, not their global OH.
-        // flowTimeslot uses the member-level OH for the passed territory to determine
-        // availability. A resource may have full OH on its own territory but null/sparse
-        // OH on the best territory — which produces an empty calendar.
         if (cachedBestTerritoryId != null) {
             Set<Id> territoryMembers = territoryToResourceIds.get(cachedBestTerritoryId);
             if (territoryMembers != null && !territoryMembers.isEmpty()) {
@@ -709,18 +655,15 @@ public without sharing class PDSchedulingConfigHandler {
                     ServiceResource memberSR = cachedResourceMap.get(memberId);
                     if (memberSR == null) continue;
 
-                    // Check this resource's OH for THIS territory specifically
                     String memberKey = memberId + ':' + cachedBestTerritoryId;
                     Id memberOHForTerritory = resourceTerritoryToOH.get(memberKey);
 
-                    // Skip resources with no OH for this territory
                     if (memberOHForTerritory == null) continue;
 
                     Decimal cnt = (memberSR.Appointment_Count__c != null) ? memberSR.Appointment_Count__c : 0;
                     Decimal wght = (memberSR.Weight__c != null && memberSR.Weight__c > 0) ? memberSR.Weight__c : 1.0;
                     Decimal load = cnt / wght;
 
-                    // Prefer resources whose OH for THIS territory covers 5+ weekdays
                     if (fullyConfiguredOHIds.contains(memberOHForTerritory)) {
                         if (bestFullMemberLoad == null || load < bestFullMemberLoad) {
                             bestFullMemberLoad = load;
@@ -740,6 +683,7 @@ public without sharing class PDSchedulingConfigHandler {
         return bestId;
     }
 
+    // Ensures the WorkType has a WorkTypeGroup membership and returns the group Id.
     private static Id ensureWorkTypeGroup(Id workTypeId) {
         try {
             List<WorkTypeGroupMember> existing = [

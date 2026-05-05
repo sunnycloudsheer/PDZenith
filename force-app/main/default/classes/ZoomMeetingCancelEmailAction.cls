@@ -1,21 +1,4 @@
-/**
- * @File Name          : ZoomMeetingCancelEmailAction.cls
- * @Description        : Flow-callable Invocable that sends a meeting
- *                       cancellation email. The Lightning template is
- *                       chosen by the caller (Meeting_After_RTF's
- *                       Check_Meeting_Status decision routes ES/AC cancel
- *                       to one template and student/parent cancel to
- *                       another), and a METHOD:CANCEL .ics is attached so
- *                       calendar clients purge the event.
- *
- *                       Apex is required here because flow's emailSimple
- *                       action can't attach files — without this Invocable,
- *                       cancellations would leave orphaned events on
- *                       student / parent / ES calendars.
- *
- * @Author             : Amit Yadav
- * @Created On         : April 2026
- */
+// Flow-callable Invocable that sends a cancellation email with a METHOD:CANCEL .ics so calendar clients purge the event.
 public class ZoomMeetingCancelEmailAction {
 
     public class Input {

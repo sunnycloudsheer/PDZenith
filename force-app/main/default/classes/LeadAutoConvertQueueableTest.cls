@@ -1,17 +1,7 @@
-/**
- * Tests for LeadAutoConvertQueueable.
- *
- * The queueable is a thin async wrapper around LeadAutoConvert.convertLeads —
- * the service layer is exercised in depth by LeadAutoConvertTest, so these
- * tests focus on the wrapper's own contract: that enqueuing actually runs the
- * conversion, and that defensive inputs (null / empty) don't blow up.
- */
 @IsTest
 private class LeadAutoConvertQueueableTest {
 
     private static Lead insertReadyToConvertLead() {
-        // Bypass the trigger during seed insert so we can choose when
-        // conversion fires — here it's the queueable, not the trigger.
         LeadAutoConvert.bypassTrigger = true;
         Lead l = new Lead(
             FirstName = 'Pat',
@@ -30,6 +20,7 @@ private class LeadAutoConvertQueueableTest {
         return l;
     }
 
+    // Verifies the queueable runs the convert service and flips IsConverted.
     @IsTest
     static void execute_convertsLeadViaUnderlyingService() {
         Lead l = insertReadyToConvertLead();
@@ -52,11 +43,9 @@ private class LeadAutoConvertQueueableTest {
             'Converted Opportunity should be populated.');
     }
 
+    // Verifies enqueueJob actually schedules exactly one queueable run.
     @IsTest
     static void enqueue_schedulesAsyncJob() {
-        // Verifies the queueable is actually queued (and only one) — separate
-        // from the conversion outcome so we catch regressions in trigger /
-        // service wiring that double-enqueue.
         Lead l = insertReadyToConvertLead();
         Integer queuedBefore = [SELECT COUNT() FROM AsyncApexJob WHERE JobType = 'Queueable'];
 
@@ -69,6 +58,7 @@ private class LeadAutoConvertQueueableTest {
             'Exactly one queueable job should be scheduled by enqueueJob.');
     }
 
+    // Verifies an empty Id set is a no-op and creates no records.
     @IsTest
     static void execute_emptyIdSet_isNoOp() {
         Integer accountsBefore = [SELECT COUNT() FROM Account];
@@ -87,6 +77,7 @@ private class LeadAutoConvertQueueableTest {
             'Empty Id set must not create Opportunities.');
     }
 
+    // Verifies a null Id set is tolerated without side effects.
     @IsTest
     static void execute_nullIdSet_isNoOp() {
         Integer accountsBefore = [SELECT COUNT() FROM Account];

@@ -1,18 +1,3 @@
-/**
- * Coverage for LeadICEmailSender.
- *
- * Branches exercised:
- *   1. Lead with no Email          → result.success=false, errorMessage set.
- *   2. Lead with no IC link        → result.success=false (link not generated).
- *   3. Happy path                  → email queued, success=true.
- *   4. Missing template            → result.success=false (template lookup miss).
- *
- * Email-template strategy: we insert a Folder + EmailTemplate at runtime
- * in @TestSetup so the class compiles and runs in scratch / sandbox /
- * production orgs identically. The template's HtmlValue includes
- * {!Lead.FirstName} and the [[SCHEDULING_LINK]] placeholder so the
- * merge-replace path runs.
- */
 @isTest
 private class LeadICEmailSenderTest {
 
@@ -20,12 +5,7 @@ private class LeadICEmailSenderTest {
 
     @TestSetup
     static void setupData() {
-        // Insert the IC_Scheduling_Email template into a fresh "Test"
-        // public Email Folder. Prod / sandbox orgs already have the
-        // template; this setup keeps the test self-contained for any
-        // org / scratch context.
         Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
-        // Only insert the template if it doesn't already exist in the org.
         List<EmailTemplate> existing = [
             SELECT Id FROM EmailTemplate WHERE DeveloperName = :TEMPLATE_DEV_NAME LIMIT 1
         ];
@@ -42,7 +22,6 @@ private class LeadICEmailSenderTest {
             );
         }
 
-        // Three Leads representing the test branches.
         insert new List<Lead>{
             new Lead(
                 FirstName = 'Happy', LastName = 'Path',
@@ -63,6 +42,7 @@ private class LeadICEmailSenderTest {
         };
     }
 
+    // Verifies the happy path returns success=true for a Lead with both Email and IC link.
     @isTest
     static void happyPath_sendsEmail() {
         Lead happy = [SELECT Id FROM Lead WHERE FirstName = 'Happy' LIMIT 1];
@@ -79,6 +59,7 @@ private class LeadICEmailSenderTest {
             'Happy path expected success=true, got error: ' + out[0].errorMessage);
     }
 
+    // Verifies a Lead missing Email returns success=false with a meaningful error message.
     @isTest
     static void leadWithNoEmail_returnsErrorResult() {
         Lead noEmailLead = [SELECT Id FROM Lead WHERE FirstName = 'No' AND LastName = 'Email' LIMIT 1];
@@ -98,6 +79,7 @@ private class LeadICEmailSenderTest {
             'Error message should mention the missing Email; got: ' + out[0].errorMessage);
     }
 
+    // Verifies a Lead missing the IC link returns success=false with a link-related error.
     @isTest
     static void leadWithNoLink_returnsErrorResult() {
         Lead noLinkLead = [SELECT Id FROM Lead WHERE FirstName = 'No' AND LastName = 'Link' LIMIT 1];
@@ -117,9 +99,9 @@ private class LeadICEmailSenderTest {
             'Error message should reference the missing link; got: ' + out[0].errorMessage);
     }
 
+    // Verifies an unknown Lead Id returns success=false.
     @isTest
     static void unknownLeadId_returnsErrorResult() {
-        // Synthesize a Lead Id that's well-formed but not in the DB.
         LeadICEmailSender.LeadICRequest req = new LeadICEmailSender.LeadICRequest();
         req.leadId = '00Q000000000001AAA';
 
@@ -133,6 +115,7 @@ private class LeadICEmailSenderTest {
             'Unknown Lead Id must return success=false');
     }
 
+    // Verifies an empty input list returns an empty result list.
     @isTest
     static void emptyInput_returnsEmptyList() {
         Test.startTest();

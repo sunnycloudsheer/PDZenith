@@ -1,84 +1,4 @@
-/**
- * @File Name          : ZoomMeetingManager.cls
- * @Description        : Invocable Apex class used by Salesforce Flows to manage
- *                       the full lifecycle of a Zoom meeting tied to a
- *                       ServiceAppointment record.
- *
- *                       Three actions:
- *                          CREATE  — create the Zoom meeting and email a first
- *                                    .ics invite (METHOD:REQUEST, SEQUENCE:0)
- *                          UPDATE  — reschedule the existing Zoom meeting and
- *                                    email a REPLACE invite (same UID,
- *                                    SEQUENCE incremented)
- *                          CANCEL  — delete the Zoom meeting and email a
- *                                    METHOD:CANCEL invite to remove the event
- *                                    from the family's calendar
- *
- *                       DYNAMIC HOST RESOLUTION
- *                       --------------------------------------------------------
- *                       The Zoom meeting host is resolved from the Service
- *                       Appointment based on the role implied by
- *                       Meeting_Type__c / Subject, so any profile can create
- *                       SAs and have meetings host themselves:
- *
- *                            Meeting role             Primary host source
- *                            ------------------------ --------------------------------
- *                            Initial Consultation /   SA.Admission_Counselor__c
- *                              IC / Admission         -> Contact.IC_admissions_counselor__c
- *                                                     -> Lead.Assigned_Admission_Counsellor__c
- *
- *                            FSS / Family Success /   SA.Family_Success_Specialist__c
- *                              Onboarding             -> Contact.Family_Success_Specialist__c
- *
- *                            Program Director         SA.Program_Director__c
- *                                                     -> Contact.Program_Director__c
- *                                                     -> Lead.Assigned_PD__c
- *
- *                            Educational Strategist / SA.Educational_Strategist__c
- *                              Regular (default)      -> Contact.Counselor__c
- *                                                       (the Contact field is labelled
- *                                                        "Educational Strategist")
- *
- *                       Fallback in all cases: SA.Owner (if Owner is a User),
- *                       so the class "just works" regardless of the creator's
- *                       profile.
- *
- *                       LEAD-PARENTED APPOINTMENTS
- *                       --------------------------------------------------------
- *                       When a Service Appointment is created against a Lead
- *                       (pre-conversion), SA.ContactId is blank and the record
- *                       is linked through SA.ParentRecordId / SA.ParentRecordType='Lead'.
- *                       This class reads the Lead when necessary so the Zoom
- *                       meeting and .ics invite still go out correctly.
- *
- *                       BACKWARD COMPATIBILITY
- *                       --------------------------------------------------------
- *                       The output wrapper keeps the old public fields
- *                       (meetingUrl, joinUrl, startUrl, meetingId, hostEmail,
- *                       status, errorMessage) exactly as the previous
- *                       `GetZoomMeetingURLwithInput` class, so the current
- *                       Flow continues to work unchanged for CREATE.
- *
- *                       DML / CALLOUT ORDERING
- *                       --------------------------------------------------------
- *                       Only SOQL (reads) run before the Zoom callout. The Flow
- *                       owns the subsequent UPDATE of the ServiceAppointment
- *                       record, writing back the output variables below. This
- *                       keeps us compliant with "no DML before callout".
- *
- * @Author             : Amit Yadav
- * @Created On         : April 2026
- */
-// `without sharing` is required because Meeting_After_RTF runs in the
-// post-commit context of the originating user (often the Site Guest User
-// `zenith_booking@…` for IC bookings). After insert, the SA's OwnerId is
-// reassigned to the Admission Counselor, so the guest user no longer has
-// row visibility under `with sharing` — the SA-load SOQL returns 0 rows
-// and the Zoom callout is skipped, which silently broke the IC email
-// pipeline (no Zoom_Link__c stamped → flow never fires the email branch).
-// The class only reads SA + role users and writes back via Zoom callout +
-// the flow's own SA UPDATE, so this does not grant the guest user any
-// new write access.
+// Invocable Apex used by Flows to CREATE / UPDATE / CANCEL a Zoom meeting tied to a ServiceAppointment, with dynamic host resolution and .ics calendar invites.
 public without sharing class ZoomMeetingManager {
 
     public static final String ACTION_CREATE = 'CREATE';
@@ -94,20 +14,8 @@ public without sharing class ZoomMeetingManager {
     private static final String ORG_SENDER_NAME    = 'Zenith Prep Academy';
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
-    /** Lightning "Zenith Meeting Scheduled" template — drives the branded
-     *  subject + HTML body on CREATE for Contact-based SAs, so admin edits
-     *  in Setup propagate without a code deploy. */
     private static final Id SCHEDULED_EMAIL_TEMPLATE_ID   = '00XQU00000ARwzs';
-    /** Lightning "Initial Consultation Meeting Scheduled" template — used
-     *  for Lead-based SAs (IC bookings) so the IC-specific copy and links
-     *  go to the prospect. Org-specific Id; update when deploying to other
-     *  environments. Setup → Email Templates → Initial Consultation
-     *  Meeting Scheduled. */
     private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb0000031aCbEAI';
-    /** Lightning "Meeting Rescheduled Email Template" (Enhanced) — carries
-     *  the Zenith Prep Lightning Letterhead via Setup, so admin edits to
-     *  copy / branding propagate without a code deploy. Used for RESCHEDULE
-     *  emails. Setup → Email Templates → Meeting Rescheduled Email Template. */
     private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb000003UJbN';
 
     private static final String ROLE_ES  = 'ES';
@@ -115,9 +23,6 @@ public without sharing class ZoomMeetingManager {
     private static final String ROLE_PD  = 'PD';
     private static final String ROLE_FSS = 'FSS';
 
-    // =========================================================================
-    //  INPUT / OUTPUT WRAPPERS
-    // =========================================================================
     public class InputWrapper {
         @InvocableVariable(required=true label='Service Appointment Id')
         public Id serviceAppointmentId;
@@ -148,9 +53,7 @@ public without sharing class ZoomMeetingManager {
         @InvocableVariable public String resolvedRole;
     }
 
-    // =========================================================================
-    //  INVOCABLE ENTRY POINT
-    // =========================================================================
+    // Invocable entry point — dispatches CREATE / UPDATE / CANCEL across the input batch and bulk-sends collected emails.
     @InvocableMethod(
         label='Manage Zoom Meeting + Calendar Invite'
         description='Create / Reschedule / Cancel a Zoom meeting. Host is resolved dynamically from the SA role fields (Educational Strategist, Admission Counselor, Program Director, Family Success Specialist), with Owner as fallback.'
@@ -175,17 +78,9 @@ public without sharing class ZoomMeetingManager {
 
         Http http = new Http();
 
-        // Collect every email across every input and send them in ONE
-        // Messaging.sendEmail call after the loop. This keeps us inside
-        // the 10-email-invocations-per-transaction governor limit no
-        // matter how many SAs the flow batches into manage().
         List<ZoomMeetingEmailService.SendInput> emailBatch = new List<ZoomMeetingEmailService.SendInput>();
         List<OutputWrapper> emailOwners = new List<OutputWrapper>();
 
-        // SAs whose Zoom fields were freshly hydrated and need to be persisted
-        // BEFORE the emails go out — Messaging.renderStoredEmailTemplate reads
-        // merge values from the DB, so Zoom_Link__c must already be saved or
-        // the link won't appear in the rendered template body.
         Map<Id, ServiceAppointment> sasToPersist = new Map<Id, ServiceAppointment>();
 
         for (InputWrapper ip : inputs) {
@@ -214,9 +109,6 @@ public without sharing class ZoomMeetingManager {
         }
 
         if (!sasToPersist.isEmpty()) {
-            // Bulk DML before email render. Safe under the parent flow because
-            // Create_Meeting_Zoom_Link_And_Send_Reminders is RecordAfterSave on
-            // CREATE only — an update here doesn't re-trigger it.
             update sasToPersist.values();
         }
 
@@ -224,14 +116,7 @@ public without sharing class ZoomMeetingManager {
         return outputs;
     }
 
-    /**
-     * Send the Zenith Meeting Scheduled email + .ics for SAs whose Zoom
-     * meeting is already created and persisted. Invoked from
-     * Meeting_After_RTF → Send_Meeting_Scheduled_Email_notification so the
-     * flow drives the booking confirmation while still attaching the .ics
-     * (emailSimple alone can't attach files). Skips SAs that don't yet have
-     * Zoom_Meeting_ID__c / a join URL to avoid sending blank-link invites.
-     */
+    // Sends the booking-confirmation email + .ics for SAs whose Zoom meeting is already created and persisted.
     public static void sendInvitesForSavedAppointments(Set<Id> saIds) {
         if (saIds == null || saIds.isEmpty()) return;
 
@@ -248,12 +133,6 @@ public without sharing class ZoomMeetingManager {
         List<OutputWrapper>                     emailOwners = new List<OutputWrapper>();
 
         for (ServiceAppointment sa : saMap.values()) {
-            // Only require a join URL — Zoom_Meeting_ID__c is no longer
-            // mandatory because some org flows stamp Zoom_Link__c without
-            // also stamping Zoom_Meeting_ID__c, which previously caused a
-            // SILENT skip and was the reason IC emails never arrived even
-            // though the Zoom link was set on the SA. computeIcsUid() uses
-            // sa.Id so the .ics is still uniquely identified.
             String joinUrl = String.isNotBlank(sa.Zoom_Join_URL__c) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
             if (String.isBlank(joinUrl)) {
                 System.debug(LoggingLevel.WARN,
@@ -279,24 +158,11 @@ public without sharing class ZoomMeetingManager {
             owner.action = ACTION_CREATE;
             owner.status = STATUS_SUCCESS;
 
-            // ----- Email 1: family — student (TO) + verified parents (CC) -----
-            // METHOD:REQUEST renders the Yes/No/Maybe widget on Gmail and
-            // shows the host as ORGANIZER on the attendees' calendars.
             String familyIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
                                         joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct);
             emailBatch.add(buildFamilySendInput(sa, ctx, parentsByAcct, orgWideId, familyIcs));
             emailOwners.add(owner);
 
-            // ----- Email 2: host (ES / Sub-ES / role user) -----
-            // Gmail won't auto-add events when the recipient's email matches
-            // ORGANIZER's mailto (it expects the organizer to already have
-            // the event on their calendar). To get auto-add behaviour for
-            // the host's own copy, we override ORGANIZER's mailto to the
-            // org-wide info@... address (the SMTP From) — the CN parameter
-            // still carries the ES's name, so the host's calendar entry
-            // displays "Organized by [ES Name]". Their ATTENDEE entry
-            // already has PARTSTAT=ACCEPTED so the event lands as confirmed
-            // without an RSVP prompt.
             if (ctx.host != null && String.isNotBlank(ctx.host.Email)) {
                 String hostIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
                                           joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
@@ -309,10 +175,7 @@ public without sharing class ZoomMeetingManager {
         deliverEmailBatch(emailBatch, emailOwners);
     }
 
-    /**
-     * Family-side SendInput: TO=student, CC=verified parents (host omitted —
-     * they receive their own dedicated PUBLISH-method email).
-     */
+    // Builds the family-side SendInput (TO=student, CC=verified parents + counselor + booking guests).
     private static ZoomMeetingEmailService.SendInput buildFamilySendInput(
         ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, String ics
@@ -321,18 +184,9 @@ public without sharing class ZoomMeetingManager {
         sin.inviteType    = ZoomMeetingEmailService.InviteType.NEW_BOOKING;
         sin.icsContent    = ics;
         sin.toEmail       = ctx.attendeeEmail;
-        // CC = verified parents (Contact-based) + counselor + booking guests
-        // (the Add-guests list captured at booking time, stored in the SA's
-        // Guest_Emails__c text field as comma-separated addresses).
         sin.ccEmails      = buildFamilyCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        // For Lead-based SAs (IC bookings), there's no ContactId — fall back
-        // to the Lead Id so Messaging.renderStoredEmailTemplate can resolve
-        // recipient-aware merge fields ({{{Recipient.FirstName}}} etc.) and
-        // the "Initial Consultation Meeting Scheduled" lightning template
-        // renders for Lead recipients too. The template's ServiceAppointment
-        // merge fields resolve via relatedWhatId regardless.
         Id targetId = sa.ContactId != null
                       ? sa.ContactId
                       : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
@@ -340,10 +194,6 @@ public without sharing class ZoomMeetingManager {
         sin.logEmailOnSend = (targetId != null);
         Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
         if (targetId != null) {
-            // Lead-based IC bookings get the "Initial Consultation Meeting
-            // Scheduled" template (prospect-facing copy + links). Contact-based
-            // bookings keep the existing "Zenith Meeting Scheduled" template
-            // unchanged.
             sin.templateId = isLeadBased
                 ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
                 : SCHEDULED_EMAIL_TEMPLATE_ID;
@@ -355,16 +205,7 @@ public without sharing class ZoomMeetingManager {
         return sin;
     }
 
-    /**
-     * Host-side SendInput: TO=host, no CC. Carries the same Lightning-
-     * template body as the family copy but the .ics has its ORGANIZER
-     * mailto overridden to info@... (CN still says the ES's name). Without
-     * the override, Gmail's organizer-recipient logic refuses to auto-add —
-     * with it, the host's email no longer matches ORGANIZER and the
-     * calendar imports the event automatically (their ATTENDEE entry is
-     * marked ACCEPTED so no RSVP prompt). Activity logging is forced off —
-     * Tasks can't be saved against a User Who.
-     */
+    // Builds the host-side SendInput (TO=host, ORGANIZER mailto overridden so Gmail auto-adds the event).
     private static ZoomMeetingEmailService.SendInput buildHostSendInput(
         ServiceAppointment sa, MeetingContext ctx, Id orgWideId, String ics
     ) {
@@ -375,9 +216,6 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails      = new List<String>();
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        // Use sa.ContactId for merge-field resolution on the template (the
-        // body is keyed off the student's data); the User host is the
-        // recipient via setToAddresses, not the targetObject.
         sin.targetObjectId = sa.ContactId;
         sin.logEmailOnSend = false;
         if (sa.ContactId != null) {
@@ -390,8 +228,7 @@ public without sharing class ZoomMeetingManager {
         return sin;
     }
 
-    /** CC list with only verified parents — host is excluded so they get their
-     *  own dedicated PUBLISH-method email instead of being CC'd here. */
+    // CC list with only verified parents (host excluded — they get a dedicated email).
     private static List<String> parentsOnlyCcList(
         MeetingContext ctx, Map<Id, List<Contact>> parentsByAcct
     ) {
@@ -405,22 +242,12 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
-    /**
-     * Family-side CC list = verified parents + assigned counselor + invited
-     * guests captured at booking time. Host is intentionally NOT in this list
-     * — they receive a dedicated PUBLISH-method email so Gmail auto-adds the
-     * event. Dedup + casing is handled by ZoomMeetingEmailService.dedupAndClean.
-     */
+    // Family CC list = verified parents + booking guests (+ Lead Owner for Lead-based SAs).
     private static List<String> buildFamilyCcList(
         ServiceAppointment sa, MeetingContext ctx, Map<Id, List<Contact>> parentsByAcct
     ) {
         List<String> out = new List<String>();
-        // 1. Verified parent contacts (Contact-based SAs only)
         out.addAll(parentsOnlyCcList(ctx, parentsByAcct));
-        // 2. Booking guests — Add-guests field on the SA, comma-separated.
-        //    Read via dynamic SObject.get() so this class still compiles in
-        //    orgs that haven't created Guest_Emails__c yet (loadAppointments
-        //    only adds the field to its SELECT when describe says it exists).
         String guestStr = readGuestEmails(sa);
         if (String.isNotBlank(guestStr)) {
             for (String raw : guestStr.split(',')) {
@@ -429,11 +256,6 @@ public without sharing class ZoomMeetingManager {
                 if (String.isNotBlank(trimmed)) out.add(trimmed);
             }
         }
-        // 3. Lead Owner — for Lead-based SAs (IC bookings), CC the assigned
-        //    counselor (= Lead.Owner User, resolved into ctx.host) on the
-        //    family confirmation so they have a thread copy. Contact-based
-        //    paths intentionally skip this — they keep the existing CC
-        //    behaviour (verified parents + guests).
         Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
         if (isLeadBased && ctx != null && ctx.host != null
             && String.isNotBlank(ctx.host.Email)) {
@@ -442,11 +264,9 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
-    /** Schema-cached: does Lead.Guest_Emails__c exist? Guest emails live on
-     *  the Lead (NOT the SA) so the field is hidden from the Service
-     *  Appointment UI. The SA reaches them via the Lead__c custom lookup. */
     private static Boolean guestEmailsResolved = false;
     private static Boolean guestEmailsCache = false;
+    // Schema-cached check for the optional Lead.Guest_Emails__c field.
     private static Boolean hasGuestEmailsField() {
         if (guestEmailsResolved) return guestEmailsCache;
         guestEmailsResolved = true;
@@ -457,12 +277,7 @@ public without sharing class ZoomMeetingManager {
         return guestEmailsCache;
     }
 
-    /**
-     * Read Guest_Emails__c off the SA's parent Lead, accessed via the SA's
-     * Lead__c custom lookup (sa.Lead__r). Guests are only persisted on the
-     * Lead in IC (lead-based) bookings — Contact-based PD/FSS bookings don't
-     * currently expose a guest UI, so this returns null for them.
-     */
+    // Reads Guest_Emails__c off the SA's parent Lead via the Lead__r relationship.
     private static String readGuestEmails(ServiceAppointment sa) {
         if (sa == null || !hasGuestEmailsField()) return null;
         try {
@@ -475,16 +290,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    /**
-     * Send cancellation emails for SAs whose meeting has been canceled. The
-     * email body comes from the Setup-side Lightning template chosen by the
-     * caller (Service_Appointment_Status_Change_Email_Notification picks the
-     * right template based on who cancelled). The .ics is METHOD:CANCEL so
-     * Gmail / Outlook / Apple Calendar remove the event from every
-     * recipient's calendar. Driven from the flow via
-     * ZoomMeetingCancelEmailAction so emailSimple's missing-attachment
-     * limitation doesn't leave orphaned calendar events.
-     */
+    // Sends METHOD:CANCEL .ics emails for SAs whose meeting was cancelled, using a per-SA Lightning template.
     public static void sendCancellationsForSavedAppointments(Map<Id, Id> templateBySa) {
         if (templateBySa == null || templateBySa.isEmpty()) return;
 
@@ -503,11 +309,6 @@ public without sharing class ZoomMeetingManager {
         for (ServiceAppointment sa : saMap.values()) {
             Id templateId = templateBySa.get(sa.Id);
             if (templateId == null) continue;
-            // Skip cancel email for SAs that never had a Zoom meeting — the
-            // METHOD:CANCEL .ics references a UID no calendar ever saw, and
-            // the email body claims the user had a meeting they never had.
-            // Mirrors Zoom_Meeting_Update_Or_Cancel's `Zoom_Meeting_ID IsNull=false`
-            // start filter so cancel-email behaviour matches Zoom-DELETE behaviour.
             if (String.isBlank(sa.Zoom_Meeting_ID__c)) continue;
             String joinUrl = String.isNotBlank(sa.Zoom_Join_URL__c) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
 
@@ -547,11 +348,7 @@ public without sharing class ZoomMeetingManager {
         deliverEmailBatch(emailBatch, emailOwners);
     }
 
-    /**
-     * Bulk-send all invitations collected across the input batch and fold
-     * each result back into its OutputWrapper. Single Messaging.sendEmail
-     * call regardless of batch size.
-     */
+    // Bulk-sends the collected email batch and folds each result back into its OutputWrapper.
     private static void deliverEmailBatch(
         List<ZoomMeetingEmailService.SendInput> batch,
         List<OutputWrapper> owners
@@ -572,9 +369,6 @@ public without sharing class ZoomMeetingManager {
                 System.debug(LoggingLevel.INFO,
                     'deliverEmailBatch: msg ' + i + ' sent OK to ' + batch[i].toEmail);
             } else {
-                // Surface the failure to the debug log every time — previously
-                // it was only attached to the OutputWrapper, which is invisible
-                // to the flow caller and made silent failures the norm for IC.
                 System.debug(LoggingLevel.ERROR,
                     'deliverEmailBatch: msg ' + i + ' FAILED to ' + batch[i].toEmail +
                     ' — ' + r.errorMessage);
@@ -585,9 +379,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    // =========================================================================
-    //  DISPATCH
-    // =========================================================================
+    // Routes an SA to the right CREATE / UPDATE / CANCEL handler based on out.action.
     private static void dispatch(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
@@ -606,9 +398,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    // =========================================================================
-    //  ACTION: CREATE
-    // =========================================================================
+    // CREATE handler: POST a new Zoom meeting, hydrate SA fields, and queue the SA for persistence.
     private static void handleCreate(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
@@ -636,11 +426,6 @@ public without sharing class ZoomMeetingManager {
         out.meetingUrl = out.joinUrl;
         out.hostEmail  = ctx.host.Email;
 
-        // Hydrate the in-memory SA with the freshly-created Zoom data and
-        // queue it for DML BEFORE the email batch is sent — the email
-        // template renders {{{ServiceAppointment.Zoom_Link__c}}} from the DB
-        // value, so the link only appears if Zoom_Link__c is already saved.
-        // The flow's later Update_Zoom_Links step is now idempotent for these.
         if (String.isBlank(sa.Zoom_Join_URL__c))  sa.Zoom_Join_URL__c  = out.joinUrl;
         if (String.isBlank(sa.Zoom_Link__c))      sa.Zoom_Link__c      = out.joinUrl;
         if (String.isBlank(sa.Zoom_Start_URL__c)) sa.Zoom_Start_URL__c = out.startUrl;
@@ -652,19 +437,10 @@ public without sharing class ZoomMeetingManager {
         out.icsUid      = uid;
         out.icsSequence = seq;
 
-        // CREATE confirmation is sent by Meeting_After_RTF →
-        // Send_Meeting_Scheduled_Email_notification (custom Apex action that
-        // attaches the .ics — emailSimple alone can't). Skipping Apex-side
-        // delivery here keeps booking confirmations to one email.
-        // RESCHEDULE / CANCEL still send from Apex (handleUpdate / handleCancel)
-        // because no flow path covers those lifecycle events.
-
         out.status = STATUS_SUCCESS;
     }
 
-    // =========================================================================
-    //  ACTION: UPDATE (reschedule)
-    // =========================================================================
+    // UPDATE handler: PATCH the existing Zoom meeting and queue a RESCHEDULE email; falls back to CREATE if 404 / no meeting id.
     private static void handleUpdate(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
@@ -716,21 +492,13 @@ public without sharing class ZoomMeetingManager {
         out.status = STATUS_SUCCESS;
     }
 
-    // =========================================================================
-    //  ACTION: CANCEL
-    // =========================================================================
+    // CANCEL handler: flip Lead status if Lead-based, DELETE the Zoom meeting, populate output fields.
     private static void handleCancel(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
         List<OutputWrapper> emailOwners
     ) {
-        // For Lead-based SAs (IC bookings), reflect the cancellation on the
-        // parent Lead by flipping its Status to "IC Canceled". Done first so
-        // the Lead update succeeds even on SAs that never had a Zoom meeting
-        // attached (the Zoom_Meeting_ID__c blank check below would otherwise
-        // short-circuit the whole method). Best-effort — failures are logged
-        // and don't block the rest of the cancel flow.
         flipLeadStatusToCanceled(sa);
 
         if (String.isBlank(sa.Zoom_Meeting_ID__c)) {
@@ -761,19 +529,9 @@ public without sharing class ZoomMeetingManager {
         out.meetingUrl = joinUrlForIcs;
         out.hostEmail  = (ctx != null && ctx.host != null) ? ctx.host.Email : null;
 
-        // Cancellation email + METHOD:CANCEL .ics is now sent by
-        // Service_Appointment_Status_Change_Email_Notification ->
-        // Send_Cancellation_Email_Notification / Send_Client_Cancellation_Email
-        // (both rewired to ZoomMeetingCancelEmailAction). The flow's decision
-        // tree picks the right Lightning template based on Status — Apex no
-        // longer hardcodes the cancel copy here, avoiding duplicate emails.
-
         out.status = STATUS_SUCCESS;
     }
 
-    // =========================================================================
-    //  HOST + ATTENDEE RESOLUTION
-    // =========================================================================
     public class MeetingContext {
         public String role;
         public User   host;
@@ -784,6 +542,7 @@ public without sharing class ZoomMeetingManager {
         public Lead   parentLead;
     }
 
+    // Builds a MeetingContext (role, host, attendee, parents) for a given SA.
     private static MeetingContext resolveContext(
         ServiceAppointment sa, Map<Id, Lead> leadsById, Map<Id, User> ownerUsers,
         Map<Id, User> substitutes
@@ -795,7 +554,6 @@ public without sharing class ZoomMeetingManager {
             ctx.parentLead = leadsById.get(sa.ParentRecordId);
         }
 
-        // Attendee (primary recipient)
         if (sa.Contact != null && String.isNotBlank(sa.Contact.Email)) {
             ctx.attendeeEmail = sa.Contact.Email;
             ctx.attendeeName  = sa.Contact.Name;
@@ -812,6 +570,7 @@ public without sharing class ZoomMeetingManager {
         return ctx;
     }
 
+    // Classifies the SA's meeting role (ES / AC / PD / FSS) from Meeting_Type__c + Subject.
     private static String classifyMeetingRole(ServiceAppointment sa) {
         String mt   = sa.Meeting_Type__c == null ? '' : sa.Meeting_Type__c.toLowerCase();
         String subj = sa.Subject == null         ? '' : sa.Subject.toLowerCase();
@@ -828,14 +587,11 @@ public without sharing class ZoomMeetingManager {
         return ROLE_ES;
     }
 
+    // Resolves ctx.host through the layered fallback chain (Substitute -> Lead Owner -> SA role -> Contact role -> Lead role -> any role -> SA Owner -> Lead Owner).
     private static void pickHost(
         MeetingContext ctx, ServiceAppointment sa,
         Map<Id, User> ownerUsers, Map<Id, User> substitutes
     ) {
-        // 0. Active Substitute ES — only applies when role is ES. A student's
-        // active Substitute__c record overrides the assigned Counselor__c so
-        // the Zoom meeting runs on the substitute's Zoom license and the
-        // invite shows the substitute as the organizer.
         if (ctx.role == ROLE_ES && sa.ContactId != null
             && substitutes != null && substitutes.containsKey(sa.ContactId)
             && isUsable(substitutes.get(sa.ContactId))) {
@@ -844,12 +600,6 @@ public without sharing class ZoomMeetingManager {
             return;
         }
 
-        // 0a. Lead-based SA — the Lead's Owner is the natural organizer for
-        // pre-conversion prospects. The Lead Owner took the lead and runs
-        // the initial meeting, so they host on their Zoom license and
-        // appear as the calendar invite organizer. This wins over the
-        // role-based fallback chain below, which is designed for
-        // post-conversion Contact SAs.
         Boolean isLeadSA = sa.ContactId == null
                         && sa.ParentRecordType == 'Lead'
                         && ctx.parentLead != null;
@@ -861,7 +611,6 @@ public without sharing class ZoomMeetingManager {
             return;
         }
 
-        // 1. SA-level role lookup
         if (ctx.role == ROLE_ES && isUsable(sa.Educational_Strategist__r)) {
             ctx.host = sa.Educational_Strategist__r;  ctx.hostSource = 'SA.Educational_Strategist__c'; return;
         }
@@ -875,7 +624,6 @@ public without sharing class ZoomMeetingManager {
             ctx.host = sa.Family_Success_Specialist__r; ctx.hostSource = 'SA.Family_Success_Specialist__c'; return;
         }
 
-        // 2. Contact-level role lookup
         if (sa.Contact != null) {
             if (ctx.role == ROLE_ES && isUsable(sa.Contact.Counselor__r)) {
                 ctx.host = sa.Contact.Counselor__r;  ctx.hostSource = 'Contact.Counselor__c'; return;
@@ -891,7 +639,6 @@ public without sharing class ZoomMeetingManager {
             }
         }
 
-        // 3. Lead-level role lookup
         if (ctx.parentLead != null) {
             if (ctx.role == ROLE_AC && isUsable(ctx.parentLead.Assigned_Admission_Counsellor__r)) {
                 ctx.host = ctx.parentLead.Assigned_Admission_Counsellor__r;
@@ -903,7 +650,6 @@ public without sharing class ZoomMeetingManager {
             }
         }
 
-        // 4. Any populated role user on the SA (cross-role fallback)
         User anyRoleUser = firstUsable(new List<User>{
             sa.Educational_Strategist__r,
             sa.Admission_Counselor__r,
@@ -912,13 +658,11 @@ public without sharing class ZoomMeetingManager {
         });
         if (anyRoleUser != null) { ctx.host = anyRoleUser; ctx.hostSource = 'SA.AnyRole'; return; }
 
-        // 5. SA Owner (if User)
         if (sa.OwnerId != null && ownerUsers.containsKey(sa.OwnerId)) {
             User owner = ownerUsers.get(sa.OwnerId);
             if (isUsable(owner)) { ctx.host = owner; ctx.hostSource = 'SA.Owner'; return; }
         }
 
-        // 6. Lead Owner
         if (ctx.parentLead != null && ctx.parentLead.OwnerId != null
             && ownerUsers.containsKey(ctx.parentLead.OwnerId)) {
             User lo = ownerUsers.get(ctx.parentLead.OwnerId);
@@ -926,24 +670,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    /**
-     * For SAs whose ParentRecordId points at a Lead, flip the parent Lead's
-     * Status to "IC Canceled" when the meeting is cancelled, AND generate a
-     * fresh single-use IC_Reschedule_Token__c so the family can rebook into
-     * a new SA against the same Lead via IC_Reschedule_Link__c.
-     *
-     * Token generation is gated to leads that DON'T already have one — if
-     * IC_Meeting_Rescheduled__c is true (already rebooked once) we don't
-     * mint another, since by spec the link is single-use. tryPut is used so
-     * the apex still compiles in orgs that haven't yet deployed the new
-     * Lead.IC_Reschedule_Token__c / IC_Reschedule_Link__c / IC_Meeting_Rescheduled__c
-     * fields — silent no-op until the metadata lands.
-     *
-     * Idempotent (running it twice is harmless), best-effort (a Lead-update
-     * failure shouldn't block the cancel email or the Zoom DELETE), and
-     * gated to Lead-parent SAs only — Contact-based PD/FSS cancellations
-     * leave the Contact and downstream records alone.
-     */
+    // For Lead-parented SAs, flips the Lead's Status to "IC Canceled" and mints a fresh single-use IC rebook token.
     private static void flipLeadStatusToCanceled(ServiceAppointment sa) {
         if (sa == null || sa.ParentRecordType != 'Lead' || sa.ParentRecordId == null) return;
         try {
@@ -951,14 +678,8 @@ public without sharing class ZoomMeetingManager {
                 Id = sa.ParentRecordId,
                 Status = 'IC Canceled'
             );
-            // Mint a fresh rebook token. Same generator as the SA's
-            // Reschedule_Token__c so token format + entropy match. Cleared
-            // by GuestSchedulerController.bookAppointment after a successful
-            // rebook so the link is single-use.
             tryPutOnLead(leadUpdate, 'IC_Reschedule_Token__c',
                 RescheduleTokenService.generateToken());
-            // Reset the rebook-completed flag in case the same Lead is being
-            // canceled a second time (admin reopened + canceled again).
             tryPutOnLead(leadUpdate, 'IC_Meeting_Rescheduled__c', false);
             update leadUpdate;
         } catch (Exception e) {
@@ -968,25 +689,12 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    /**
-     * Best-effort dynamic put on a Lead instance — swallows the field-doesn't-
-     * exist exception so this class compiles in orgs that haven't yet deployed
-     * the IC_Reschedule_Token__c / IC_Reschedule_Link__c / IC_Meeting_Rescheduled__c
-     * custom fields.
-     */
+    // Best-effort dynamic put on a Lead — swallows missing-field exceptions for forward-compat.
     private static void tryPutOnLead(Lead l, String fieldName, Object value) {
         try { l.put(fieldName, value); } catch (Exception ignored) { }
     }
 
-    /**
-     * Build a human-readable display name from a User's FirstName + LastName,
-     * falling back to .Name only when both are blank. Salesforce's User.Name
-     * is auto-computed as "FirstName LastName" for normal users, but for
-     * scratch / federation-id provisioned users it can be the username
-     * (e.g. "User17744366632527905805"). Composing explicitly fixes the
-     * email subject + body display without breaking properly-named users —
-     * "FirstName LastName" produces the same string as User.Name.
-     */
+    // Builds a display name from User.FirstName + LastName, falling back to .Name only when both are blank.
     private static String composeUserDisplayName(User u) {
         if (u == null) return '';
         String fn = (u.FirstName != null) ? u.FirstName.trim() : '';
@@ -1005,9 +713,7 @@ public without sharing class ZoomMeetingManager {
         return null;
     }
 
-    // =========================================================================
-    //  ZOOM PAYLOAD
-    // =========================================================================
+    // Builds the JSON payload for the Zoom meetings POST/PATCH (topic, agenda, start, duration, settings, invitees).
     private static Map<String, Object> buildZoomPayload(ServiceAppointment sa, MeetingContext ctx) {
         Long durationMinutes =
             (sa.SchedEndTime.getTime() - sa.SchedStartTime.getTime()) / 60000L;
@@ -1022,12 +728,6 @@ public without sharing class ZoomMeetingManager {
         if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
         String agenda = 'Meeting with ' + hostName;
 
-        // We drive the branded invitation email ourselves from Apex so Zoom
-        // stays silent (no duplicate create / reschedule / cancel emails
-        // from Zoom). Add booking guests as meeting_invitees so the host
-        // sees the guest list inside Zoom (and the host can copy the
-        // invite-link mid-meeting if needed). registrants_email_notification
-        // stays off so Zoom doesn't compete with our branded email.
         Map<String, Object> settings = new Map<String, Object>{
             'join_before_host'                => false,
             'waiting_room'                    => true,
@@ -1051,13 +751,7 @@ public without sharing class ZoomMeetingManager {
         };
     }
 
-    /**
-     * Build the Zoom settings.meeting_invitees array from the SA's
-     * Guest_Emails__c list (plus the primary attendee). Zoom shows these in
-     * the meeting's Invitees section in the host's UI; the email list also
-     * helps Zoom's analytics tie joiners back to invited addresses. We do
-     * NOT add the host here — Zoom auto-includes the meeting owner.
-     */
+    // Builds Zoom's settings.meeting_invitees array from the primary attendee + booking guests.
     private static List<Map<String, Object>> buildZoomMeetingInvitees(
         ServiceAppointment sa, MeetingContext ctx
     ) {
@@ -1085,6 +779,7 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
+    // Builds the Zoom meeting topic (Subject when set, otherwise Meeting_Type With Attendee).
     private static String buildTopic(ServiceAppointment sa, MeetingContext ctx) {
         if (String.isNotBlank(sa.Subject)) return sa.Subject;
         String mt = String.isBlank(sa.Meeting_Type__c) ? 'Meeting' : sa.Meeting_Type__c;
@@ -1092,6 +787,7 @@ public without sharing class ZoomMeetingManager {
         return mt + (String.isBlank(who) ? '' : ' With ' + who);
     }
 
+    // Issues an authenticated Zoom HTTP call via Named Credential.
     private static HttpResponse doCallout(Http http, String method, String endpoint, Map<String, Object> body) {
         HttpRequest req = new HttpRequest();
         req.setEndpoint(endpoint);
@@ -1114,24 +810,7 @@ public without sharing class ZoomMeetingManager {
         return res.getStatusCode() + ' ' + res.getStatus() + ' Body=' + res.getBody();
     }
 
-    // =========================================================================
-    //  ZOOM-ONLY CANCELLATION (Join URL invalidation)
-    // =========================================================================
-    /**
-     * Delete the Zoom meetings for the given SAs so the join URL in any
-     * already-sent confirmation email stops working. Email/.ics cancellation
-     * notice is NOT sent here — that's a separate concern handled by the
-     * Meeting_After_RTF flow when the SA's Status flips. This method is
-     * the surgical "expire the Zoom URL" hook for the family-cancel flow,
-     * where we already have the SA marked Canceled and just need the Zoom
-     * URL invalidated.
-     *
-     * Skips SAs without a Zoom_Meeting_ID__c (nothing to delete). 404s from
-     * Zoom are treated as success (the meeting is already gone). Failures
-     * are logged at WARN and swallowed — the calling user already saw their
-     * cancellation succeed at the SA level, so we don't want a Zoom-side
-     * hiccup to surface as an error to them.
-     */
+    // Deletes the Zoom meetings for the given SAs so the join URL stops working (no email is sent here).
     public static void cancelZoomMeetingsForSAs(Set<Id> saIds) {
         if (saIds == null || saIds.isEmpty()) return;
         List<ServiceAppointment> sas = [
@@ -1162,13 +841,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    /**
-     * Queueable wrapper around cancelZoomMeetingsForSAs so callers (typically
-     * @AuraEnabled methods invoked from a guest-user LWC) can enqueue the
-     * Zoom delete AFTER their DML commit — the platform forbids HTTP callouts
-     * in the same transaction as pending DML, and the cancellation always
-     * does DML on the SA first.
-     */
+    // Queueable wrapper around cancelZoomMeetingsForSAs so callers can enqueue the Zoom DELETE after their DML commit.
     public class ZoomCancelQueueable implements Queueable, Database.AllowsCallouts {
         private Set<Id> serviceAppointmentIds;
         public ZoomCancelQueueable(Set<Id> saIds) {
@@ -1179,19 +852,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    /**
-     * Queueable wrapper around manage(action='UPDATE') so callers can enqueue
-     * the Zoom-side reschedule AFTER they've committed the new SchedStartTime
-     * onto the SA. Platform rule: HTTP callouts must run before any DML, so
-     * once cancellation/reschedule code has done update sa, the Zoom PATCH
-     * must wait for the next async transaction.
-     *
-     * Reads the SA's freshly-saved SchedStartTime/SchedEndTime out of the DB
-     * inside execute() and PATCHes the existing Zoom meeting (no new Zoom
-     * meeting is created — the join URL stays the same), then sends the
-     * RESCHEDULE email + .ics METHOD:REQUEST so calendar clients move the
-     * existing event to the new time instead of producing a duplicate.
-     */
+    // Queueable wrapper around manage(action='UPDATE') so callers can enqueue the Zoom PATCH after committing the new SchedStartTime.
     public class ZoomRescheduleQueueable implements Queueable, Database.AllowsCallouts {
         private Id serviceAppointmentId;
         public ZoomRescheduleQueueable(Id saId) {
@@ -1206,9 +867,7 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    // =========================================================================
-    //  VALIDATION
-    // =========================================================================
+    // Validates that a CREATE has a host email, scheduled times, and an attendee email.
     private static Boolean validateForCreate(OutputWrapper out, ServiceAppointment sa, MeetingContext ctx) {
         if (ctx.host == null || String.isBlank(ctx.host.Email)) {
             out.status = STATUS_ERROR;
@@ -1234,9 +893,7 @@ public without sharing class ZoomMeetingManager {
         return true;
     }
 
-    // =========================================================================
-    //  ICS + EMAIL
-    // =========================================================================
+    // GETs the human-readable Zoom invitation text for a given meeting id.
     private static String fetchZoomInvitation(Http http, String meetingId) {
         if (String.isBlank(meetingId)) return null;
         try {
@@ -1261,15 +918,7 @@ public without sharing class ZoomMeetingManager {
                         parentsByAcct, null);
     }
 
-    /**
-     * Same as buildIcs but with an optional override for the ORGANIZER's
-     * mailto address. The CN parameter (display name) still uses the ES's
-     * name — only the underlying email changes. Used for the host's own
-     * .ics so the recipient (ES) doesn't match ORGANIZER's email and Gmail
-     * processes the invite as an attendee invitation (auto-add behaviour)
-     * instead of "look up event by UID in your own calendar" → "Unable to
-     * load event" / manual "Add to Calendar" click.
-     */
+    // Builds the .ics body, with optional ORGANIZER mailto override (used for the host's own copy).
     private static String buildIcs(
         ServiceAppointment sa, MeetingContext ctx,
         String uid, Integer sequence, String method,
@@ -1277,8 +926,6 @@ public without sharing class ZoomMeetingManager {
         Map<Id, List<Contact>> parentsByAcct,
         String organizerEmailOverride
     ) {
-        // Calendar event title is always "{Student Name} - Zenith Meeting",
-        // regardless of who books (student, parent, or staff).
         String studentName = (sa.Contact != null && String.isNotBlank(sa.Contact.Name))
                              ? sa.Contact.Name
                              : (String.isNotBlank(ctx.attendeeName) ? ctx.attendeeName : 'Student');
@@ -1310,11 +957,6 @@ public without sharing class ZoomMeetingManager {
         ici.location       = joinUrl;
         ici.startTime      = sa.SchedStartTime;
         ici.endTime        = sa.SchedEndTime;
-        // ORGANIZER's display name (CN) is always the ES / Sub-ES / role user
-        // — same person whose Zoom account hosts the meeting. The mailto can
-        // be overridden by the caller (host's own copy uses the org-wide
-        // address so Gmail doesn't trip its organizer-recipient lookup) and
-        // otherwise defaults to the host's email.
         ici.organizerName  = (ctx != null && ctx.host != null)
                              ? composeUserDisplayName(ctx.host) : '';
         if (String.isBlank(ici.organizerName)) ici.organizerName = ORG_SENDER_NAME;
@@ -1324,8 +966,6 @@ public without sharing class ZoomMeetingManager {
             ici.organizerEmail = (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Email))
                                  ? ctx.host.Email : ORG_SENDER_ADDRESS;
         }
-        // SENT-BY only when ORGANIZER's email differs from the SMTP sender
-        // (info@...). When they match, SENT-BY is redundant noise.
         if (!ici.organizerEmail.equalsIgnoreCase(ORG_SENDER_ADDRESS)) {
             ici.organizerSentByEmail = ORG_SENDER_ADDRESS;
         }
@@ -1334,20 +974,12 @@ public without sharing class ZoomMeetingManager {
             ctx.attendeeName, ctx.attendeeEmail, 'REQ-PARTICIPANT'
         );
 
-        // Mirror the email CC list as ICS ATTENDEE entries so the invite
-        // lands on parents' / host's calendars (Gmail and Outlook only
-        // auto-add an event when the recipient appears as an ATTENDEE).
         ici.ccAttendees = buildCcAttendees(sa, ctx, parentsByAcct);
 
         return ZoomIcsBuilder.build(ici);
     }
 
-    /**
-     * Build the .ics ATTENDEE list mirroring the email CC list:
-     *   - verified parents on the student's account
-     *   - the resolved host (ES / substitute / role user)
-     * The student is the primaryAttendee and is excluded here.
-     */
+    // Builds the .ics ATTENDEE list mirroring the email CC list (verified parents + host as CHAIR + booking guests).
     private static List<ZoomIcsBuilder.Attendee> buildCcAttendees(
         ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct
@@ -1377,12 +1009,6 @@ public without sharing class ZoomMeetingManager {
             String norm = ctx.host.Email.toLowerCase().trim();
             if (norm != studentEmailLower && !seen.contains(norm)) {
                 seen.add(norm);
-                // The host is also the ORGANIZER. Mark them as CHAIR / ACCEPTED
-                // so Gmail and Outlook recognise them as the meeting organizer
-                // and add the event straight to their calendar — having the
-                // same person as ORGANIZER plus an unaccepted REQ-PARTICIPANT
-                // ATTENDEE is contradictory and clients silently drop the
-                // event for the organizer in that case.
                 String hostDisplayName = composeUserDisplayName(ctx.host);
                 out.add(new ZoomIcsBuilder.Attendee(
                     String.isNotBlank(hostDisplayName) ? hostDisplayName : ctx.host.Email,
@@ -1391,14 +1017,6 @@ public without sharing class ZoomMeetingManager {
             }
         }
 
-        // Booking guests — Add-guests list captured at booking time on
-        // Guest_Emails__c. Each guest gets their own ICS ATTENDEE entry so
-        // the calendar invite (delivered to them via the email CC list) is
-        // auto-added to their calendar by Gmail / Outlook / Apple Mail.
-        // Without this, even if a guest receives the email, their calendar
-        // client doesn't recognise them as an attendee and refuses to add
-        // the event. Read via dynamic SObject.get so this still compiles
-        // in orgs that haven't created the field yet.
         String guestStr = readGuestEmails(sa);
         if (String.isNotBlank(guestStr)) {
             for (String raw : guestStr.split(',')) {
@@ -1416,13 +1034,7 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
-    /**
-     * Build the SendInput for this SA and add it to the transaction-wide
-     * email batch instead of sending inline. The actual Messaging.sendEmail
-     * call happens once per transaction in deliverEmailBatch() — this keeps
-     * us safely under the 10-invocations-per-transaction email governor
-     * limit regardless of how many SAs the flow batches in.
-     */
+    // Builds a SendInput for this SA and adds it to the transaction-wide email batch.
     private static void queueInvite(
         ZoomMeetingEmailService.InviteType inviteType,
         ServiceAppointment sa, MeetingContext ctx,
@@ -1442,12 +1054,6 @@ public without sharing class ZoomMeetingManager {
         sin.targetObjectId = sa.ContactId;
         sin.logEmailOnSend = (sa.ContactId != null);
 
-        // CREATE uses the "Zenith Meeting Scheduled" lightning template
-        // and RESCHEDULE uses the "Meeting Rescheduled Email Template"
-        // (Classic, source-controlled at email/Scheduling_Templates/) so
-        // copy edits live in Setup. CANCELLATION still falls back to the
-        // in-Apex copy here as a safety net — the live cancel flow drives
-        // its own per-status templates via ZoomMeetingCancelEmailAction.
         if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING
                 && sa.ContactId != null) {
             sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
@@ -1464,14 +1070,7 @@ public without sharing class ZoomMeetingManager {
         emailOwners.add(out);
     }
 
-    /**
-     * Audience per requirement:
-     *   TO  = Student (ctx.attendeeEmail, handled upstream in sendInvite)
-     *   CC  = Verified parents on the student's Account  +  the resolved role
-     *         user (ES / active Substitute ES / PD / AC / FSS — same person
-     *         who organises and hosts the Zoom meeting).
-     * No cross-role CCs, no Lead Parent 1/2 emails, no generic ORG address.
-     */
+    // CC list for create / reschedule = verified parents + resolved host.
     private static List<String> buildCcList(
         ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct
@@ -1491,11 +1090,6 @@ public without sharing class ZoomMeetingManager {
         return cc;
     }
 
-    // =========================================================================
-    //  EMAIL COPY — mirrors the "Zenith Meeting Scheduled" lightning template
-    //  (Id 00XQU00000ARwzs) so there is a single branded email on every
-    //  create / reschedule / cancel, with the .ics attached for calendaring.
-    // =========================================================================
     private static String studentFullName(ServiceAppointment sa, MeetingContext ctx) {
         if (sa.Contact != null && String.isNotBlank(sa.Contact.Name)) return sa.Contact.Name;
         if (ctx != null && String.isNotBlank(ctx.attendeeName))       return ctx.attendeeName;
@@ -1517,6 +1111,7 @@ public without sharing class ZoomMeetingManager {
         return sa.SchedStartTime.format('M/d/yyyy h:mm a z', resolveDisplayTz(ctx));
     }
 
+    // Builds the email subject; CANCEL/RESCHEDULE prefix "Re:" so clients thread with the original CREATE.
     private static String buildSubject(
         ZoomMeetingEmailService.InviteType t, ServiceAppointment sa, MeetingContext ctx
     ) {
@@ -1526,11 +1121,6 @@ public without sharing class ZoomMeetingManager {
         if (String.isBlank(hostName)) hostName = ORG_SENDER_NAME;
         String dateLabel   = scheduledDateLabel(sa, ctx);
 
-        // Use the SAME core subject across CREATE / RESCHEDULE / CANCELLATION
-        // and prefix follow-ups with "Re:" so Gmail / Outlook / Apple Mail
-        // group all three messages into ONE inbox conversation thread.
-        // (Email clients strip the "Re:" prefix when matching subjects for
-        // threading — that's the standard convention since SMTP RFC 2822.)
         String coreSubject = 'Zenith Meeting Scheduled: ' + studentName + ' with ' + hostName
                            + (String.isBlank(dateLabel) ? '' : ' on ' + dateLabel);
 
@@ -1541,6 +1131,7 @@ public without sharing class ZoomMeetingManager {
         return coreSubject;
     }
 
+    // Builds the HTML body for create / reschedule / cancellation emails (Apex fallback when no Lightning template applies).
     private static String buildHtmlBody(
         ZoomMeetingEmailService.InviteType t, ServiceAppointment sa,
         MeetingContext ctx, String zoomInvitationText
@@ -1595,6 +1186,7 @@ public without sharing class ZoomMeetingManager {
         return html;
     }
 
+    // Builds the plain-text body mirroring buildHtmlBody for non-HTML email clients.
     private static String buildPlainBody(
         ZoomMeetingEmailService.InviteType t, ServiceAppointment sa,
         MeetingContext ctx, String zoomInvitationText
@@ -1642,9 +1234,7 @@ public without sharing class ZoomMeetingManager {
         return body;
     }
 
-    // =========================================================================
-    //  FORMATTING HELPERS
-    // =========================================================================
+    // Formats the SA's start/end time as a single human-readable label in the host's tz.
     private static String buildTimeRangeLabel(ServiceAppointment sa, MeetingContext ctx) {
         if (sa.SchedStartTime == null || sa.SchedEndTime == null) return '';
         String tz = resolveDisplayTz(ctx);
@@ -1667,6 +1257,7 @@ public without sharing class ZoomMeetingManager {
         return UserInfo.getTimeZone().getID();
     }
 
+    // Escapes HTML and turns any http(s) URLs into anchor tags for safe rendering inside email bodies.
     private static String linkifyAndEscape(String raw) {
         if (String.isBlank(raw)) return '';
         String s = raw.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;');
@@ -1690,21 +1281,11 @@ public without sharing class ZoomMeetingManager {
         return result;
     }
 
-    // =========================================================================
-    //  ICS LIFECYCLE HELPERS
-    // =========================================================================
     private static String computeIcsUid(ServiceAppointment sa) {
         return 'sa-' + String.valueOf(sa.Id) + ICS_UID_DOMAIN;
     }
 
-    /**
-     * Derive a strictly-increasing SEQUENCE value from the SA's own audit
-     * timestamps — no dedicated storage field needed. Returns seconds
-     * elapsed between SA creation and its last modification. Every write
-     * to the SA bumps SystemModstamp, so the sequence monotonically
-     * increases across create → reschedule → cancel, which is what
-     * calendar clients require to apply (not drop) successive updates.
-     */
+    // Derives a strictly-increasing ICS SEQUENCE from the SA's CreatedDate/SystemModstamp delta.
     private static Integer deriveSequence(ServiceAppointment sa) {
         if (sa == null || sa.SystemModstamp == null || sa.CreatedDate == null) return 0;
         Long deltaMs = sa.SystemModstamp.getTime() - sa.CreatedDate.getTime();
@@ -1712,6 +1293,7 @@ public without sharing class ZoomMeetingManager {
         return (Integer) (deltaMs / 1000L);
     }
 
+    // Formats a raw Zoom meeting id into space-separated 3-digit groups.
     private static String formatMeetingId(String rawId) {
         if (String.isBlank(rawId)) return '';
         String digits = rawId.replaceAll('[^0-9]', '');
@@ -1725,13 +1307,8 @@ public without sharing class ZoomMeetingManager {
         return String.join(groups, ' ');
     }
 
-    // =========================================================================
-    //  SOQL
-    // =========================================================================
+    // Loads SAs with all role/relationship fields needed downstream; built dynamically so optional fields are only requested when they exist.
     private static Map<Id, ServiceAppointment> loadAppointments(Set<Id> saIds) {
-        // Built dynamically so optional custom fields (Guest_Emails__c) are
-        // only requested in orgs where they exist — keeps the class
-        // deployable to sandboxes that haven't created the field yet.
         String soql =
             'SELECT Id, Subject, SchedStartTime, SchedEndTime, Status, '
           + '       Meeting_Type__c, Email, Phone, '
@@ -1766,6 +1343,7 @@ public without sharing class ZoomMeetingManager {
         );
     }
 
+    // Loads the parent Lead records for any Lead-parented SAs in the batch.
     private static Map<Id, Lead> loadParentLeads(List<ServiceAppointment> sas) {
         Set<Id> leadIds = new Set<Id>();
         for (ServiceAppointment sa : sas) {
@@ -1794,6 +1372,7 @@ public without sharing class ZoomMeetingManager {
         ]);
     }
 
+    // Loads verified Parent contacts grouped by AccountId for use as CC recipients.
     private static Map<Id, List<Contact>> loadVerifiedParents(List<ServiceAppointment> sas) {
         Set<Id> acctIds = new Set<Id>();
         for (ServiceAppointment sa : sas) {
@@ -1816,6 +1395,7 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
+    // Loads active Substitute__c records keyed by Contact id for ES-host override.
     @TestVisible
     private static Map<Id, User> loadActiveSubstitutes(List<ServiceAppointment> sas) {
         Set<Id> contactIds = new Set<Id>();
@@ -1845,6 +1425,7 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
+    // Loads User-typed Owners (SA + Lead) for owner-fallback host resolution.
     private static Map<Id, User> loadOwnerUsers(List<ServiceAppointment> sas, Map<Id, Lead> leadsById) {
         Set<Id> userOwnerIds = new Set<Id>();
         for (ServiceAppointment sa : sas) {
@@ -1865,6 +1446,7 @@ public without sharing class ZoomMeetingManager {
         ]);
     }
 
+    // Looks up the OrgWideEmailAddress id for the configured branded sender.
     private static Id lookupOrgWideEmailId(String addr) {
         try {
             List<OrgWideEmailAddress> rows = [

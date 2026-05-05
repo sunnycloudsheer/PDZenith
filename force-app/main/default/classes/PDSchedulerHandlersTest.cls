@@ -75,6 +75,7 @@ private class PDSchedulerHandlersTest {
         insert new OpportunityContactRole(OpportunityId=opp.Id, ContactId=cont.Id, IsPrimary=true, Role='Decision Maker');
     }
 
+    // Verifies round-robin selects the resource with the lowest load.
     @isTest
     static void testRoundRobin_SelectsLowestLoad() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -96,6 +97,7 @@ private class PDSchedulerHandlersTest {
         System.assertNotEquals(null, results[0].workTypeId);
     }
 
+    // Verifies sticky assignment returns the previously-assigned PD on follow-up.
     @isTest
     static void testSticky_ReturnsAssignedPD() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -119,6 +121,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(pd2.Id, results[0].serviceResourceId);
     }
 
+    // Verifies follow-up requests resolve to the follow-up WorkType.
     @isTest
     static void testRoundRobin_FollowUpWorkType() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -137,6 +140,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(followUpWT.Id, results[0].workTypeId);
     }
 
+    // Verifies the shared scheduling config returns territory and SOM WorkType for non-follow-ups.
     @isTest
     static void testSchedulingConfig_ReturnsSharedConfig() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -159,6 +163,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(somWT.Id, results[0].workTypeId);
     }
 
+    // Verifies the scheduling config returns the follow-up WorkType when isFollowUp=true.
     @isTest
     static void testSchedulingConfig_FollowUp() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -178,6 +183,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(followUpWT.Id, results[0].workTypeId);
     }
 
+    // Verifies first-call post-booking assigns a PD via round-robin and updates the Opportunity.
     @isTest
     static void testPostBooking_FirstCall_AssignsPDViaRoundRobin() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -227,6 +233,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(1, ars.size(), 'AssignedResource should be created');
     }
 
+    // Verifies follow-up post-booking reuses the sticky PD already on the Opportunity.
     @isTest
     static void testPostBooking_FollowUp_UsesStickyPD() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
@@ -266,6 +273,7 @@ private class PDSchedulerHandlersTest {
         System.assertEquals('Program Director Follow Up', updSA.Meeting_Type__c);
     }
 
+    // Verifies post-booking falls back to round-robin when the sticky PD is busy at the requested time.
     @isTest
     static void testPostBooking_StickyPDBusy_FallsBackToRoundRobin() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
