@@ -37,8 +37,57 @@ public without sharing class LeadICScheduleTokenStamper {
     )
     public static List<Result> generate(List<Request> requests) {
         List<Result> out = new List<Result>();
+        if (requests == null || requests.isEmpty()) return out;
+
+        // Bulk-fetch the Leads so we can apply the same site-booked guard
+        // the Lead_Generate_IC_Schedule_Token flow uses, but at the Apex
+        // layer too. Defense-in-depth: future callers, anonymous Apex,
+        // direct REST invocations, or a flow that's missing the start
+        // filter all hit this guard, so a Lead created by the booking
+        // site never accidentally gets a fresh "schedule again" link.
+        Set<Id> leadIds = new Set<Id>();
+        for (Request req : requests) {
+            if (req != null && req.leadId != null) leadIds.add(req.leadId);
+        }
+        Map<Id, Lead> leadMap = new Map<Id, Lead>();
+        if (!leadIds.isEmpty()) {
+            for (Lead ld : [
+                SELECT Id, Status, Meeting_Status__c,
+                       Service_Appointment__c, IC_Schedule_Token__c
+                FROM Lead WHERE Id IN :leadIds
+            ]) {
+                leadMap.put(ld.Id, ld);
+            }
+        }
+
         for (Integer i = 0; i < requests.size(); i++) {
             Result r = new Result();
+            Request req = requests[i];
+            Lead ld = (req != null && req.leadId != null)
+                ? leadMap.get(req.leadId) : null;
+
+            // Skip generation when the Lead is already booked through the
+            // site portal. Returning a Result with null token/link is the
+            // signal to the calling flow's Stamp step that nothing should
+            // be written — and because the auto-flow's start filter
+            // already excludes Leads with a populated token, this null
+            // write only ever lands on Leads whose token was already null
+            // (no data loss).
+            //   - Status='IC Scheduled'      → site booking happened
+            //   - Meeting_Status__c='Scheduled' → site booking happened
+            //   - Service_Appointment__c set → SA already linked
+            //   - IC_Schedule_Token__c set   → don't churn the existing token
+            Boolean isSiteBooked = ld != null && (
+                'IC Scheduled'.equals(ld.Status)
+                || 'Scheduled'.equals(ld.Meeting_Status__c)
+                || ld.Service_Appointment__c != null
+                || String.isNotBlank(ld.IC_Schedule_Token__c)
+            );
+            if (isSiteBooked) {
+                out.add(r);
+                continue;
+            }
+
             r.token = RescheduleTokenService.generateToken();
             r.link  = BOOKING_BASE_URL
                 + '?type=IC&action=schedule&token=' + r.token;

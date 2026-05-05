@@ -453,12 +453,19 @@ public without sharing class GuestSchedulerController {
      * Returns null when the token is blank, the field doesn't exist in the
      * org's schema yet, no matching Lead is found, or the Lead already has
      * an IC SA (Service_Appointment__c populated → link is spent).
+     *
+     * Implementation note: the SOQL is wrapped in try/catch so the same
+     * code keeps deploying to orgs that haven't created the
+     * IC_Schedule_Token__c field yet — a SOQL "no such column" error is
+     * caught and treated as "no Lead match", which is the right semantic
+     * (no token = no Lead). We deliberately do NOT use a
+     * Schema.SObjectType pre-check here because guest-user describe calls
+     * can return stale or empty field maps under certain Site / Experience
+     * Cloud configurations; that pre-check was masking valid Lead lookups
+     * and forcing the LWC into the new-lead form path.
      */
     private static Lead lookupLeadByScheduleToken(String token) {
         if (String.isBlank(token)) return null;
-        if (!Schema.SObjectType.Lead.fields.getMap().containsKey('ic_schedule_token__c')) {
-            return null;
-        }
         try {
             String soql =
                 'SELECT Id, FirstName, LastName, Email, Phone, OwnerId, '
@@ -478,6 +485,10 @@ public without sharing class GuestSchedulerController {
             } catch (Exception ignored) { }
             return l;
         } catch (Exception e) {
+            // Field missing in this org's schema, FLS denies, etc. Either
+            // way: no actionable Lead match.
+            System.debug(LoggingLevel.WARN,
+                'lookupLeadByScheduleToken failed: ' + e.getMessage());
             return null;
         }
     }
@@ -524,9 +535,6 @@ public without sharing class GuestSchedulerController {
      */
     private static Lead lookupLeadByRebookToken(String token) {
         if (String.isBlank(token)) return null;
-        if (!Schema.SObjectType.Lead.fields.getMap().containsKey('ic_reschedule_token__c')) {
-            return null;
-        }
         try {
             String soql =
                 'SELECT Id, FirstName, LastName, Email, Phone, OwnerId, '
@@ -1646,10 +1654,39 @@ public without sharing class GuestSchedulerController {
         // written here.
         if (bType == 'PD' && String.isNotBlank(opportunityId)) {
             try {
-                Opportunity opp = [SELECT Id, Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-                if (opp.Program_Director__c == null) { opp.Program_Director__c = assignment.userId; update opp; }
-            } catch (Exception ex) { }
+                Opportunity opp = [
+                    SELECT Id, Program_Director__c, StageName
+                    FROM Opportunity WHERE Id = :opportunityId LIMIT 1
+                ];
+                Boolean changed = false;
+                if (opp.Program_Director__c == null) {
+                    opp.Program_Director__c = assignment.userId;
+                    changed = true;
+                }
+                // First-SOM stage flip — mirrors PDPostBookingHandler.
+                // 'PD' = 60-min first SOM; 'PD-FU' = 30-min follow-up
+                // (follow-ups MUST leave the stage alone, otherwise a
+                // post-contract follow-up would drag a Closed Won opp
+                // back to "SOM Scheduled"). Don't downgrade closed states
+                // and don't re-stamp if already at SOM Scheduled.
+                if (opp.StageName != 'SOM Scheduled'
+                        && opp.StageName != 'Closed Won'
+                        && opp.StageName != 'Closed Lost') {
+                    opp.StageName = 'SOM Scheduled';
+                    changed = true;
+                }
+                if (changed) update opp;
+            } catch (Exception ex) {
+                System.debug(LoggingLevel.WARN,
+                    'PD booking stage flip failed for opp=' + opportunityId
+                    + ': ' + ex.getMessage());
+            }
             stampStudentContact((Id) opportunityId, 'Program_Director__c', assignment.userId);
+            // Mirror the Opp's "SOM Scheduled" stage onto the Student-role
+            // Contact's Stage__c — both sides carry the same label so the
+            // student record reflects exactly the lifecycle state of their
+            // Opp.
+            stampStudentContact((Id) opportunityId, 'Stage__c', 'SOM Scheduled');
         }
 
         if (bType == 'FSS' && String.isNotBlank(opportunityId)) {
@@ -2096,15 +2133,17 @@ public without sharing class GuestSchedulerController {
     }
 
     /**
-     * Mirror an Opportunity-level user assignment (PD or FSS) onto the
-     * Student-role OCR's Contact. Best-effort: a missing Student OCR,
-     * missing Contact field, FLS issue, or validation rule must not
-     * roll back the booking itself, so the whole block is swallowed.
-     * Per spec, the Primary / parent Contact is never written here —
-     * only the Student.
+     * Mirror an Opportunity-level value (PD/FSS user reference, lifecycle
+     * Stage__c, etc.) onto the Student-role OCR's Contact. Best-effort: a
+     * missing Student OCR, missing Contact field, FLS issue, or validation
+     * rule must not roll back the booking itself, so the whole block is
+     * swallowed. Per spec, the Primary / parent Contact is never written
+     * here — only the Student. The value param is Object so the same
+     * helper writes Id-typed lookups (Program_Director__c) and
+     * String-typed picklists (Stage__c).
      */
-    private static void stampStudentContact(Id opportunityId, String contactFieldName, Id userId) {
-        if (opportunityId == null || userId == null || String.isBlank(contactFieldName)) return;
+    private static void stampStudentContact(Id opportunityId, String contactFieldName, Object newValue) {
+        if (opportunityId == null || newValue == null || String.isBlank(contactFieldName)) return;
         try {
             List<OpportunityContactRole> ocrs = [
                 SELECT ContactId
@@ -2117,7 +2156,7 @@ public without sharing class GuestSchedulerController {
             ];
             if (ocrs.isEmpty()) return;
             Contact sc = new Contact(Id = ocrs[0].ContactId);
-            tryPut(sc, contactFieldName, userId);
+            tryPut(sc, contactFieldName, newValue);
             update sc;
         } catch (Exception ex) {
             System.debug(LoggingLevel.WARN,

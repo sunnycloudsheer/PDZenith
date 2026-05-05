@@ -1,6 +1,26 @@
 public without sharing class SchedulingEmailSender {
 
-    private static final String BOOKING_BASE_URL = 'https://site-enterprise-6958--dev2.sandbox.my.site.com/booking';
+    // ───────────────────────────────────────────────────────────────────────
+    //  PRODUCTION: environment-specific values. Update these BEFORE the
+    //  production deploy — every link emailed from prod must point at the
+    //  production Experience Cloud Site URL, not the sandbox.
+    //
+    //  Same hardcoded URL also appears in:
+    //    • LeadICScheduleTokenStamper.cls   (BOOKING_BASE_URL)
+    //    • OpportunitySchedulingLinkGenerator.cls   (BOOKING_BASE_URL)
+    //  Update all three together for production.
+    //
+    //  TODO (post-launch): move to a Custom Metadata Type
+    //  (Scheduling_Config__mdt) so per-org promotion doesn't require an
+    //  Apex deploy.
+    // ───────────────────────────────────────────────────────────────────────
+    private static final String BOOKING_BASE_URL =
+        'https://site-enterprise-6958--dev2.sandbox.my.site.com/booking';
+
+    // PRODUCTION: confirm the FSS shared inbox before deploy. CC'd on
+    // every "Send FSS Scheduling Link" email so the FSS team has visibility.
+    private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
+
     private static final String LINK_PLACEHOLDER = '[[SCHEDULING_LINK]]';
 
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
@@ -78,15 +98,6 @@ public without sharing class SchedulingEmailSender {
         // skipEmail=true on some requests but not others — those entries
         // get an Opp update without an emailsToSend entry.
         Map<Integer, Opportunity> oppsByRequestIndex = new Map<Integer, Opportunity>();
-        // One activity Task per successful Send-Email request, keyed by
-        // request index. Inserted only after Messaging.sendEmail confirms
-        // success — keeps the Opportunity activity timeline in sync with
-        // what was actually delivered. The Task carries both WhoId
-        // (Contact) and WhatId (Opportunity) so it shows on both
-        // timelines, regardless of whether the org has Enhanced Email
-        // enabled. setSaveAsActivity is intentionally false below to
-        // avoid the platform creating a duplicate auto-Task.
-        Map<Integer, Task> activityTasksByRequestIndex = new Map<Integer, Task>();
         // Track which index maps to which request for result assembly
         List<Integer> emailToResultIndex = new List<Integer>();
 
@@ -171,14 +182,21 @@ public without sharing class SchedulingEmailSender {
                         plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
                     }
 
-                    // Build email message. setSaveAsActivity is false here
-                    // because we insert our own Task below — the manual
-                    // Task carries WhatId, which the platform's auto-Task
-                    // does not always populate reliably (Enhanced Email
-                    // orgs sometimes route through EmailMessage instead,
-                    // dropping the Opportunity link). Doing it manually
-                    // guarantees the email shows on the Opportunity's
-                    // activity timeline alongside the Contact's.
+                    // Build email message.
+                    //   • setSaveAsActivity(true) lets the platform log
+                    //     this email as a real EmailMessage record — that
+                    //     is what shows on the Opportunity / Contact
+                    //     activity timeline as an Email entry (the email
+                    //     icon, not a Task icon). Enhanced-Email orgs use
+                    //     EmailMessage; classic orgs fall back to Task.
+                    //   • setWhatId(opportunityId) populates
+                    //     EmailMessage.RelatedToId so the email is
+                    //     related to the Opp, not just the Account.
+                    //   • Section 4c below double-checks RelatedToId and
+                    //     fixes it up if the platform didn't carry it
+                    //     across (some orgs route the auto-relation to
+                    //     the Account instead, hiding the email from the
+                    //     Opp timeline).
                     Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
                     mail.setTargetObjectId(req.contactId);
                     mail.setWhatId(req.opportunityId);
@@ -187,39 +205,22 @@ public without sharing class SchedulingEmailSender {
                     if (plainBody != null) {
                         mail.setPlainTextBody(plainBody);
                     }
-                    mail.setSaveAsActivity(false);
+                    mail.setSaveAsActivity(true);
                     mail.setUseSignature(false);
 
-                    if (bType == 'FSS') {
-                        mail.setCcAddresses(new List<String>{ 'fss@zenithprepacademy.com' });
+                    if (bType == 'FSS' && String.isNotBlank(FSS_CC_ADDRESS)) {
+                        mail.setCcAddresses(new List<String>{ FSS_CC_ADDRESS });
                     }
 
                     emailsToSend.add(mail);
                     emailToResultIndex.add(i);
-
-                    // Build the activity Task for this request. WhoId on
-                    // the Contact + WhatId on the Opportunity = a single
-                    // Task that appears on both timelines.
-                    Task t = new Task();
-                    t.WhoId        = req.contactId;
-                    t.WhatId       = req.opportunityId;
-                    t.Subject      = 'Email: ' + subject;
-                    t.Status       = 'Completed';
-                    t.Priority     = 'Normal';
-                    t.ActivityDate = Date.today();
-                    tryPut(t, 'Type', 'Email');
-                    t.Description  = (plainBody != null && plainBody.length() > 0)
-                        ? plainBody
-                        : htmlBody.replaceAll('<[^>]+>', ' ').replaceAll('\\s+', ' ').trim();
-                    activityTasksByRequestIndex.put(i, t);
                 }
 
                 // Pre-build Opportunity link + stage update.
                 //   - PD link sent → stamp PD_Scheduling_Link__c (the
                 //     populated value also serves as the "email already
                 //     sent" guard via the flow's Check_PD_Link_Sent
-                //     decision) and flip StageName to
-                //     "SOM Scheduling Link Sent".
+                //     decision) and flip StageName to "SOM Link Sent".
                 //   - FSS link sent → stamp FSS_Scheduling_Link__c (same
                 //     pattern: populated value is the duplicate-send guard
                 //     via the flow's Check_FSS_Link_Sent decision).
@@ -229,7 +230,7 @@ public without sharing class SchedulingEmailSender {
                     if (oppRead != null && oppRead.StageName != 'SOM Scheduled'
                         && oppRead.StageName != 'Closed Won'
                         && oppRead.StageName != 'Closed Lost') {
-                        oppUpd.StageName = 'SOM Scheduling Link Sent';
+                        oppUpd.StageName = 'SOM Link Sent';
                     }
                 } else if (bType == 'FSS') {
                     oppUpd.FSS_Scheduling_Link__c = bookingLink;
@@ -246,12 +247,20 @@ public without sharing class SchedulingEmailSender {
         }
 
         // ── 4. Batch send all emails at once ─────────────────────────────
+        // Capture the timestamp BEFORE sendEmail so we can later identify
+        // the EmailMessage records the platform creates for these sends
+        // (Section 4c uses CreatedDate >= sendStartTime to scope the
+        // RelatedToId fix-up query).
+        DateTime sendStartTime = DateTime.now();
+        Map<Integer, Boolean> requestSucceeded = new Map<Integer, Boolean>();
         if (!emailsToSend.isEmpty()) {
             try {
                 Messaging.SendEmailResult[] sendResults = Messaging.sendEmail(emailsToSend);
                 for (Integer j = 0; j < sendResults.size(); j++) {
                     Integer resultIdx = emailToResultIndex[j];
-                    if (!sendResults[j].isSuccess()) {
+                    if (sendResults[j].isSuccess()) {
+                        requestSucceeded.put(resultIdx, true);
+                    } else {
                         results[resultIdx].success = false;
                         String errMsg = '';
                         for (Messaging.SendEmailError err : sendResults[j].getErrors()) {
@@ -261,9 +270,6 @@ public without sharing class SchedulingEmailSender {
                         // Drop this request's Opp link stamp so the next
                         // retry isn't blocked by the duplicate-send guard.
                         oppsByRequestIndex.remove(resultIdx);
-                        // Don't log a "completed email" Task for a send
-                        // that didn't actually go out.
-                        activityTasksByRequestIndex.remove(resultIdx);
                     }
                 }
             } catch (Exception ex) {
@@ -272,28 +278,88 @@ public without sharing class SchedulingEmailSender {
                     results[idx].success = false;
                     results[idx].errorMessage = 'Email send failed: ' + ex.getMessage();
                     oppsByRequestIndex.remove(idx);
-                    activityTasksByRequestIndex.remove(idx);
                 }
             }
         }
 
-        // ── 4b. Insert activity Tasks for delivered emails ───────────────
-        // Best-effort: a Task insert failure must not bubble up and roll
-        // back the email + Opp link stamp. The email already went out;
-        // missing a timeline entry is recoverable, a thrown exception
-        // back to the flow is not.
-        if (!activityTasksByRequestIndex.isEmpty()) {
-            try { insert activityTasksByRequestIndex.values(); }
-            catch (Exception tEx) {
+        // ── 4c. EmailMessage RelatedToId fix-up ──────────────────────────
+        // setSaveAsActivity(true) + setWhatId(opportunityId) is supposed to
+        // create an EmailMessage with RelatedToId = opportunityId so the
+        // email lands on the Opportunity activity timeline. In some orgs
+        // (Enhanced Email + an after-insert flow on EmailMessage, certain
+        // Account-roll-up configs) the platform routes RelatedToId to
+        // the Account or leaves it null, which hides the email from the
+        // Opp timeline.
+        //
+        // To guarantee the email shows on the Opp timeline, query the
+        // EmailMessage records this transaction just produced (matched by
+        // CreatedDate window + current user + recipient address) and
+        // re-stamp RelatedToId to the Opportunity when needed.
+        //
+        // This block runs AFTER sendEmail, so we never modify drafts or
+        // unrelated emails. Best-effort: a query / update failure logs to
+        // the debug log and never rolls back the actual email send.
+        Map<String, Id> emailAddrToOppId = new Map<String, Id>();
+        for (Integer idx : requestSucceeded.keySet()) {
+            EmailRequest req = requests[idx];
+            Contact con = contactMap.get(req.contactId);
+            if (con != null && String.isNotBlank(con.Email) && req.opportunityId != null) {
+                emailAddrToOppId.put(con.Email.toLowerCase(), req.opportunityId);
+            }
+        }
+        if (!emailAddrToOppId.isEmpty()) {
+            try {
+                Id currentUserId = UserInfo.getUserId();
+                List<EmailMessage> recents = [
+                    SELECT Id, ToAddress, RelatedToId
+                    FROM EmailMessage
+                    WHERE CreatedDate >= :sendStartTime
+                    AND CreatedById = :currentUserId
+                    LIMIT 200
+                ];
+                List<EmailMessage> emToUpdate = new List<EmailMessage>();
+                for (EmailMessage em : recents) {
+                    if (em.ToAddress == null) continue;
+                    Id targetOpp = emailAddrToOppId.get(em.ToAddress.toLowerCase());
+                    if (targetOpp != null && em.RelatedToId != targetOpp) {
+                        em.RelatedToId = targetOpp;
+                        emToUpdate.add(em);
+                    }
+                }
+                if (!emToUpdate.isEmpty()) {
+                    logSaveErrors('EmailMessage RelatedToId fix-up',
+                        Database.update(emToUpdate, false));
+                }
+            } catch (Exception emEx) {
                 System.debug(LoggingLevel.WARN,
-                    'Email activity Task batch insert failed: ' + tEx.getMessage());
+                    'EmailMessage RelatedToId fix-up failed: ' + emEx.getMessage());
             }
         }
 
         // ── 5. Batch update Opportunity links ────────────────────────────
+        // Deduplicate by Opportunity Id BEFORE the DML — a single bulk
+        // invocation can carry two requests for the same Opp (e.g. PD
+        // link + FSS link), which would otherwise produce two
+        // Opportunity records with the same Id in one update() call and
+        // throw DUPLICATE_VALUE. Merge populated fields from later
+        // requests over earlier ones (last-write-wins is fine: re-using
+        // the same Opp's link is deterministic).
         if (!oppsByRequestIndex.isEmpty()) {
+            Map<Id, Opportunity> mergedOpps = new Map<Id, Opportunity>();
+            for (Opportunity src : oppsByRequestIndex.values()) {
+                if (src == null || src.Id == null) continue;
+                Opportunity dst = mergedOpps.get(src.Id);
+                if (dst == null) {
+                    mergedOpps.put(src.Id, src);
+                    continue;
+                }
+                if (src.PD_Scheduling_Link__c  != null) dst.PD_Scheduling_Link__c  = src.PD_Scheduling_Link__c;
+                if (src.FSS_Scheduling_Link__c != null) dst.FSS_Scheduling_Link__c = src.FSS_Scheduling_Link__c;
+                if (src.StageName              != null) dst.StageName              = src.StageName;
+            }
             try {
-                update oppsByRequestIndex.values();
+                logSaveErrors('Opportunity link update',
+                    Database.update(mergedOpps.values(), false));
             } catch (Exception updEx) {
                 System.debug(LoggingLevel.WARN,
                     'Opportunity link batch update failed: ' + updEx.getMessage());
@@ -303,12 +369,26 @@ public without sharing class SchedulingEmailSender {
         return results;
     }
 
+    // Walks Database.SaveResult[] and logs each row-level failure to the
+    // debug log at WARN. allOrNone=false on the DML calls above lets
+    // partial successes persist; this helper makes the per-row failures
+    // visible without aborting the whole batch.
+    private static void logSaveErrors(String label, Database.SaveResult[] saveResults) {
+        if (saveResults == null) return;
+        for (Integer i = 0; i < saveResults.size(); i++) {
+            Database.SaveResult sr = saveResults[i];
+            if (sr.isSuccess()) continue;
+            for (Database.Error err : sr.getErrors()) {
+                System.debug(LoggingLevel.WARN,
+                    label + ' partial failure [row ' + i + '] '
+                    + err.getStatusCode() + ': ' + err.getMessage()
+                    + ' fields=' + err.getFields());
+            }
+        }
+    }
+
     private static String replaceMerge(String source, String mergeField, String value) {
         if (source == null) return source;
         return source.replace(mergeField, (value != null) ? value : '');
-    }
-
-    private static void tryPut(SObject rec, String fieldName, Object val) {
-        try { rec.put(fieldName, val); } catch (Exception ex) { }
     }
 }

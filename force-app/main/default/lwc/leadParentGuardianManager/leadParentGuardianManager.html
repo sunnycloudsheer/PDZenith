@@ -1,0 +1,184 @@
+<template>
+    <div class="slds-p-around_x-small">
+        <div class="slds-grid slds-grid_align-end slds-m-bottom_x-small">
+            <lightning-button
+                label="Add Parent / Guardian"
+                variant="brand"
+                icon-name="utility:add"
+                onclick={handleOpenAdd}
+                disabled={isAddDisabled}
+            ></lightning-button>
+        </div>
+
+        <template if:true={hasAdults}>
+            <div class="slds-scrollable_x">
+                <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col"><div class="slds-truncate" title="Role">Role</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Type">Type</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Name">Name</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Email">Email</div></th>
+                            <th scope="col"><div class="slds-truncate" title="Phone">Phone</div></th>
+                            <th scope="col"><div class="slds-truncate slds-text-align_center" title="Actions">Actions</div></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template if:true={primaryPopulated}>
+                            <tr class="slds-hint-parent">
+                                <td data-label="Role">
+                                    <span class="slds-badge slds-theme_inverse">Parent 1</span>
+                                </td>
+                                <td data-label="Type"><div class="slds-truncate">Parent</div></td>
+                                <td data-label="Name"><div class="slds-truncate">{primary.fullName}</div></td>
+                                <td data-label="Email"><div class="slds-truncate">{primaryEmailDisplay}</div></td>
+                                <td data-label="Phone"><div class="slds-truncate">{primaryPhoneDisplay}</div></td>
+                                <td data-label="Actions" class="slds-text-align_center slds-text-color_weak">
+                                    <span class="slds-text-body_small">From Lead</span>
+                                </td>
+                            </tr>
+                        </template>
+
+                        <template if:true={secondPopulated}>
+                            <tr class="slds-hint-parent">
+                                <td data-label="Role">
+                                    <span class="slds-badge">Parent 2</span>
+                                </td>
+                                <td data-label="Type"><div class="slds-truncate">{second.type}</div></td>
+                                <td data-label="Name"><div class="slds-truncate">{second.fullName}</div></td>
+                                <td data-label="Email"><div class="slds-truncate">{secondEmailDisplay}</div></td>
+                                <td data-label="Phone"><div class="slds-truncate">{secondPhoneDisplay}</div></td>
+                                <td data-label="Actions" class="slds-text-align_center">
+                                    <lightning-button-icon
+                                        icon-name="utility:edit"
+                                        alternative-text="Edit"
+                                        variant="bare"
+                                        size="medium"
+                                        onclick={handleOpenEdit}
+                                        class="slds-m-right_x-small"
+                                    ></lightning-button-icon>
+                                    <lightning-button-icon
+                                        icon-name="utility:delete"
+                                        alternative-text="Delete"
+                                        variant="bare"
+                                        size="medium"
+                                        onclick={handleDelete}
+                                        class="delete-btn"
+                                    ></lightning-button-icon>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+
+        <template if:false={hasAdults}>
+            <div class="slds-align_absolute-center empty-state">
+                <div class="slds-text-align_center">
+                    <lightning-icon icon-name="utility:user" size="small"></lightning-icon>
+                    <p class="slds-text-body_regular slds-m-top_x-small slds-text-color_weak">
+                        No parents added yet.
+                    </p>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <template if:true={isLoading}>
+        <div class="spinner-overlay">
+            <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+        </div>
+    </template>
+
+    <template if:true={isModalOpen}>
+        <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="pg-modal-heading"
+            class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <div class="slds-modal__header">
+                    <button class="close-x-btn" onclick={handleCloseModal} aria-label="Close">&#x2715;</button>
+                    <h1 id="pg-modal-heading" class="slds-modal__title slds-hyphenate">{modalTitle}</h1>
+                </div>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <div class="slds-grid slds-wrap slds-gutters_small">
+                        <div class="slds-col slds-size_1-of-1 slds-m-bottom_small">
+                            <lightning-radio-group
+                                name="type"
+                                label="Relationship"
+                                options={typeOptions}
+                                value={form.type}
+                                type="button"
+                                required
+                                onchange={handleInput}
+                            ></lightning-radio-group>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">
+                                The second adult may be a Parent or a Guardian.
+                            </p>
+                        </div>
+
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="text"
+                                name="firstName"
+                                label="First Name"
+                                value={form.firstName}
+                                onchange={handleInput}
+                                required
+                                max-length="100"
+                                message-when-value-missing="Enter first name."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="text"
+                                name="lastName"
+                                label="Last Name"
+                                value={form.lastName}
+                                onchange={handleInput}
+                                required
+                                max-length="100"
+                                message-when-value-missing="Enter last name."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="email"
+                                name="email"
+                                label="Email"
+                                value={form.email}
+                                onchange={handleInput}
+                                max-length="80"
+                                message-when-bad-input="Enter a valid email."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="tel"
+                                name="phone"
+                                label="Phone"
+                                value={form.phone}
+                                onchange={handleInput}
+                                max-length="40"
+                                pattern="(?=(?:[^0-9]*[0-9]){10,})[\+\d\s\-\(\)\.]{10,40}"
+                                message-when-pattern-mismatch="Please enter a valid phone number."
+                            ></lightning-input>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slds-modal__footer">
+                    <lightning-button label="Cancel" variant="neutral" onclick={handleCloseModal}></lightning-button>
+                    <lightning-button
+                        label="Save"
+                        variant="brand"
+                        onclick={handleSave}
+                        disabled={isSaving}
+                        class="slds-m-left_x-small"
+                    ></lightning-button>
+                </div>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open" onclick={handleCloseModal}></div>
+    </template>
+</template>

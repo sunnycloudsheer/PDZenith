@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
+    <description>After an Opportunity is created or updated, find its OpportunityContactRole with Role=&quot;Student&quot;, fetch the Student record-type Contact, and set the Opportunity&apos;s Name to &quot;{Student Contact Name} - {Account Name}&quot;. No-op when no Student OCR exists yet (e.g. on the bare Opp Insert event before LeadAutoConvert inserts the OCRs) and when the Name is already correct (prevents recursion).</description>
+    <decisions>
+        <name>Has_Student_OCR</name>
+        <label>Has Student OCR?</label>
+        <locationX>176</locationX>
+        <locationY>234</locationY>
+        <defaultConnectorLabel>No — skip</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Student_OCR_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Student_OCR.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Student_Contact</targetReference>
+            </connector>
+            <label>Yes — Student OCR Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Has_Student_Contact</name>
+        <label>Has Student Contact?</label>
+        <locationX>176</locationX>
+        <locationY>434</locationY>
+        <defaultConnectorLabel>No — skip</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Student_Contact_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Student_Contact.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Opp_Account</targetReference>
+            </connector>
+            <label>Yes — Student Contact Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Should_Update_Name</name>
+        <label>Should Update Name?</label>
+        <locationX>176</locationX>
+        <locationY>534</locationY>
+        <defaultConnectorLabel>No — already correct</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Name_Differs</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Name</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <elementReference>fmOppName</elementReference>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Opportunity_Name</targetReference>
+            </connector>
+            <label>Yes — Name Differs</label>
+        </rules>
+    </decisions>
+    <environments>Default</environments>
+    <formulas>
+        <name>fmOppName</name>
+        <dataType>String</dataType>
+        <expression>{!Get_Student_Contact.Name} + &quot; - &quot; + {!Get_Opp_Account.Name}</expression>
+    </formulas>
+    <interviewLabel>Opportunity Name From Student OCR {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Opportunity Name From Student OCR</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordLookups>
+        <name>Get_Student_OCR</name>
+        <label>Get Student OCR</label>
+        <locationX>176</locationX>
+        <locationY>134</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Has_Student_OCR</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>OpportunityId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Role</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Student</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>OpportunityContactRole</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Student_Contact</name>
+        <label>Get Student Contact</label>
+        <locationX>176</locationX>
+        <locationY>334</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Has_Student_Contact</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_Student_OCR.ContactId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Contact</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Opp_Account</name>
+        <label>Get Opp Account</label>
+        <locationX>176</locationX>
+        <locationY>434</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Should_Update_Name</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.AccountId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Account</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordUpdates>
+        <name>Update_Opportunity_Name</name>
+        <label>Update Opportunity Name</label>
+        <locationX>176</locationX>
+        <locationY>634</locationY>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Name</field>
+            <value>
+                <elementReference>fmOppName</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Opportunity</object>
+    </recordUpdates>
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Get_Student_OCR</targetReference>
+        </connector>
+        <object>Opportunity</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

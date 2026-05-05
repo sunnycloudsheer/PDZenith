@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionCalls>
+        <name>Apply_Convert_Extras</name>
+        <label>Apply Convert Extras</label>
+        <locationX>176</locationX>
+        <locationY>266</locationY>
+        <actionName>LeadAutoConvert</actionName>
+        <actionType>apex</actionType>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>leadIds</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+        <nameSegment>LeadAutoConvert</nameSegment>
+    </actionCalls>
+    <apiVersion>66.0</apiVersion>
+    <description>Fires when a Lead transitions to IsConverted=true via the standard Convert UI button (i.e. NOT via the auto-convert flow's own Database.convertLead, which is bypassed by LeadAutoConvert.bypassTrigger). Calls the LeadAutoConvert invocable, which auto-routes already-converted Leads through createExtrasForConvertedLeads to lay down Parent 2 + Student contacts using the Lead's ConvertedAccountId / ConvertedContactId.</description>
+    <environments>Default</environments>
+    <interviewLabel>Lead Manual Convert Extras {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Lead Manual Convert Extras</label>
+    <processType>AutoLaunchedFlow</processType>
+    <runInMode>DefaultMode</runInMode>
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Apply_Convert_Extras</targetReference>
+        </connector>
+        <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>IsConverted</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <object>Lead</object>
+        <recordTriggerType>Update</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

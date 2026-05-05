@@ -449,6 +449,39 @@ export default class GuestBookingScheduler extends LightningElement {
                     this.consentChecked = true;
                 }
             }
+            // Defensive override for the IC schedule-link path
+            // (?action=schedule&token=…). The Apex's lookupLeadByScheduleToken
+            // is supposed to set cfg.isRescheduling=true + return
+            // rescheduleContactInfo. If it didn't (a partial deploy of
+            // GuestSchedulerController, or a guest-user describe edge case
+            // dropping the schema pre-check), the form would reappear after
+            // slot-click and create a brand-new Lead — exactly the bug the
+            // family reported. The URL itself is the strongest signal that
+            // we're in the schedule-link flow, so we honor it: force
+            // isRescheduling=true so handleSlotClick goes straight to
+            // handleSubmit and bookICFromScheduleToken attaches the SA to
+            // the Lead the link was minted for.
+            //
+            // Pre-fill is taken from cfg.rescheduleContactInfo when the
+            // server provided it; if it didn't (older Apex), the user
+            // wouldn't see fields anyway because the form is hidden — Apex
+            // bookICFromScheduleToken doesn't read those payload fields, it
+            // reads from the Lead resolved by token.
+            if (this._action === 'schedule' && this._rescheduleToken
+                && cfg.success && !this.isRescheduling) {
+                this.isRescheduling = true;
+                this._isLeadFirstSchedule = true;
+                if (cfg.rescheduleContactInfo) {
+                    this.firstName    = cfg.rescheduleContactInfo.firstName    || '';
+                    this.lastName     = cfg.rescheduleContactInfo.lastName     || '';
+                    this.email        = cfg.rescheduleContactInfo.email        || '';
+                    this.phone        = cfg.rescheduleContactInfo.phone        || '';
+                    this.studentGrade = cfg.rescheduleContactInfo.studentGrade || '';
+                }
+                this.confirm1 = 'I confirm';
+                this.confirm2 = 'I confirm';
+                this.consentChecked = true;
+            }
             if (!cfg.success) {
                 if (cfg.error === 'LINK_ALREADY_USED') {
                     this.isLinkAlreadyUsed = true;

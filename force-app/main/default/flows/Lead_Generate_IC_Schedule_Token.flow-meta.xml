@@ -118,9 +118,16 @@
         </filters>
         <filters>
             <field>Status</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>New</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Meeting_Status__c</field>
             <operator>NotEqualTo</operator>
             <value>
-                <stringValue>IC Scheduled</stringValue>
+                <stringValue>Scheduled</stringValue>
             </value>
         </filters>
         <object>Lead</object>

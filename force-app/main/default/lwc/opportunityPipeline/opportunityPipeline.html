@@ -1,0 +1,133 @@
+<template>
+    <lightning-card icon-name="standard:opportunity">
+        <h2 slot="title">
+            <span class="slds-m-right_small">Opportunity Pipeline</span>
+        </h2>
+
+        <div class="slds-p-around_medium">
+            <template if:true={error}>
+                <div class="slds-notify slds-notify_alert slds-alert_error slds-m-bottom_medium" role="alert">
+                    <h2>{error}</h2>
+                </div>
+            </template>
+
+            <template if:true={isDataReady}>
+
+                <!-- ─── MAIN PIPELINE: SOM → FSS → BILLING → CLOSED ─── -->
+                <div class="main-pipeline-row">
+                    <div class="pipeline-track">
+                        <template if:true={mainCanScrollLeft}>
+                            <button type="button" class="path-nav path-nav_left" data-track="main"
+                                onclick={handleScrollLeft} title="Scroll left">
+                                <lightning-icon icon-name="utility:left" size="xx-small" alternative-text="Scroll left"></lightning-icon>
+                            </button>
+                        </template>
+                        <div class="path-scroll" data-track="main">
+                            <div class="path-inner" style={mainPathStyle}>
+                                <lightning-progress-indicator current-step={mainCurrentStep} type="path" variant="base">
+                                    <template for:each={displayMainStages} for:item="stage">
+                                        <lightning-progress-step key={stage.value} label={stage.label} value={stage.value}
+                                            data-stage={stage.value} data-type="main" onclick={handleStageClick}>
+                                        </lightning-progress-step>
+                                    </template>
+                                </lightning-progress-indicator>
+                            </div>
+                        </div>
+                        <template if:true={mainCanScrollRight}>
+                            <button type="button" class="path-nav path-nav_right" data-track="main"
+                                onclick={handleScrollRight} title="Scroll right">
+                                <lightning-icon icon-name="utility:right" size="xx-small" alternative-text="Scroll right"></lightning-icon>
+                            </button>
+                        </template>
+                    </div>
+                    <div class="action-container">
+                        <lightning-button variant="brand" label={mainActionLabel}
+                            onclick={handleMainAction} icon-name="utility:check"
+                            disabled={mainActionDisabled}></lightning-button>
+                    </div>
+                </div>
+
+                <!-- ─── SUB-PIPELINE for current group ─── -->
+                <template if:true={showSubPipeline}>
+                    <div class="sub-pipeline-section">
+                        <div class={subCardClass}>
+                            <div class="sub-pipeline-header">
+                                <lightning-icon icon-name={subPipelineIcon} size="xx-small"
+                                    class="slds-m-right_xx-small"></lightning-icon>
+                                <span class="sub-pipeline-title">{subPipelineTitle}</span>
+                            </div>
+                            <div class="sub-pipeline-row">
+                                <div class="pipeline-track">
+                                    <template if:true={subCanScrollLeft}>
+                                        <button type="button" class="path-nav path-nav_left" data-track="sub"
+                                            onclick={handleScrollLeft} title="Scroll left">
+                                            <lightning-icon icon-name="utility:left" size="xx-small" alternative-text="Scroll left"></lightning-icon>
+                                        </button>
+                                    </template>
+                                    <div class="path-scroll" data-track="sub">
+                                        <div class="path-inner" style={subPathStyle}>
+                                            <lightning-progress-indicator current-step={subCurrentStep} type="path" variant="base">
+                                                <template for:each={displaySubStages} for:item="stage">
+                                                    <lightning-progress-step key={stage.value} label={stage.label}
+                                                        value={stage.value} data-stage={stage.value} data-type="sub"
+                                                        onclick={handleStageClick}>
+                                                    </lightning-progress-step>
+                                                </template>
+                                            </lightning-progress-indicator>
+                                        </div>
+                                    </div>
+                                    <template if:true={subCanScrollRight}>
+                                        <button type="button" class="path-nav path-nav_right" data-track="sub"
+                                            onclick={handleScrollRight} title="Scroll right">
+                                            <lightning-icon icon-name="utility:right" size="xx-small" alternative-text="Scroll right"></lightning-icon>
+                                        </button>
+                                    </template>
+                                </div>
+                                <div class="action-container">
+                                    <lightning-button variant="brand" label={subActionLabel}
+                                        onclick={handleSubAction} icon-name="utility:check"
+                                        disabled={subActionDisabled}></lightning-button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+            </template>
+        </div>
+
+        <template if:true={isLoading}>
+            <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+        </template>
+    </lightning-card>
+
+    <!-- MODAL: Close (Won / Lost) -->
+    <template if:true={showCloseModal}>
+        <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="close-modal-title"
+            class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close"
+                        title="Close" onclick={handleCloseModal}>
+                        <lightning-icon icon-name="utility:close" size="small"
+                            alternative-text="Close"></lightning-icon>
+                    </button>
+                    <h2 id="close-modal-title" class="slds-modal__title">Close Opportunity</h2>
+                </header>
+                <div class="slds-modal__content slds-p-around_large">
+                    <p class="slds-m-bottom_medium modal-question">How would you like to close this opportunity?</p>
+                    <div class="modal-buttons-row">
+                        <lightning-button variant="success" label="Closed Won" icon-name="utility:like"
+                            onclick={handleClosedWon} class="slds-m-right_medium modal-btn"></lightning-button>
+                        <lightning-button variant="destructive" label="Closed Lost" icon-name="utility:dislike"
+                            onclick={handleClosedLost} class="modal-btn"></lightning-button>
+                    </div>
+                </div>
+                <footer class="slds-modal__footer">
+                    <lightning-button variant="neutral" label="Cancel" onclick={handleCloseModal}></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

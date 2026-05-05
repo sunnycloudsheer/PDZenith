@@ -167,15 +167,21 @@ public without sharing class PDPostBookingHandler {
         List<AssignedResource>   arsToInsert       = new List<AssignedResource>();
         List<Event>              eventsToInsert    = new List<Event>();
         List<ServiceResource>    resourcesToUpdate = new List<ServiceResource>();
-        List<Opportunity>        oppsToUpdate      = new List<Opportunity>();
+        // Opportunity updates keyed by Opp Id so two requests for the same
+        // Opp in a single bulk invocation collapse to one update. Without
+        // this, `update oppsToUpdate` throws DUPLICATE_VALUE because the
+        // same Id appears twice in the same DML call.
+        Map<Id, Opportunity>     oppsByOppId = new Map<Id, Opportunity>();
         // Student-Contact updates (PD stamp + Stage). Dedupe by Contact Id
         // in case multiple Opps for the same student are processed in one
         // batch — last write wins, matching Salesforce's own DML semantics.
         Map<Id, Contact>         studentContactsById = new Map<Id, Contact>();
-
-        // Track per-request data for result assembly
-        List<PostBookingRequest> validRequests = new List<PostBookingRequest>();
-        Map<Integer, ServiceResource> indexToPD = new Map<Integer, ServiceResource>();
+        // ServiceResource cache so we don't fire SOQL inside the loop for
+        // each `selectedResourceId`. Same SR may be the sticky pick for
+        // multiple requests in a bulk batch — cache keeps SOQL ≈ unique
+        // resources, not unique requests. Stays bulkified within the
+        // 100-query governor budget for normal batch sizes.
+        Map<Id, ServiceResource> resourceCache = new Map<Id, ServiceResource>();
 
         for (Integer i = 0; i < requests.size(); i++) {
             PostBookingRequest req = requests[i];
@@ -211,13 +217,27 @@ public without sharing class PDPostBookingHandler {
                     );
                 }
 
-                // Query the selected resource (must be per-request since selectPD result varies)
-                ServiceResource pd = [
-                    SELECT Id, Name, RelatedRecordId, Appointment_Count__c
-                    FROM ServiceResource
-                    WHERE Id = :selectedResourceId
-                    LIMIT 1
-                ];
+                // Resolve the selected ServiceResource. Cache hits avoid
+                // a per-request SOQL query (the original code fired one
+                // SELECT per loop iteration which compounded with the
+                // queries inside selectPD and breached the 100-query
+                // governor on bulk invocations). On a miss, query once
+                // and remember.
+                ServiceResource pd = resourceCache.get(selectedResourceId);
+                if (pd == null) {
+                    List<ServiceResource> srLookup = [
+                        SELECT Id, Name, RelatedRecordId, Appointment_Count__c
+                        FROM ServiceResource
+                        WHERE Id = :selectedResourceId
+                        LIMIT 1
+                    ];
+                    if (srLookup.isEmpty()) {
+                        throw new HandlerException(
+                            'Selected ServiceResource no longer exists: ' + selectedResourceId);
+                    }
+                    pd = srLookup[0];
+                    resourceCache.put(selectedResourceId, pd);
+                }
 
                 // ── Build SA update ──
                 sa.Meeting_Type__c     = meetingType;
@@ -281,7 +301,10 @@ public without sharing class PDPostBookingHandler {
                 if (isFirstSOMTransition) {
                     oppUpd.StageName = 'SOM Scheduled';
                 }
-                oppsToUpdate.add(oppUpd);
+                // Map keyed by Opp Id collapses duplicate updates from
+                // batch invocations (same Opp Id in two requests would
+                // otherwise throw DUPLICATE_VALUE on update).
+                oppsByOppId.put(opp.Id, oppUpd);
 
                 // ── Build Student-Contact update (PD stamp + Stage) ──
                 // Mirror PD assignment + lifecycle stage onto the
@@ -296,14 +319,11 @@ public without sharing class PDPostBookingHandler {
                         : new Contact(Id = studentContactId);
                     tryPut(sc, 'Program_Director__c', pd.RelatedRecordId);
                     if (isFirstSOMTransition) {
-                        // Student-side stage uses a different label than the
-                        // Opp's stage. The Opp moves to "SOM Scheduled" (the
-                        // SOM is on the calendar), and the Student Contact
-                        // moves to "SOM Completed" — meaning, from the
-                        // student lifecycle's perspective, the SOM-scheduling
-                        // step is done. Same trigger, two different labels by
-                        // design.
-                        tryPut(sc, 'Stage__c', 'SOM Completed');
+                        // Mirror the Opp's "SOM Scheduled" stage onto the
+                        // Student-role Contact's Stage__c — both sides use
+                        // the same label so the student record reflects
+                        // exactly the lifecycle state of their Opp.
+                        tryPut(sc, 'Stage__c', 'SOM Scheduled');
                     }
                     studentContactsById.put(studentContactId, sc);
                 }
@@ -322,38 +342,55 @@ public without sharing class PDPostBookingHandler {
         }
 
         // ── 4. Execute all DML in bulk OUTSIDE the loop ──────────────────
+        // All writes use Database.*(records, allOrNone=false) so a single
+        // bad row (validation rule, FLS, race condition) doesn't poison
+        // the entire batch — the rest still persists. Row-level errors
+        // are logged at WARN; we never throw because PD post-booking is a
+        // best-effort downstream step (the SA itself is already saved).
         if (!sasToUpdate.isEmpty()) {
-            try { update sasToUpdate; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'SA batch update failed: ' + ex.getMessage()); }
+            logSaveErrors('SA update',  Database.update(sasToUpdate, false));
         }
         if (!arsToInsert.isEmpty()) {
-            try { insert arsToInsert; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'AR batch insert failed: ' + ex.getMessage()); }
+            logSaveErrors('AssignedResource insert', Database.insert(arsToInsert, false));
         }
         if (!eventsToInsert.isEmpty()) {
-            try { insert eventsToInsert; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Event batch insert failed: ' + ex.getMessage()); }
+            logSaveErrors('Event insert', Database.insert(eventsToInsert, false));
         }
         if (!resourcesToUpdate.isEmpty()) {
-            try { update resourcesToUpdate; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'SR count batch update failed: ' + ex.getMessage()); }
+            logSaveErrors('ServiceResource count update',
+                Database.update(resourcesToUpdate, false));
         }
-        if (!oppsToUpdate.isEmpty()) {
-            try { update oppsToUpdate; }
-            catch (Exception ex) { System.debug(LoggingLevel.WARN, 'Opp batch update failed: ' + ex.getMessage()); }
+        if (!oppsByOppId.isEmpty()) {
+            logSaveErrors('Opportunity update',
+                Database.update(oppsByOppId.values(), false));
         }
         // Student-Contact batch update — best-effort, never rolls back the
         // booking itself if the Contact write fails (FLS, validation rule,
         // org missing the Stage__c / Program_Director__c fields).
         if (!studentContactsById.isEmpty()) {
-            try { update studentContactsById.values(); }
-            catch (Exception ex) {
-                System.debug(LoggingLevel.WARN,
-                    'Student Contact batch update failed: ' + ex.getMessage());
-            }
+            logSaveErrors('Student Contact update',
+                Database.update(studentContactsById.values(), false));
         }
 
         return results;
+    }
+
+    // Walks Database.SaveResult[] and logs each row-level failure to the
+    // debug log at WARN. Used by every batch DML in the post-booking
+    // pipeline so a partial failure surfaces in logs without aborting
+    // the rest of the batch.
+    private static void logSaveErrors(String label, Database.SaveResult[] saveResults) {
+        if (saveResults == null) return;
+        for (Integer i = 0; i < saveResults.size(); i++) {
+            Database.SaveResult sr = saveResults[i];
+            if (sr.isSuccess()) continue;
+            for (Database.Error err : sr.getErrors()) {
+                System.debug(LoggingLevel.WARN,
+                    label + ' partial failure [row ' + i + '] '
+                    + err.getStatusCode() + ': ' + err.getMessage()
+                    + ' fields=' + err.getFields());
+            }
+        }
     }
 
     /**

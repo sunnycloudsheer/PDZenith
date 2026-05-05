@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>62.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__RecordPage</target>
+        <target>lightning__RecordAction</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordPage">
+            <objects>
+                <object>Lead</object>
+            </objects>
+            <property
+                name="sectionTitle"
+                type="String"
+                label="Section Title (unused)"
+                description="Deprecated. The component no longer renders its own section header; place it inside a standard Field Section. Retained for backwards compatibility with existing pages."
+            />
+        </targetConfig>
+        <targetConfig targets="lightning__RecordAction">
+            <actionType>ScreenAction</actionType>
+        </targetConfig>
+    </targetConfigs>
+    <masterLabel>Lead Student Manager</masterLabel>
+    <description>Add Student button + roster table for a Lead. Cap respects "# of Students Enrolling Today".</description>
+</LightningComponentBundle>

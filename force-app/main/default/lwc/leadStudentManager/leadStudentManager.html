@@ -1,0 +1,161 @@
+<template>
+    <div class="slds-p-around_x-small">
+        <div class="slds-grid slds-grid_align-end slds-m-bottom_x-small">
+                    <lightning-button
+                        label="Add Student"
+                        variant="brand"
+                        icon-name="utility:add"
+                        onclick={handleOpenAdd}
+                        disabled={isAddDisabled}
+                    ></lightning-button>
+                </div>
+
+                <template if:true={capNotSet}>
+                    <div class="slds-notify slds-notify_alert slds-theme_warning slds-m-bottom_small" role="alert">
+                        <span class="slds-text-body_small">
+                            Set <strong># of Students Enrolling Today</strong> above to enable adding students.
+                        </span>
+                    </div>
+                </template>
+
+                <template if:true={hasStudents}>
+                    <div class="slds-scrollable_x">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col"><div class="slds-truncate" title="Student">Students</div></th>
+                                    <th scope="col"><div class="slds-truncate" title="Name">Name</div></th>
+                                    <th scope="col"><div class="slds-truncate" title="Grade">Grade</div></th>
+                                    <th scope="col"><div class="slds-truncate" title="Email">Email</div></th>
+                                    <th scope="col"><div class="slds-truncate slds-text-align_center" title="Actions">Actions</div></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={populatedStudents} for:item="s">
+                                    <tr key={s.slot} class="slds-hint-parent">
+                                        <td data-label="Student">
+                                            <span class="slds-badge">Student {s.slot}</span>
+                                        </td>
+                                        <td data-label="Name"><div class="slds-truncate">{s.fullName}</div></td>
+                                        <td data-label="Grade"><div class="slds-truncate">{s.gradeDisplay}</div></td>
+                                        <td data-label="Email"><div class="slds-truncate">{s.emailDisplay}</div></td>
+                                        <td data-label="Actions" class="slds-text-align_center">
+                                            <lightning-button-icon
+                                                icon-name="utility:edit"
+                                                alternative-text="Edit"
+                                                variant="bare"
+                                                size="medium"
+                                                data-slot={s.slot}
+                                                onclick={handleOpenEdit}
+                                                class="slds-m-right_x-small"
+                                            ></lightning-button-icon>
+                                            <lightning-button-icon
+                                                icon-name="utility:delete"
+                                                alternative-text="Delete"
+                                                variant="bare"
+                                                size="medium"
+                                                data-slot={s.slot}
+                                                onclick={handleDelete}
+                                                class="delete-btn"
+                                            ></lightning-button-icon>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+        <template if:false={hasStudents}>
+            <div class="slds-align_absolute-center empty-state">
+                <div class="slds-text-align_center">
+                    <lightning-icon icon-name="utility:education" size="small"></lightning-icon>
+                    <p class="slds-text-body_regular slds-m-top_x-small slds-text-color_weak">
+                        No students added yet.
+                    </p>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <template if:true={isLoading}>
+        <div class="spinner-overlay">
+            <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+        </div>
+    </template>
+
+    <!-- ─── Add Student Modal (simple per-student form) ─── -->
+    <template if:true={isModalOpen}>
+        <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="student-modal-heading"
+            class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <div class="slds-modal__header">
+                    <button class="close-x-btn" onclick={handleCloseModal} aria-label="Close">&#x2715;</button>
+                    <h1 id="student-modal-heading" class="slds-modal__title slds-hyphenate">{modalTitle}</h1>
+                </div>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <div class="slds-grid slds-wrap slds-gutters_small">
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="text"
+                                name="firstName"
+                                label="First Name"
+                                value={form.firstName}
+                                onchange={handleInput}
+                                required
+                                max-length="100"
+                                message-when-value-missing="Enter first name."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="text"
+                                name="lastName"
+                                label="Last Name"
+                                value={form.lastName}
+                                onchange={handleInput}
+                                required
+                                max-length="100"
+                                message-when-value-missing="Enter last name."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-input
+                                type="email"
+                                name="email"
+                                label="Student Email"
+                                value={form.email}
+                                onchange={handleInput}
+                                max-length="80"
+                                message-when-bad-input="Enter a valid email."
+                            ></lightning-input>
+                        </div>
+                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                            <lightning-combobox
+                                name="grade"
+                                label="Current Grade"
+                                value={form.grade}
+                                placeholder="Select grade"
+                                options={gradeOptions}
+                                onchange={handleInput}
+                            ></lightning-combobox>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slds-modal__footer">
+                    <lightning-button label="Cancel" variant="neutral" onclick={handleCloseModal}></lightning-button>
+                    <lightning-button
+                        label="Save"
+                        variant="brand"
+                        onclick={handleSave}
+                        disabled={isSaving}
+                        class="slds-m-left_x-small"
+                    ></lightning-button>
+                </div>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open" onclick={handleCloseModal}></div>
+    </template>
+</template>
