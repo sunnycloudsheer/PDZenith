@@ -7,16 +7,10 @@ public without sharing class SchedulingEmailSender {
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
 
-    private static final String LINK_PLACEHOLDER = '[[SCHEDULING_LINK]]';
-
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
         'PD'  => 'PD_Scheduling_Link_Send_Email_1778062406702',
         'FSS' => 'FSS_Scheduling_Link_Send_Email_1778065360225'
     };
-
-    // Booking types that use Lightning Email Templates (rendered via Messaging.renderStoredEmailTemplate).
-    // Lightning templates merge fields natively from the Contact (whoId) and Opportunity (whatId).
-    private static final Set<String> LIGHTNING_TYPES = new Set<String>{ 'PD', 'FSS' };
 
     public class EmailRequest {
         @InvocableVariable(required=true label='Contact Id')
@@ -37,10 +31,10 @@ public without sharing class SchedulingEmailSender {
         @InvocableVariable public String errorMessage;
     }
 
-    // Sends a PD or FSS scheduling email (or generates the link only) and stamps the Opportunity.
+    // Sends a PD or FSS scheduling email (or generates the link only) using a Lightning Email Template; the booking link is read by the template from Opportunity.PD_Scheduling_Link__c / FSS_Scheduling_Link__c.
     @InvocableMethod(
         label='Send Scheduling Email'
-        description='Sends a PD or FSS scheduling email using an Email Template with a dynamic booking link'
+        description='Sends a PD or FSS scheduling email rendered from a Lightning Email Template, or generates and stamps the link only.'
         category='Scheduling'
     )
     public static List<EmailResult> sendSchedulingEmail(List<EmailRequest> requests) {
@@ -60,18 +54,17 @@ public without sharing class SchedulingEmailSender {
         }
 
         Map<Id, Contact> contactMap = new Map<Id, Contact>([
-            SELECT Id, FirstName, LastName, Name, Email
+            SELECT Id, Email
             FROM Contact WHERE Id IN :contactIds
         ]);
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
-            SELECT Id, Name, Account.Name, StageName,
-                   PD_Scheduling_Link__c, FSS_Scheduling_Link__c
+            SELECT Id, StageName, PD_Scheduling_Link__c, FSS_Scheduling_Link__c
             FROM Opportunity WHERE Id IN :oppIds
         ]);
 
         Map<String, EmailTemplate> templateCache = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
-            SELECT Id, DeveloperName, Subject, HtmlValue, Body
+            SELECT Id, DeveloperName
             FROM EmailTemplate
             WHERE DeveloperName IN :templateDevNames
         ]) {
@@ -118,66 +111,16 @@ public without sharing class SchedulingEmailSender {
                             + 'Please create it in Setup > Email Templates.');
                     }
 
-                    Messaging.SingleEmailMessage mail;
-
-                    if (LIGHTNING_TYPES.contains(bType)) {
-                        // Lightning Email Template path: merge fields render natively
-                        // from the Contact (whoId) and Opportunity (whatId). The
-                        // Opportunity Id is the exact record passed in, so multi-Opp
-                        // / shared-Primary-Contact scenarios resolve to this Opp only.
-                        mail = Messaging.renderStoredEmailTemplate(
-                            tmpl.Id, req.contactId, req.opportunityId
-                        );
-                        mail.setTargetObjectId(req.contactId);
-                        mail.setWhatId(req.opportunityId);
-                        mail.setSaveAsActivity(true);
-                        mail.setUseSignature(false);
-                    } else {
-                        // Classic template path: load HtmlValue/Body and substitute merge fields manually.
-                        Contact con = contactMap.get(req.contactId);
-                        Opportunity opp = oppMap.get(req.opportunityId);
-
-                        String htmlBody  = tmpl.HtmlValue;
-                        String subject   = tmpl.Subject;
-                        String plainBody = tmpl.Body;
-
-                        if (con != null) {
-                            htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
-                            htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
-                            htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
-                            subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
-                            subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
-                            subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
-                            if (plainBody != null) {
-                                plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
-                                plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
-                                plainBody = replaceMerge(plainBody, '{!Contact.Name}', con.Name);
-                            }
-                        }
-                        if (opp != null) {
-                            htmlBody = replaceMerge(htmlBody, '{!Opportunity.Name}', opp.Name);
-                            subject  = replaceMerge(subject, '{!Opportunity.Name}', opp.Name);
-                            if (opp.Account != null) {
-                                htmlBody = replaceMerge(htmlBody, '{!Opportunity.Account.Name}', opp.Account.Name);
-                            }
-                        }
-
-                        htmlBody = htmlBody.replace(LINK_PLACEHOLDER, bookingLink);
-                        if (plainBody != null) {
-                            plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
-                        }
-
-                        mail = new Messaging.SingleEmailMessage();
-                        mail.setTargetObjectId(req.contactId);
-                        mail.setWhatId(req.opportunityId);
-                        mail.setSubject(subject);
-                        mail.setHtmlBody(htmlBody);
-                        if (plainBody != null) {
-                            mail.setPlainTextBody(plainBody);
-                        }
-                        mail.setSaveAsActivity(true);
-                        mail.setUseSignature(false);
-                    }
+                    // Lightning Email Template render: merge fields resolve natively from
+                    // the Contact (whoId) and the specific Opportunity (whatId), so multi-Opp
+                    // / shared-Primary-Contact families each receive the correct per-Opp link.
+                    Messaging.SingleEmailMessage mail = Messaging.renderStoredEmailTemplate(
+                        tmpl.Id, req.contactId, req.opportunityId
+                    );
+                    mail.setTargetObjectId(req.contactId);
+                    mail.setWhatId(req.opportunityId);
+                    mail.setSaveAsActivity(true);
+                    mail.setUseSignature(false);
 
                     if (bType == 'FSS' && String.isNotBlank(FSS_CC_ADDRESS)) {
                         mail.setCcAddresses(new List<String>{ FSS_CC_ADDRESS });
@@ -318,9 +261,4 @@ public without sharing class SchedulingEmailSender {
         }
     }
 
-    // Null-safe merge-field replacement.
-    private static String replaceMerge(String source, String mergeField, String value) {
-        if (source == null) return source;
-        return source.replace(mergeField, (value != null) ? value : '');
-    }
 }

@@ -12,5 +12,15 @@
         <members>Opportunity.Assigned_PD__c</members>
         <name>CustomField</name>
     </types>
+    <types>
+        <members>Scheduling_Templates/IC_Scheduling_Email</members>
+        <members>Scheduling_Templates/PD_Scheduling_Email</members>
+        <members>Scheduling_Templates/FSS_Scheduling_Email</members>
+        <name>EmailTemplate</name>
+    </types>
+    <types>
+        <members>Zenith_Prep_Classic_Letterhead</members>
+        <name>Letterhead</name>
+    </types>
     <version>66.0</version>
 </Package>
