@@ -1,7 +1,7 @@
 @isTest
 private class LeadICEmailSenderTest {
 
-    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email';
+    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email_1778061283900';
 
     @TestSetup
     static void setupData() {
@@ -11,13 +11,13 @@ private class LeadICEmailSenderTest {
         ];
         if (existing.isEmpty()) {
             insert new EmailTemplate(
-                Name = 'IC Scheduling Email',
+                Name = 'IC Scheduling Link Send Email',
                 DeveloperName = TEMPLATE_DEV_NAME,
                 FolderId = f.Id,
                 TemplateType = 'custom',
-                Subject = 'Schedule Your Initial Consultation',
-                HtmlValue = '<p>Hi {!Lead.FirstName},</p><p><a href="[[SCHEDULING_LINK]]">Schedule</a></p>',
-                Body = 'Hi {!Lead.FirstName}, click [[SCHEDULING_LINK]] to schedule.',
+                Subject = 'Schedule Your Initial Consultation with Zenith Prep Academy',
+                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Recipient.IC_Schedule_Link__c}}}">Schedule</a></p>',
+                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, click {{{Recipient.IC_Schedule_Link__c}}} to schedule.',
                 IsActive = true
             );
         }

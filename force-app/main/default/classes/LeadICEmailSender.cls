@@ -1,8 +1,7 @@
-// Sends the IC scheduling email to a Lead using the IC_Scheduling_Email template and the link stamped on Lead.IC_Schedule_Link__c.
+// Sends the IC scheduling email to a Lead using a Lightning Email Template; merge fields render natively from Lead context.
 public without sharing class LeadICEmailSender {
 
-    private static final String LINK_PLACEHOLDER = '[[SCHEDULING_LINK]]';
-    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email';
+    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email_1778061283900';
 
     public class LeadICRequest {
         @InvocableVariable(required=true label='Lead Id')
@@ -16,7 +15,7 @@ public without sharing class LeadICEmailSender {
 
     @InvocableMethod(
         label='Send IC Scheduling Email to Lead'
-        description='Sends the IC scheduling email to a Lead using the IC_Scheduling_Email template with the link already stamped on Lead.IC_Schedule_Link__c'
+        description='Sends the IC scheduling email to a Lead using the IC Scheduling Link Send Email Lightning template; the link is read from Lead.IC_Schedule_Link__c via {{{Recipient.IC_Schedule_Link__c}}}.'
         category='Scheduling'
     )
     public static List<LeadICResult> sendICEmailToLead(List<LeadICRequest> requests) {
@@ -26,13 +25,13 @@ public without sharing class LeadICEmailSender {
         for (LeadICRequest req : requests) leadIds.add(req.leadId);
 
         Map<Id, Lead> leadMap = new Map<Id, Lead>([
-            SELECT Id, FirstName, LastName, Name, Email, IC_Schedule_Link__c
+            SELECT Id, Email, IC_Schedule_Link__c
             FROM Lead WHERE Id IN :leadIds
         ]);
 
         EmailTemplate tmpl;
         for (EmailTemplate et : [
-            SELECT Id, DeveloperName, Subject, HtmlValue, Body
+            SELECT Id, DeveloperName
             FROM EmailTemplate
             WHERE DeveloperName = :TEMPLATE_DEV_NAME
             LIMIT 1
@@ -58,32 +57,10 @@ public without sharing class LeadICEmailSender {
                     throw new AuraHandledException('IC Schedule Link is not yet generated on this Lead.');
                 }
 
-                String htmlBody  = tmpl.HtmlValue;
-                String subject   = tmpl.Subject;
-                String plainBody = tmpl.Body;
-
-                htmlBody  = replaceMerge(htmlBody, '{!Lead.FirstName}', ld.FirstName);
-                htmlBody  = replaceMerge(htmlBody, '{!Lead.LastName}',  ld.LastName);
-                htmlBody  = replaceMerge(htmlBody, '{!Lead.Name}',      ld.Name);
-                subject   = replaceMerge(subject,  '{!Lead.FirstName}', ld.FirstName);
-                subject   = replaceMerge(subject,  '{!Lead.LastName}',  ld.LastName);
-                subject   = replaceMerge(subject,  '{!Lead.Name}',      ld.Name);
-                if (plainBody != null) {
-                    plainBody = replaceMerge(plainBody, '{!Lead.FirstName}', ld.FirstName);
-                    plainBody = replaceMerge(plainBody, '{!Lead.LastName}',  ld.LastName);
-                    plainBody = replaceMerge(plainBody, '{!Lead.Name}',      ld.Name);
-                }
-
-                htmlBody = htmlBody.replace(LINK_PLACEHOLDER, ld.IC_Schedule_Link__c);
-                if (plainBody != null) {
-                    plainBody = plainBody.replace(LINK_PLACEHOLDER, ld.IC_Schedule_Link__c);
-                }
-
-                Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+                Messaging.SingleEmailMessage mail = Messaging.renderStoredEmailTemplate(
+                    tmpl.Id, req.leadId, null
+                );
                 mail.setTargetObjectId(req.leadId);
-                mail.setSubject(subject);
-                mail.setHtmlBody(htmlBody);
-                if (plainBody != null) mail.setPlainTextBody(plainBody);
                 mail.setSaveAsActivity(true);
                 mail.setUseSignature(false);
                 mail.setTreatTargetObjectAsRecipient(true);
@@ -121,11 +98,5 @@ public without sharing class LeadICEmailSender {
         }
 
         return results;
-    }
-
-    // Null-safe merge-field replacement.
-    private static String replaceMerge(String source, String mergeField, String value) {
-        if (source == null) return source;
-        return source.replace(mergeField, (value != null) ? value : '');
     }
 }
