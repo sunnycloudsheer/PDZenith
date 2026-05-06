@@ -3,8 +3,6 @@ private class SchedulingEmailSenderTest {
 
     @TestSetup
     static void setupData() {
-        Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
-
         Map<String, EmailTemplate> existing = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
@@ -13,27 +11,34 @@ private class SchedulingEmailSenderTest {
             existing.put(et.DeveloperName, et);
         }
         List<EmailTemplate> toInsert = new List<EmailTemplate>();
-        if (!existing.containsKey('PD_Scheduling_Link_Send_Email_1778062406702')) {
-            toInsert.add(new EmailTemplate(
-                Name = 'PD Scheduling Link Send Email',
-                DeveloperName = 'PD_Scheduling_Link_Send_Email_1778062406702',
-                FolderId = f.Id, TemplateType = 'custom',
-                Subject = 'Schedule Your Strategy Overview Meeting with Zenith Prep Academy',
-                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.PD_Scheduling_Link__c}}}">Schedule Your PD Meeting</a></p>',
-                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.PD_Scheduling_Link__c}}}',
-                IsActive = true
-            ));
-        }
-        if (!existing.containsKey('FSS_Scheduling_Link_Send_Email_1778065360225')) {
-            toInsert.add(new EmailTemplate(
-                Name = 'FSS Scheduling Link Send Email',
-                DeveloperName = 'FSS_Scheduling_Link_Send_Email_1778065360225',
-                FolderId = f.Id, TemplateType = 'custom',
-                Subject = 'Schedule Your FSS Onboarding Meeting with Zenith Prep Academy',
-                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.FSS_Scheduling_Link__c}}}">Schedule Your Onboarding Meeting</a></p>',
-                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.FSS_Scheduling_Link__c}}}',
-                IsActive = true
-            ));
+        if (!existing.containsKey('PD_Scheduling_Link_Send_Email_1778062406702')
+                || !existing.containsKey('FSS_Scheduling_Link_Send_Email_1778065360225')) {
+            List<Folder> folders = [SELECT Id FROM Folder WHERE Type = 'Email' LIMIT 1];
+            if (!folders.isEmpty()) {
+                Id folderId = folders[0].Id;
+                if (!existing.containsKey('PD_Scheduling_Link_Send_Email_1778062406702')) {
+                    toInsert.add(new EmailTemplate(
+                        Name = 'PD Scheduling Link Send Email',
+                        DeveloperName = 'PD_Scheduling_Link_Send_Email_1778062406702',
+                        FolderId = folderId, TemplateType = 'custom',
+                        Subject = 'Schedule Your Strategy Overview Meeting with Zenith Prep Academy',
+                        HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.PD_Scheduling_Link__c}}}">Schedule Your PD Meeting</a></p>',
+                        Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.PD_Scheduling_Link__c}}}',
+                        IsActive = true
+                    ));
+                }
+                if (!existing.containsKey('FSS_Scheduling_Link_Send_Email_1778065360225')) {
+                    toInsert.add(new EmailTemplate(
+                        Name = 'FSS Scheduling Link Send Email',
+                        DeveloperName = 'FSS_Scheduling_Link_Send_Email_1778065360225',
+                        FolderId = folderId, TemplateType = 'custom',
+                        Subject = 'Schedule Your FSS Onboarding Meeting with Zenith Prep Academy',
+                        HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.FSS_Scheduling_Link__c}}}">Schedule Your Onboarding Meeting</a></p>',
+                        Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.FSS_Scheduling_Link__c}}}',
+                        IsActive = true
+                    ));
+                }
+            }
         }
         if (!toInsert.isEmpty()) insert toInsert;
 

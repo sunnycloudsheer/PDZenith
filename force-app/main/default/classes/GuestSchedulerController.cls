@@ -1434,9 +1434,9 @@ public without sharing class GuestSchedulerController {
         return bType == 'PD' || bType == 'FSS';
     }
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Admin-editable per environment via Custom Label Booking_Site_Base_URL (host only, no path).
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {

@@ -50,8 +50,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000AoLmf2AF</stringValue>
+                <elementReference>Get_Template_Notes.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -133,8 +132,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000AoLmf2AF</stringValue>
+                <elementReference>Get_Template_Notes.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -216,8 +214,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000AoLmf2AF</stringValue>
+                <elementReference>Get_Template_Notes.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -299,7 +296,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <stringValue>00XQU00000ARwzr2AD</stringValue>
+                <elementReference>Get_Template_CancelES.Id</elementReference>
             </value>
         </inputParameters>
         <nameSegment>ZoomMeetingCancelEmailAction</nameSegment>
@@ -326,7 +323,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <stringValue>00XQU00000ARwzq2AD</stringValue>
+                <elementReference>Get_Template_CancelClient.Id</elementReference>
             </value>
         </inputParameters>
         <nameSegment>ZoomMeetingCancelEmailAction</nameSegment>
@@ -391,8 +388,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzp2AD</stringValue>
+                <elementReference>Get_Template_NoShow.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -469,8 +465,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzp2AD</stringValue>
+                <elementReference>Get_Template_NoShow.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -1167,6 +1162,118 @@ ISBLANK({!ccEmails}),
         <object>Event</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
+    <recordLookups>
+        <name>Get_Template_Notes</name>
+        <label>Get Meeting Notes Email Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Template_CancelES</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Share_Meeting_Notes_Email_Template_1768848566863</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_CancelES</name>
+        <label>Get Cancellation by ES Email Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Template_CancelClient</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Meeting_Cancelled_by_Educational_Strategist_Email_Template_1765299931137</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_CancelClient</name>
+        <label>Get Cancellation by Client Email Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Template_NoShow</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Meeting_Cancelled_by_Client_Email_Template_1765299787160</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_NoShow</name>
+        <label>Get Family No-Show Email Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_Meeting_Status</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Family_No_Showed_Email_Template_1765300085527</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
     <recordUpdates>
         <name>Update_Scheduled_Start_Display</name>
         <label>Update Scheduled Start Display</label>
@@ -1184,7 +1291,7 @@ ISBLANK({!ccEmails}),
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Check_Meeting_Status</targetReference>
+            <targetReference>Get_Template_Notes</targetReference>
         </connector>
         <object>ServiceAppointment</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>

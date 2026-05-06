@@ -1,8 +1,8 @@
 public without sharing class SchedulingEmailSender {
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Admin-editable per environment via Custom Label Booking_Site_Base_URL (host only, no path).
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';

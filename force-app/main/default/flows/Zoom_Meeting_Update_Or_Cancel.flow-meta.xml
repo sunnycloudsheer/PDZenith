@@ -41,7 +41,7 @@
         <inputParameters>
             <name>emailTemplateDeveloperName</name>
             <value>
-                <stringValue>Meeting_Rescheduled_Email_Template_1777159570088</stringValue>
+                <stringValue>Meeting_Rescheduled_Send_Email</stringValue>
             </value>
         </inputParameters>
         <inputParameters>

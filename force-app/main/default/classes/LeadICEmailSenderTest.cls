@@ -5,21 +5,23 @@ private class LeadICEmailSenderTest {
 
     @TestSetup
     static void setupData() {
-        Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
         List<EmailTemplate> existing = [
             SELECT Id FROM EmailTemplate WHERE DeveloperName = :TEMPLATE_DEV_NAME LIMIT 1
         ];
         if (existing.isEmpty()) {
-            insert new EmailTemplate(
-                Name = 'IC Scheduling Link Send Email',
-                DeveloperName = TEMPLATE_DEV_NAME,
-                FolderId = f.Id,
-                TemplateType = 'custom',
-                Subject = 'Schedule Your Initial Consultation with Zenith Prep Academy',
-                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Recipient.IC_Schedule_Link__c}}}">Schedule</a></p>',
-                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, click {{{Recipient.IC_Schedule_Link__c}}} to schedule.',
-                IsActive = true
-            );
+            List<Folder> folders = [SELECT Id FROM Folder WHERE Type = 'Email' LIMIT 1];
+            if (!folders.isEmpty()) {
+                insert new EmailTemplate(
+                    Name = 'IC Scheduling Link Send Email',
+                    DeveloperName = TEMPLATE_DEV_NAME,
+                    FolderId = folders[0].Id,
+                    TemplateType = 'custom',
+                    Subject = 'Schedule Your Initial Consultation with Zenith Prep Academy',
+                    HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Recipient.IC_Schedule_Link__c}}}">Schedule</a></p>',
+                    Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, click {{{Recipient.IC_Schedule_Link__c}}} to schedule.',
+                    IsActive = true
+                );
+            }
         }
 
         insert new List<Lead>{

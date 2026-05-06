@@ -14,9 +14,20 @@ public without sharing class ZoomMeetingManager {
     private static final String ORG_SENDER_NAME    = 'Zenith Prep Academy';
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
-    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID   = '00XQU00000ARwzs';
-    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb0000031aCbEAI';
-    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb000003UJbN';
+    // Resolved by DeveloperName so the same code works in sandbox + prod (Ids differ between orgs).
+    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID    = lookupTemplateIdByDevName('Meeting_Schedule_Email_Template_1765244752004');
+    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = lookupTemplateIdByDevName('Initial_Ac_Meeting_Scheduled_1774274641517');
+    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID  = lookupTemplateIdByDevName('Meeting_Rescheduled_Send_Email');
+
+    private static Id lookupTemplateIdByDevName(String developerName) {
+        for (EmailTemplate et : [
+            SELECT Id FROM EmailTemplate
+            WHERE DeveloperName = :developerName AND IsActive = true LIMIT 1
+        ]) {
+            return et.Id;
+        }
+        return null;
+    }
 
     private static final String ROLE_ES  = 'ES';
     private static final String ROLE_AC  = 'AC';
