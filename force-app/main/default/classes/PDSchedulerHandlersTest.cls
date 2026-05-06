@@ -319,4 +319,184 @@ private class PDSchedulerHandlersTest {
         System.assertNotEquals(pd1.Id, results[0].serviceResourceId,
             'Sticky PD is busy, should fall back to round-robin');
     }
+
+    // Verifies getAssignedPD returns success=false with an error when the Opportunity Id is unknown.
+    @isTest
+    static void testRoundRobin_UnknownOpportunity_ReturnsFailure() {
+        PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+        req.opportunityId = '006000000000000AAA';
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(
+            new List<PDRoundRobinHandler.PDRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'Unknown Opp must yield success=false');
+        System.assertNotEquals(null, results[0].errorMessage, 'errorMessage must be populated');
+    }
+
+    // Verifies a sticky Program Director that is no longer a valid PD falls back to round-robin.
+    @isTest
+    static void testRoundRobin_StickyPDInvalid_FallsBackToRoundRobin() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        // Set a sticky PD that does NOT have the Program Director profile (use the running user).
+        opp.Program_Director__c = UserInfo.getUserId();
+        update opp;
+
+        PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(
+            new List<PDRoundRobinHandler.PDRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success, 'Should still succeed via round-robin');
+        System.assertEquals(false, results[0].isSticky, 'Should not be sticky when PD is invalid');
+    }
+
+    // Verifies getAssignedPD bulkifies a list of requests with one result per request.
+    @isTest
+    static void testRoundRobin_BulkRequests_ReturnsResultPerRequest() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        List<PDRoundRobinHandler.PDRequest> requests = new List<PDRoundRobinHandler.PDRequest>();
+        for (Integer i = 0; i < 5; i++) {
+            PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+            req.opportunityId = opp.Id;
+            req.isFollowUp = (Math.mod(i, 2) == 0);
+            requests.add(req);
+        }
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(requests);
+        Test.stopTest();
+
+        System.assertEquals(5, results.size(), 'One result per request');
+        for (PDRoundRobinHandler.PDResult r : results) {
+            System.assertEquals(true, r.success, 'Each request should succeed');
+        }
+    }
+
+    // Verifies a follow-up sticky assignment returns the follow-up WorkType for the sticky PD.
+    @isTest
+    static void testSticky_FollowUp_UsesFollowUpWorkType() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+        ServiceResource pd1 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test1' LIMIT 1];
+
+        opp.Program_Director__c = pd1.RelatedRecordId;
+        update opp;
+
+        PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = true;
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(
+            new List<PDRoundRobinHandler.PDRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success);
+        System.assertEquals(true, results[0].isSticky);
+        WorkType followUpWT = [SELECT Id FROM WorkType WHERE Name='PD Follow-up - 30min' LIMIT 1];
+        System.assertEquals(followUpWT.Id, results[0].workTypeId,
+            'Sticky follow-up should resolve to the 30-min WorkType');
+    }
+
+    // Verifies the scheduling-config sticky path returns the same PD already on the Opportunity.
+    @isTest
+    static void testSchedulingConfig_StickyPath_ReturnsAssignedPD() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+        ServiceResource pd2 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test2' LIMIT 1];
+
+        opp.Program_Director__c = pd2.RelatedRecordId;
+        update opp;
+
+        PDSchedulingConfigHandler.ConfigRequest req = new PDSchedulingConfigHandler.ConfigRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDSchedulingConfigHandler.ConfigResult> results = PDSchedulingConfigHandler.getSchedulingConfig(
+            new List<PDSchedulingConfigHandler.ConfigRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success, 'Sticky path should succeed');
+        System.assertEquals(pd2.Id, results[0].primaryResourceId, 'Sticky resource should be returned');
+    }
+
+    // Verifies the scheduling-config follow-up sticky path returns the follow-up duration WorkType.
+    @isTest
+    static void testSchedulingConfig_StickyFollowUp_UsesFollowUpWorkType() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+        ServiceResource pd1 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test1' LIMIT 1];
+
+        opp.Program_Director__c = pd1.RelatedRecordId;
+        update opp;
+
+        PDSchedulingConfigHandler.ConfigRequest req = new PDSchedulingConfigHandler.ConfigRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = true;
+
+        Test.startTest();
+        List<PDSchedulingConfigHandler.ConfigResult> results = PDSchedulingConfigHandler.getSchedulingConfig(
+            new List<PDSchedulingConfigHandler.ConfigRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success);
+        WorkType followUpWT = [SELECT Id FROM WorkType WHERE Name='PD Follow-up - 30min' LIMIT 1];
+        System.assertEquals(followUpWT.Id, results[0].workTypeId);
+    }
+
+    // Verifies bulk requests to the scheduling config produce one result per request.
+    @isTest
+    static void testSchedulingConfig_BulkRequests_ReturnsResultPerRequest() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        List<PDSchedulingConfigHandler.ConfigRequest> requests = new List<PDSchedulingConfigHandler.ConfigRequest>();
+        for (Integer i = 0; i < 4; i++) {
+            PDSchedulingConfigHandler.ConfigRequest req = new PDSchedulingConfigHandler.ConfigRequest();
+            req.opportunityId = opp.Id;
+            req.isFollowUp = (Math.mod(i, 2) == 0);
+            requests.add(req);
+        }
+
+        Test.startTest();
+        List<PDSchedulingConfigHandler.ConfigResult> results = PDSchedulingConfigHandler.getSchedulingConfig(requests);
+        Test.stopTest();
+
+        System.assertEquals(4, results.size(), 'One result per request');
+        for (PDSchedulingConfigHandler.ConfigResult r : results) {
+            System.assertEquals(true, r.success, 'Each scheduling-config request should succeed');
+            System.assertNotEquals(null, r.workTypeId, 'workTypeId must be populated');
+        }
+    }
+
+    // Verifies post-booking handler with an unknown serviceAppointmentId returns success=false.
+    @isTest
+    static void testPostBooking_UnknownSA_ReturnsFailure() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        PDPostBookingHandler.PostBookingRequest req = new PDPostBookingHandler.PostBookingRequest();
+        req.opportunityId = opp.Id;
+        req.serviceAppointmentId = '08p000000000000AAA';
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDPostBookingHandler.PostBookingResult> results = PDPostBookingHandler.handlePostBooking(
+            new List<PDPostBookingHandler.PostBookingRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'Unknown SA must yield success=false');
+        System.assertNotEquals(null, results[0].errorMessage, 'errorMessage must be populated');
+    }
 }
