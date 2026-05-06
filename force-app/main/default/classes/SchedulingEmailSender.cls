@@ -11,12 +11,12 @@ public without sharing class SchedulingEmailSender {
 
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
         'PD'  => 'PD_Scheduling_Link_Send_Email_1778062406702',
-        'FSS' => 'FSS_Scheduling_Email'
+        'FSS' => 'FSS_Scheduling_Link_Send_Email_1778065360225'
     };
 
     // Booking types that use Lightning Email Templates (rendered via Messaging.renderStoredEmailTemplate).
     // Lightning templates merge fields natively from the Contact (whoId) and Opportunity (whatId).
-    private static final Set<String> LIGHTNING_TYPES = new Set<String>{ 'PD' };
+    private static final Set<String> LIGHTNING_TYPES = new Set<String>{ 'PD', 'FSS' };
 
     public class EmailRequest {
         @InvocableVariable(required=true label='Contact Id')

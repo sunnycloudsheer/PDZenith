@@ -8,7 +8,7 @@ private class SchedulingEmailSenderTest {
         Map<String, EmailTemplate> existing = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
-            WHERE DeveloperName IN ('PD_Scheduling_Link_Send_Email_1778062406702', 'FSS_Scheduling_Email')
+            WHERE DeveloperName IN ('PD_Scheduling_Link_Send_Email_1778062406702', 'FSS_Scheduling_Link_Send_Email_1778065360225')
         ]) {
             existing.put(et.DeveloperName, et);
         }
@@ -24,14 +24,14 @@ private class SchedulingEmailSenderTest {
                 IsActive = true
             ));
         }
-        if (!existing.containsKey('FSS_Scheduling_Email')) {
+        if (!existing.containsKey('FSS_Scheduling_Link_Send_Email_1778065360225')) {
             toInsert.add(new EmailTemplate(
-                Name = 'FSS Scheduling Email',
-                DeveloperName = 'FSS_Scheduling_Email',
+                Name = 'FSS Scheduling Link Send Email',
+                DeveloperName = 'FSS_Scheduling_Link_Send_Email_1778065360225',
                 FolderId = f.Id, TemplateType = 'custom',
-                Subject = 'Onboarding with FSS',
-                HtmlValue = '<p>Hi {!Contact.FirstName}, [[SCHEDULING_LINK]]</p>',
-                Body = 'Hi {!Contact.FirstName}, [[SCHEDULING_LINK]]',
+                Subject = 'Schedule Your FSS Onboarding Meeting with Zenith Prep Academy',
+                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.FSS_Scheduling_Link__c}}}">Schedule Your Onboarding Meeting</a></p>',
+                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.FSS_Scheduling_Link__c}}}',
                 IsActive = true
             ));
         }
