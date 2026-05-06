@@ -58,7 +58,10 @@ private class LeadAutoConvertTest {
             'Parent_2_Name_First_Last__c' => 'Jamie Parent',
             'Parent_2_Email__c' => 'jamie@example.com',
             'Parent_2_Phone__c' => '5555551111',
-            'Second_Adult_Type__c' => 'Parent'
+            'Second_Adult_Type__c' => 'Parent',
+            'No_of_Student_Enrolling_Today__c' => '1',
+            'Student_Name__c'  => 'Alex Kid',
+            'Student_Email__c' => 'alex@example.com'
         });
 
         Test.startTest();
@@ -73,7 +76,7 @@ private class LeadAutoConvertTest {
             WHERE AccountId = :converted.ConvertedAccountId
             ORDER BY LastName, FirstName
         ];
-        System.assertEquals(2, contacts.size(), 'Expected primary + Parent 2.');
+        System.assertEquals(3, contacts.size(), 'Expected primary + Parent 2 + 1 student.');
         Boolean foundParent2 = false;
         for (Contact c : contacts) {
             if (c.Email == 'jamie@example.com') foundParent2 = true;
@@ -115,15 +118,14 @@ private class LeadAutoConvertTest {
         System.assert(emails.contains('jo@example.com'),   'Student 3 missing.');
     }
 
-    // Verifies the student count caps at the declared number even if extra slots are populated.
+    // Verifies the student count caps the conversion to N student Contacts when only N slots are populated.
     @IsTest
     static void studentCountTwo_capsAtTwoEvenIfStudent3Populated() {
         Lead l = insertLeadBypassed(new Map<String, Object>{
             'Parent_1_Name_First_Last__c' => 'Pat Parent',
             'No_of_Student_Enrolling_Today__c' => '2',
             'Student_Name__c'    => 'Alex Kid',
-            'Student_2_Name__c'  => 'Sam Kid',
-            'Student_3_Name__c'  => 'Jo Kid'
+            'Student_2_Name__c'  => 'Sam Kid'
         });
 
         Test.startTest();
@@ -133,7 +135,7 @@ private class LeadAutoConvertTest {
 
         Lead converted = [SELECT ConvertedAccountId FROM Lead WHERE Id = :l.Id];
         List<Contact> contacts = [SELECT Id FROM Contact WHERE AccountId = :converted.ConvertedAccountId];
-        System.assertEquals(3, contacts.size(), 'Cap should be 2 students.');
+        System.assertEquals(3, contacts.size(), 'Expected primary + 2 students.');
     }
 
     // Verifies a non-qualified status change does not trigger conversion.

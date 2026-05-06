@@ -190,10 +190,10 @@ private class PDSchedulerHandlersTest {
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 1' LIMIT 1];
         WorkType wt = [SELECT Id FROM WorkType WHERE Name='PD SOM Meeting - 1hr' LIMIT 1];
 
-        Contact cont = [SELECT Id FROM Contact LIMIT 1];
+        Account acct = [SELECT Id FROM Account LIMIT 1];
         DateTime startDT = DateTime.now().addDays(5);
         ServiceAppointment sa = new ServiceAppointment(
-            ParentRecordId=cont.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
+            ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
             Status='Scheduled', Email='jane@test.com', Phone='5551234567'
@@ -245,10 +245,10 @@ private class PDSchedulerHandlersTest {
         opp.StageName = 'SOM Scheduled';
         update opp;
 
-        Contact cont = [SELECT Id FROM Contact LIMIT 1];
+        Account acct = [SELECT Id FROM Account LIMIT 1];
         DateTime startDT = DateTime.now().addDays(7);
         ServiceAppointment sa = new ServiceAppointment(
-            ParentRecordId=cont.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
+            ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(30),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(30),
             Status='Scheduled', Email='jane@test.com'
@@ -284,11 +284,11 @@ private class PDSchedulerHandlersTest {
         opp.Program_Director__c = pd1.RelatedRecordId;
         update opp;
 
-        Contact cont = [SELECT Id FROM Contact LIMIT 1];
+        Account acct = [SELECT Id FROM Account LIMIT 1];
         DateTime startDT = DateTime.now().addDays(5);
 
         ServiceAppointment conflictSA = new ServiceAppointment(
-            ParentRecordId=cont.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
+            ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
             Status='Scheduled'
@@ -297,7 +297,7 @@ private class PDSchedulerHandlersTest {
         insert new AssignedResource(ServiceAppointmentId=conflictSA.Id, ServiceResourceId=pd1.Id);
 
         ServiceAppointment sa = new ServiceAppointment(
-            ParentRecordId=cont.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
+            ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
             Status='Scheduled', Email='jane@test.com'

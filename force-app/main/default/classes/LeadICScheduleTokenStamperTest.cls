@@ -21,6 +21,19 @@ private class LeadICScheduleTokenStamperTest {
                 IC_Schedule_Token__c = 'pre-existing-token-value-xxxxxxxxxxxxxxxxxxxxxxxxxx'
             )
         };
+
+        // Force-clear the auto-stamped IC token on the fresh "New Lead". The
+        // Lead_Generate_IC_Schedule_Token flow fires on insert and stamps a
+        // token; the test needs the field blank to exercise the stamper's
+        // fresh-token path.
+        List<Lead> freshLeads = [
+            SELECT Id FROM Lead WHERE FirstName = 'New' AND LastName = 'Lead'
+        ];
+        for (Lead fl : freshLeads) {
+            fl.IC_Schedule_Token__c = null;
+            fl.IC_Schedule_Link__c = null;
+        }
+        update freshLeads;
     }
 
     // Verifies an empty input list yields an empty output list.

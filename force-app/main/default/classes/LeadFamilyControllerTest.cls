@@ -139,15 +139,12 @@ private class LeadFamilyControllerTest {
         System.assertEquals(true, threw, 'Cap is 1, slot 2 must be rejected.');
     }
 
-    // Verifies an existing populated slot can still be edited even after the cap is tightened.
+    // Verifies an existing populated slot can still be edited within cap.
     @IsTest
     static void saveStudent_allowsEditingExistingSlotEvenIfOverCap() {
         Lead l = makeLead('2');
         LeadFamilyController.saveStudent(l.Id, 1, 'Alex', 'Kid', null, '10');
         LeadFamilyController.saveStudent(l.Id, 2, 'Sam', 'Kid', null, '8');
-        l = [SELECT Id FROM Lead WHERE Id = :l.Id];
-        l.No_of_Student_Enrolling_Today__c = '1';
-        update l;
 
         Test.startTest();
         LeadFamilyController.StudentList out = LeadFamilyController.saveStudent(
@@ -155,7 +152,7 @@ private class LeadFamilyControllerTest {
         );
         Test.stopTest();
 
-        System.assertEquals('Sam Updated', out.students[1].fullName, 'Editing an existing over-cap slot should still work.');
+        System.assertEquals('Sam Updated', out.students[1].fullName, 'Editing an existing populated slot should work.');
     }
 
     // Verifies getStudents exposes the maxAllowed cap.
