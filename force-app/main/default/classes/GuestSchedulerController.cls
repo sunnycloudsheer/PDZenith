@@ -1434,8 +1434,9 @@ public without sharing class GuestSchedulerController {
         return bType == 'PD' || bType == 'FSS';
     }
 
-    // Resolved at class-load time from BookingUrlConfig (queries SiteDetail for the active booking site).
-    private static final String BOOKING_BASE_URL = BookingUrlConfig.getBookingBaseUrl();
+    // Resolved at class-load time from the org's My Domain URL.
+    private static final String BOOKING_BASE_URL =
+        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {

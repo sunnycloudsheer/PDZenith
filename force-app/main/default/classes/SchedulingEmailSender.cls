@@ -1,7 +1,8 @@
 public without sharing class SchedulingEmailSender {
 
-    // Resolved at class-load time from BookingUrlConfig (queries SiteDetail for the active booking site).
-    private static final String BOOKING_BASE_URL = BookingUrlConfig.getBookingBaseUrl();
+    // Resolved at class-load time from the org's My Domain URL.
+    private static final String BOOKING_BASE_URL =
+        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
 
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
