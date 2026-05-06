@@ -1,5 +1,5 @@
 // Flow-callable Invocable that sends a cancellation email with a METHOD:CANCEL .ics so calendar clients purge the event.
-public class ZoomMeetingCancelEmailAction {
+public without sharing class ZoomMeetingCancelEmailAction {
 
     public class Input {
         @InvocableVariable(

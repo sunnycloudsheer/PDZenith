@@ -1,5 +1,5 @@
 // Builds an RFC-5545 compliant iCalendar (.ics) payload for Zoom meeting invites (REQUEST/CANCEL/PUBLISH).
-public class ZoomIcsBuilder {
+public without sharing class ZoomIcsBuilder {
 
     public static final String METHOD_REQUEST = 'REQUEST';
     public static final String METHOD_CANCEL  = 'CANCEL';

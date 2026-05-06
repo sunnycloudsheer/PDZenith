@@ -499,4 +499,98 @@ private class PDSchedulerHandlersTest {
         System.assertEquals(false, results[0].success, 'Unknown SA must yield success=false');
         System.assertNotEquals(null, results[0].errorMessage, 'errorMessage must be populated');
     }
+
+    // Verifies round-robin returns success=false when the sticky PD is no longer a Service Resource user.
+    @isTest
+    static void testRoundRobin_StickyResourceInactive_FallsBackToRoundRobin() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+        ServiceResource pd1 = [SELECT Id, RelatedRecordId, IsActive FROM ServiceResource WHERE Name='PD Test1' LIMIT 1];
+
+        opp.Program_Director__c = pd1.RelatedRecordId;
+        update opp;
+
+        // Deactivate the sticky PD's ServiceResource so the sticky branch can't resolve.
+        pd1.IsActive = false;
+        update pd1;
+
+        PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(
+            new List<PDRoundRobinHandler.PDRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success, 'Should fall back to round-robin when sticky resource is inactive');
+        System.assertEquals(false, results[0].isSticky, 'isSticky should be false on fallback');
+    }
+
+    // Verifies round-robin error path when no Program Director profile users exist (negative test).
+    @isTest
+    static void testRoundRobin_NoActivePDUsers_ReturnsFailure() {
+        // Deactivate every Service Resource so resource-side discovery returns no candidates.
+        List<ServiceResource> srAll = [SELECT Id, IsActive FROM ServiceResource WHERE Name LIKE 'PD Test%'];
+        for (ServiceResource sr : srAll) sr.IsActive = false;
+        update srAll;
+
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        PDRoundRobinHandler.PDRequest req = new PDRoundRobinHandler.PDRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDRoundRobinHandler.PDResult> results = PDRoundRobinHandler.getAssignedPD(
+            new List<PDRoundRobinHandler.PDRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'Should fail when no active PD resources exist');
+        System.assertNotEquals(null, results[0].errorMessage, 'Error message must describe the failure');
+    }
+
+    // Verifies the scheduling config follow-up path returns the 30-minute WorkType.
+    @isTest
+    static void testSchedulingConfig_NoFollowUp_Default_Returns60min() {
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        PDSchedulingConfigHandler.ConfigRequest req = new PDSchedulingConfigHandler.ConfigRequest();
+        req.opportunityId = opp.Id;
+        // isFollowUp = null is treated as false by the handler.
+
+        Test.startTest();
+        List<PDSchedulingConfigHandler.ConfigResult> results = PDSchedulingConfigHandler.getSchedulingConfig(
+            new List<PDSchedulingConfigHandler.ConfigRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success);
+        WorkType wt60 = [SELECT Id FROM WorkType WHERE Name = 'PD SOM Meeting - 1hr' LIMIT 1];
+        System.assertEquals(wt60.Id, results[0].workTypeId, 'Default (non-follow-up) should resolve to 60-min WorkType');
+    }
+
+    // Verifies the scheduling config returns success=false when no PD service resources are active.
+    @isTest
+    static void testSchedulingConfig_NoActiveResources_ReturnsFailure() {
+        List<ServiceResource> srAll = [SELECT Id, IsActive FROM ServiceResource WHERE Name LIKE 'PD Test%'];
+        for (ServiceResource sr : srAll) sr.IsActive = false;
+        update srAll;
+
+        Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+
+        PDSchedulingConfigHandler.ConfigRequest req = new PDSchedulingConfigHandler.ConfigRequest();
+        req.opportunityId = opp.Id;
+        req.isFollowUp = false;
+
+        Test.startTest();
+        List<PDSchedulingConfigHandler.ConfigResult> results = PDSchedulingConfigHandler.getSchedulingConfig(
+            new List<PDSchedulingConfigHandler.ConfigRequest>{req}
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'Should fail when no active PD resources exist');
+        System.assertNotEquals(null, results[0].errorMessage, 'Error message must describe the failure');
+    }
 }

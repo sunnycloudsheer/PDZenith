@@ -8,4 +8,28 @@
         <shortDescription>Booking Site Base URL</shortDescription>
         <value>https://site-enterprise-6958--dev2.sandbox.my.site.com</value>
     </labels>
+    <labels>
+        <fullName>Booking_Token_Encryption_Key_Hex</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>true</protected>
+        <shortDescription>Booking Token AES-256 Hex Key</shortDescription>
+        <value>a3f1c9b2e4d6f8071523a4b6c8d0e2f4a1b3c5d7e9f0123456789abcdef01234</value>
+    </labels>
+    <labels>
+        <fullName>Booking_Org_Sender_Address</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Booking Org Sender Address</shortDescription>
+        <value>info@zenithprepacademy.com</value>
+    </labels>
+    <labels>
+        <fullName>Booking_FSS_CC_Address</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Booking FSS CC Address</shortDescription>
+        <value>fss@zenithprepacademy.com</value>
+    </labels>
 </CustomLabels>

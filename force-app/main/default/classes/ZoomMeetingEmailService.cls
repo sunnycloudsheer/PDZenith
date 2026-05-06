@@ -1,5 +1,5 @@
 // Sends meeting invite/update/cancellation emails with the .ics calendar attached using the correct MIME type.
-public class ZoomMeetingEmailService {
+public without sharing class ZoomMeetingEmailService {
 
     public enum InviteType { NEW_BOOKING, RESCHEDULE, CANCELLATION }
 

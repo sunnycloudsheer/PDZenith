@@ -10,13 +10,14 @@ public without sharing class ZoomMeetingManager {
     public static final String STATUS_SKIPPED = 'SKIPPED';
 
     private static final String NAMED_CREDENTIAL   = 'callout:Zoom_App';
-    private static final String ORG_SENDER_ADDRESS = 'info@zenithprepacademy.com';
+    // From-address used by Apex-built booking emails; sourced from Custom Label so admins can update per environment.
+    private static final String ORG_SENDER_ADDRESS = System.Label.Booking_Org_Sender_Address;
     private static final String ORG_SENDER_NAME    = 'Zenith Prep Academy';
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
     // Resolved by DeveloperName so the same code works in sandbox + prod (Ids differ between orgs).
-    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID    = lookupTemplateIdByDevName('Meeting_Schedule_Email_Template_1765244752004');
-    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = lookupTemplateIdByDevName('Initial_Ac_Meeting_Scheduled_1774274641517');
+    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID    = lookupTemplateIdByDevName('Meeting_Schedule_Email_Template');
+    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = lookupTemplateIdByDevName('Initial_Consultation_Meeting_Scheduled');
     private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID  = lookupTemplateIdByDevName('Meeting_Rescheduled_Send_Email');
 
     private static Id lookupTemplateIdByDevName(String developerName) {

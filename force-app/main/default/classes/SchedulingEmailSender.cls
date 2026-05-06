@@ -4,12 +4,12 @@ public without sharing class SchedulingEmailSender {
     private static final String BOOKING_BASE_URL =
         System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
-    // FSS shared inbox CC'd on every FSS scheduling email.
-    private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
+    // FSS shared inbox CC'd on every FSS scheduling email; sourced from Custom Label so admins can update per environment.
+    private static final String FSS_CC_ADDRESS = System.Label.Booking_FSS_CC_Address;
 
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
-        'PD'  => 'PD_Scheduling_Link_Send_Email_1778062406702',
-        'FSS' => 'FSS_Scheduling_Link_Send_Email_1778065360225'
+        'PD'  => 'PD_Scheduling_Link_Send_Email',
+        'FSS' => 'FSS_Scheduling_Link_Send_Email'
     };
 
     public class EmailRequest {

@@ -211,7 +211,9 @@ public with sharing class PDRoundRobinHandler {
                     territoryToWorkType.put(stwt.ServiceTerritoryId, stwt.WorkTypeId);
                 }
             }
-        } catch (Exception e) { }
+        } catch (Exception e) {
+            System.debug(LoggingLevel.WARN, 'PDRoundRobinHandler.discoverFromResource: territoryToWorkType build skipped: ' + e.getMessage());
+        }
 
         Set<Id> allOHIds = new Set<Id>();
         for (ServiceTerritoryMember stm : stmList) {
@@ -310,7 +312,9 @@ public with sharing class PDRoundRobinHandler {
                 if (!stwts.isEmpty()) {
                     return isFollowUp ? stwts[0].WorkTypeId : stwts[stwts.size() - 1].WorkTypeId;
                 }
-            } catch (Exception e) { }
+            } catch (Exception e) {
+                System.debug(LoggingLevel.WARN, 'PDRoundRobinHandler.discoverWorkType: territory work-type lookup skipped: ' + e.getMessage());
+            }
         }
 
         if (operatingHoursId != null) {

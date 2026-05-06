@@ -1,5 +1,5 @@
 // Scheduled-meeting + .ICS calendar invite service (NEW_BOOKING / RESCHEDULE / CANCELLATION) over Named Credential 'Zoom_App'.
-public class ZoomMeetingService {
+public without sharing class ZoomMeetingService {
 
     public enum InviteAction { NEW_BOOKING, RESCHEDULE, CANCELLATION }
 
