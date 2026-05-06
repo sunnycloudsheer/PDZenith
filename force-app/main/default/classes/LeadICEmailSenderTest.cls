@@ -1,7 +1,7 @@
 @isTest
 private class LeadICEmailSenderTest {
 
-    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email_1778061283900';
+    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Link_Send_Email';
 
     @TestSetup
     static void setupData() {

@@ -1,7 +1,7 @@
 // Sends the IC scheduling email to a Lead using a Lightning Email Template; merge fields render natively from Lead context.
 public without sharing class LeadICEmailSender {
 
-    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Email_1778061283900';
+    private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Link_Send_Email';
 
     public class LeadICRequest {
         @InvocableVariable(required=true label='Lead Id')

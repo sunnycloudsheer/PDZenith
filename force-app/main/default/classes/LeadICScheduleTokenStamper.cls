@@ -1,8 +1,9 @@
 // Generates a fresh IC schedule token + booking URL for a Lead; called from Lead_Generate_IC_Schedule_Token flow.
 public without sharing class LeadICScheduleTokenStamper {
 
+    // Resolves dynamically per environment from the org's My Domain URL: sandbox/prod-safe.
     private static final String BOOKING_BASE_URL =
-        'https://site-enterprise-6958--dev2.sandbox.my.site.com/booking';
+        URL.getOrgDomainUrl().toExternalForm().replace('.my.salesforce.com', '.my.site.com') + '/booking';
 
     public class Request {
         @InvocableVariable(label='Lead Id') public Id leadId;
