@@ -1434,9 +1434,8 @@ public without sharing class GuestSchedulerController {
         return bType == 'PD' || bType == 'FSS';
     }
 
-    // Resolves dynamically per environment from the org's My Domain URL: sandbox/prod-safe.
-    private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm().replace('.my.salesforce.com', '.my.site.com') + '/booking';
+    // Resolved at class-load time from BookingUrlConfig (queries SiteDetail for the active booking site).
+    private static final String BOOKING_BASE_URL = BookingUrlConfig.getBookingBaseUrl();
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {

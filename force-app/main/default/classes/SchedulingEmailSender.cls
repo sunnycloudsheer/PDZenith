@@ -1,8 +1,7 @@
 public without sharing class SchedulingEmailSender {
 
-    // Resolves dynamically per environment from the org's My Domain URL: sandbox/prod-safe.
-    private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm().replace('.my.salesforce.com', '.my.site.com') + '/booking';
+    // Resolved at class-load time from BookingUrlConfig (queries SiteDetail for the active booking site).
+    private static final String BOOKING_BASE_URL = BookingUrlConfig.getBookingBaseUrl();
 
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';

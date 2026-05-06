@@ -3,7 +3,7 @@
     <fullName>IC_Reschedule_Link__c</fullName>
     <description>Calculated rebook URL the family clicks (e.g. shown on the Lead record / pasted into a follow-up email by the AC) to schedule a new IC Service Appointment after their original IC was canceled. Builds itself from IC_Reschedule_Token__c — when the token is cleared after a successful rebook, the URL becomes blank and the link stops working.</description>
     <externalId>false</externalId>
-    <formula>IF(ISBLANK(IC_Reschedule_Token__c), &quot;&quot;, &quot;https://site-enterprise-6958--dev2.sandbox.my.site.com/booking?token=&quot; &amp; IC_Reschedule_Token__c &amp; &quot;&amp;action=reschedule&quot;)</formula>
+    <formula>IF(ISBLANK(IC_Reschedule_Token__c), &quot;&quot;, $Label.Booking_Site_Base_URL &amp; &quot;/booking?token=&quot; &amp; IC_Reschedule_Token__c &amp; &quot;&amp;action=reschedule&quot;)</formula>
     <label>IC Reschedule Link</label>
     <required>false</required>
     <trackTrending>false</trackTrending>

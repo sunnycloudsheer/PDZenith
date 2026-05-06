@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+    <labels>
+        <fullName>Booking_Site_Base_URL</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Booking Site Base URL</shortDescription>
+        <value>https://site-enterprise-6958--dev2.sandbox.my.site.com</value>
+    </labels>
+</CustomLabels>

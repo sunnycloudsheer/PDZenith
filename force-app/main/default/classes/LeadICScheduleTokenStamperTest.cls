@@ -109,6 +109,10 @@ private class LeadICScheduleTokenStamperTest {
     // Verifies bulk input uses a single SOQL guard regardless of batch size.
     @isTest
     static void bulkInput_oneSoqlForAllLeads() {
+        // Warm BookingUrlConfig's cached SiteDetail lookup so it's not counted
+        // against the per-call SOQL budget below.
+        BookingUrlConfig.getBookingBaseUrl();
+
         List<Lead> all = [SELECT Id FROM Lead];
         List<LeadICScheduleTokenStamper.Request> requests = new List<LeadICScheduleTokenStamper.Request>();
         for (Lead l : all) {
