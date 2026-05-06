@@ -8,19 +8,19 @@ private class SchedulingEmailSenderTest {
         Map<String, EmailTemplate> existing = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
-            WHERE DeveloperName IN ('PD_Scheduling_Email', 'FSS_Scheduling_Email')
+            WHERE DeveloperName IN ('PD_Scheduling_Link_Send_Email_1778062406702', 'FSS_Scheduling_Email')
         ]) {
             existing.put(et.DeveloperName, et);
         }
         List<EmailTemplate> toInsert = new List<EmailTemplate>();
-        if (!existing.containsKey('PD_Scheduling_Email')) {
+        if (!existing.containsKey('PD_Scheduling_Link_Send_Email_1778062406702')) {
             toInsert.add(new EmailTemplate(
-                Name = 'PD Scheduling Email',
-                DeveloperName = 'PD_Scheduling_Email',
+                Name = 'PD Scheduling Link Send Email',
+                DeveloperName = 'PD_Scheduling_Link_Send_Email_1778062406702',
                 FolderId = f.Id, TemplateType = 'custom',
-                Subject = 'Schedule with your PD',
-                HtmlValue = '<p>Hi {!Contact.FirstName}, schedule at [[SCHEDULING_LINK]]</p>',
-                Body = 'Hi {!Contact.FirstName}, schedule at [[SCHEDULING_LINK]]',
+                Subject = 'Schedule Your Strategy Overview Meeting with Zenith Prep Academy',
+                HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.PD_Scheduling_Link__c}}}">Schedule Your PD Meeting</a></p>',
+                Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.PD_Scheduling_Link__c}}}',
                 IsActive = true
             ));
         }

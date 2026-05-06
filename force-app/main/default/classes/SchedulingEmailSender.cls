@@ -10,9 +10,13 @@ public without sharing class SchedulingEmailSender {
     private static final String LINK_PLACEHOLDER = '[[SCHEDULING_LINK]]';
 
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
-        'PD'  => 'PD_Scheduling_Email',
+        'PD'  => 'PD_Scheduling_Link_Send_Email_1778062406702',
         'FSS' => 'FSS_Scheduling_Email'
     };
+
+    // Booking types that use Lightning Email Templates (rendered via Messaging.renderStoredEmailTemplate).
+    // Lightning templates merge fields natively from the Contact (whoId) and Opportunity (whatId).
+    private static final Set<String> LIGHTNING_TYPES = new Set<String>{ 'PD' };
 
     public class EmailRequest {
         @InvocableVariable(required=true label='Contact Id')
@@ -114,49 +118,66 @@ public without sharing class SchedulingEmailSender {
                             + 'Please create it in Setup > Email Templates.');
                     }
 
-                    Contact con = contactMap.get(req.contactId);
-                    Opportunity opp = oppMap.get(req.opportunityId);
+                    Messaging.SingleEmailMessage mail;
 
-                    String htmlBody  = tmpl.HtmlValue;
-                    String subject   = tmpl.Subject;
-                    String plainBody = tmpl.Body;
+                    if (LIGHTNING_TYPES.contains(bType)) {
+                        // Lightning Email Template path: merge fields render natively
+                        // from the Contact (whoId) and Opportunity (whatId). The
+                        // Opportunity Id is the exact record passed in, so multi-Opp
+                        // / shared-Primary-Contact scenarios resolve to this Opp only.
+                        mail = Messaging.renderStoredEmailTemplate(
+                            tmpl.Id, req.contactId, req.opportunityId
+                        );
+                        mail.setTargetObjectId(req.contactId);
+                        mail.setWhatId(req.opportunityId);
+                        mail.setSaveAsActivity(true);
+                        mail.setUseSignature(false);
+                    } else {
+                        // Classic template path: load HtmlValue/Body and substitute merge fields manually.
+                        Contact con = contactMap.get(req.contactId);
+                        Opportunity opp = oppMap.get(req.opportunityId);
 
-                    if (con != null) {
-                        htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
-                        htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
-                        htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
-                        subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
-                        subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
-                        subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
+                        String htmlBody  = tmpl.HtmlValue;
+                        String subject   = tmpl.Subject;
+                        String plainBody = tmpl.Body;
+
+                        if (con != null) {
+                            htmlBody  = replaceMerge(htmlBody, '{!Contact.FirstName}', con.FirstName);
+                            htmlBody  = replaceMerge(htmlBody, '{!Contact.LastName}', con.LastName);
+                            htmlBody  = replaceMerge(htmlBody, '{!Contact.Name}', con.Name);
+                            subject   = replaceMerge(subject, '{!Contact.FirstName}', con.FirstName);
+                            subject   = replaceMerge(subject, '{!Contact.LastName}', con.LastName);
+                            subject   = replaceMerge(subject, '{!Contact.Name}', con.Name);
+                            if (plainBody != null) {
+                                plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
+                                plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
+                                plainBody = replaceMerge(plainBody, '{!Contact.Name}', con.Name);
+                            }
+                        }
+                        if (opp != null) {
+                            htmlBody = replaceMerge(htmlBody, '{!Opportunity.Name}', opp.Name);
+                            subject  = replaceMerge(subject, '{!Opportunity.Name}', opp.Name);
+                            if (opp.Account != null) {
+                                htmlBody = replaceMerge(htmlBody, '{!Opportunity.Account.Name}', opp.Account.Name);
+                            }
+                        }
+
+                        htmlBody = htmlBody.replace(LINK_PLACEHOLDER, bookingLink);
                         if (plainBody != null) {
-                            plainBody = replaceMerge(plainBody, '{!Contact.FirstName}', con.FirstName);
-                            plainBody = replaceMerge(plainBody, '{!Contact.LastName}', con.LastName);
-                            plainBody = replaceMerge(plainBody, '{!Contact.Name}', con.Name);
+                            plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
                         }
-                    }
-                    if (opp != null) {
-                        htmlBody = replaceMerge(htmlBody, '{!Opportunity.Name}', opp.Name);
-                        subject  = replaceMerge(subject, '{!Opportunity.Name}', opp.Name);
-                        if (opp.Account != null) {
-                            htmlBody = replaceMerge(htmlBody, '{!Opportunity.Account.Name}', opp.Account.Name);
+
+                        mail = new Messaging.SingleEmailMessage();
+                        mail.setTargetObjectId(req.contactId);
+                        mail.setWhatId(req.opportunityId);
+                        mail.setSubject(subject);
+                        mail.setHtmlBody(htmlBody);
+                        if (plainBody != null) {
+                            mail.setPlainTextBody(plainBody);
                         }
+                        mail.setSaveAsActivity(true);
+                        mail.setUseSignature(false);
                     }
-
-                    htmlBody = htmlBody.replace(LINK_PLACEHOLDER, bookingLink);
-                    if (plainBody != null) {
-                        plainBody = plainBody.replace(LINK_PLACEHOLDER, bookingLink);
-                    }
-
-                    Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
-                    mail.setTargetObjectId(req.contactId);
-                    mail.setWhatId(req.opportunityId);
-                    mail.setSubject(subject);
-                    mail.setHtmlBody(htmlBody);
-                    if (plainBody != null) {
-                        mail.setPlainTextBody(plainBody);
-                    }
-                    mail.setSaveAsActivity(true);
-                    mail.setUseSignature(false);
 
                     if (bType == 'FSS' && String.isNotBlank(FSS_CC_ADDRESS)) {
                         mail.setCcAddresses(new List<String>{ FSS_CC_ADDRESS });
