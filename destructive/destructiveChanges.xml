@@ -10,6 +10,8 @@
         <name>ApexClass</name>
     </types>
     <types>
+        <members>Account.Assigned_FSS__c</members>
+        <members>Lead.Assigned_PD__c</members>
         <members>Opportunity.Assigned_PD__c</members>
         <name>CustomField</name>
     </types>

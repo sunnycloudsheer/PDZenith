@@ -656,10 +656,6 @@ public without sharing class ZoomMeetingManager {
                 ctx.host = ctx.parentLead.Assigned_Admission_Counsellor__r;
                 ctx.hostSource = 'Lead.Assigned_Admission_Counsellor__c'; return;
             }
-            if (ctx.role == ROLE_PD && isUsable(ctx.parentLead.Assigned_PD__r)) {
-                ctx.host = ctx.parentLead.Assigned_PD__r;
-                ctx.hostSource = 'Lead.Assigned_PD__c'; return;
-            }
         }
 
         User anyRoleUser = firstUsable(new List<User>{
@@ -1372,13 +1368,7 @@ public without sharing class ZoomMeetingManager {
                    Assigned_Admission_Counsellor__r.FirstName,
                    Assigned_Admission_Counsellor__r.LastName,
                    Assigned_Admission_Counsellor__r.Email,
-                   Assigned_Admission_Counsellor__r.TimeZoneSidKey,
-                   Assigned_PD__c,
-                   Assigned_PD__r.Name,
-                   Assigned_PD__r.FirstName,
-                   Assigned_PD__r.LastName,
-                   Assigned_PD__r.Email,
-                   Assigned_PD__r.TimeZoneSidKey
+                   Assigned_Admission_Counsellor__r.TimeZoneSidKey
             FROM Lead
             WHERE Id IN :leadIds
         ]);
