@@ -16,16 +16,27 @@ public without sharing class ZoomMeetingManager {
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
     // Resolved by DeveloperName so the same code works in sandbox + prod (Ids differ between orgs).
-    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID    = lookupTemplateIdByDevName('Meeting_Schedule_Email_Template');
-    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = lookupTemplateIdByDevName('Initial_Consultation_Meeting_Scheduled');
-    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID  = lookupTemplateIdByDevName('Meeting_Rescheduled_Send_Email');
+    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID    = lookupTemplateIdByDevName(new List<String>{
+        'Meeting_Schedule_Email_Template_1765244752004'
+    });
+    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = lookupTemplateIdByDevName(new List<String>{
+        'Initial_Consultation_Meeting_Scheduled'
+    });
+    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID  = lookupTemplateIdByDevName(new List<String>{
+        'Meeting_Rescheduled_Send_Email'
+    });
 
-    private static Id lookupTemplateIdByDevName(String developerName) {
+    private static Id lookupTemplateIdByDevName(List<String> developerNames) {
+        if (developerNames == null || developerNames.isEmpty()) return null;
+        Map<String, Id> byName = new Map<String, Id>();
         for (EmailTemplate et : [
-            SELECT Id FROM EmailTemplate
-            WHERE DeveloperName = :developerName AND IsActive = true LIMIT 1
+            SELECT Id, DeveloperName FROM EmailTemplate
+            WHERE DeveloperName IN :developerNames AND IsActive = true
         ]) {
-            return et.Id;
+            byName.put(et.DeveloperName, et.Id);
+        }
+        for (String preferred : developerNames) {
+            if (byName.containsKey(preferred)) return byName.get(preferred);
         }
         return null;
     }
@@ -209,11 +220,10 @@ public without sharing class ZoomMeetingManager {
             sin.templateId = isLeadBased
                 ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
                 : SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         }
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         return sin;
     }
 
@@ -232,11 +242,10 @@ public without sharing class ZoomMeetingManager {
         sin.logEmailOnSend = false;
         if (sa.ContactId != null) {
             sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         }
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         return sin;
     }
 
@@ -348,11 +357,10 @@ public without sharing class ZoomMeetingManager {
             sin.logEmailOnSend = (sa.ContactId != null);
             if (sa.ContactId != null) {
                 sin.templateId = templateId;
-            } else {
-                sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
-                sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
-                sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             }
+            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
+            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
+            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             emailBatch.add(sin);
             emailOwners.add(owner);
         }
@@ -1059,20 +1067,23 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails   = buildCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        sin.targetObjectId = sa.ContactId;
-        sin.logEmailOnSend = (sa.ContactId != null);
+        Id targetId = sa.ContactId != null
+                      ? sa.ContactId
+                      : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
+        sin.targetObjectId = targetId;
+        sin.logEmailOnSend = (targetId != null);
 
-        if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING
-                && sa.ContactId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE
-                && sa.ContactId != null) {
+        if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING && targetId != null) {
+            Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
+            sin.templateId = isLeadBased
+                ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
+                : SCHEDULED_EMAIL_TEMPLATE_ID;
+        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE && targetId != null) {
             sin.templateId = RESCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(inviteType, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
-            sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
         }
+        sin.subject   = buildSubject(inviteType, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
+        sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
 
         emailBatch.add(sin);
         emailOwners.add(out);

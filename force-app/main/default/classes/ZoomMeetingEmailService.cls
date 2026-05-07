@@ -160,7 +160,7 @@ public without sharing class ZoomMeetingEmailService {
         return msg;
     }
 
-    // Renders a stored Lightning Email Template onto the message; falls back to setTemplateId on error.
+    // Renders a stored Lightning Email Template onto the message. On render failure (or empty render — common when the template's recipient type is mismatched with targetObjectId, or the templateId points at a Lightning template that setTemplateId can't handle), falls back to the manually-built subject/htmlBody/plainBody on `inp` so the email still goes out with content instead of silently empty.
     private static void renderTemplateOntoMessage(
         Messaging.SingleEmailMessage msg, SendInput inp
     ) {
@@ -175,17 +175,45 @@ public without sharing class ZoomMeetingEmailService {
                 + ' targetObjectId=' + inp.targetObjectId
                 + ' relatedWhatId=' + inp.relatedWhatId
                 + ' — ' + e.getMessage()
-                + ' | falling back to setTemplateId()');
-            msg.setTemplateId(inp.templateId);
+                + ' | falling back to manually built subject/htmlBody/plainBody');
+            applyManualBody(msg, inp);
             return;
         }
 
-        msg.setSubject(rendered.getSubject());
-        if (String.isNotBlank(rendered.getHtmlBody())) {
-            msg.setHtmlBody(rendered.getHtmlBody());
+        String renderedSubject = rendered.getSubject();
+        String renderedHtml    = rendered.getHtmlBody();
+        String renderedPlain   = rendered.getPlainTextBody();
+        Boolean renderedEmpty  = String.isBlank(renderedSubject)
+                              && String.isBlank(renderedHtml)
+                              && String.isBlank(renderedPlain);
+        if (renderedEmpty) {
+            System.debug(LoggingLevel.WARN,
+                'renderStoredEmailTemplate returned empty body templateId=' + inp.templateId
+                + ' targetObjectId=' + inp.targetObjectId
+                + ' relatedWhatId=' + inp.relatedWhatId
+                + ' | falling back to manually built subject/htmlBody/plainBody');
+            applyManualBody(msg, inp);
+            return;
         }
-        if (String.isNotBlank(rendered.getPlainTextBody())) {
-            msg.setPlainTextBody(rendered.getPlainTextBody());
+
+        msg.setSubject(renderedSubject);
+        if (String.isNotBlank(renderedHtml))  msg.setHtmlBody(renderedHtml);
+        if (String.isNotBlank(renderedPlain)) msg.setPlainTextBody(renderedPlain);
+    }
+
+    private static void applyManualBody(Messaging.SingleEmailMessage msg, SendInput inp) {
+        if (String.isNotBlank(inp.subject)) {
+            msg.setSubject(inp.subject);
+        }
+        if (String.isNotBlank(inp.htmlBody)) {
+            String body = inp.htmlBody;
+            if (inp.inviteType == InviteType.RESCHEDULE) {
+                body = wrapWithZenithLetterhead(body);
+            }
+            msg.setHtmlBody(body);
+        }
+        if (String.isNotBlank(inp.plainBody)) {
+            msg.setPlainTextBody(inp.plainBody);
         }
     }
 

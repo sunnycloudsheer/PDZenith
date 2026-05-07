@@ -317,6 +317,11 @@
         <readable>false</readable>
     </fieldPermissions>
     <fieldPermissions>
+        <editable>false</editable>
+        <field>Account.Assigned_FSS__c</field>
+        <readable>false</readable>
+    </fieldPermissions>
+    <fieldPermissions>
         <editable>true</editable>
         <field>Account.BillingAddress</field>
         <readable>true</readable>
@@ -1139,6 +1144,11 @@
     <fieldPermissions>
         <editable>false</editable>
         <field>Lead.Assigned_Admission_Counsellor__c</field>
+        <readable>false</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Lead.Assigned_PD__c</field>
         <readable>false</readable>
     </fieldPermissions>
     <fieldPermissions>

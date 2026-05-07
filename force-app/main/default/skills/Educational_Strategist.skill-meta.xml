@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Skill xmlns="http://soap.sforce.com/2006/04/metadata">
+    <assignments>
+        <profiles>
+            <profile>admin</profile>
+            <profile>standard</profile>
+            <profile>standardaul</profile>
+            <profile>analytics cloud integration user</profile>
+            <profile>analytics cloud security user</profile>
+            <profile>b2bma integration user</profile>
+            <profile>cpq integration user</profile>
+            <profile>end user</profile>
+            <profile>executive sponsor</profile>
+            <profile>identity user</profile>
+            <profile>minimum access - api only integrations</profile>
+            <profile>minimum access - salesforce</profile>
+            <profile>solutionmanager</profile>
+            <profile>marketingprofile</profile>
+            <profile>contractmanager</profile>
+            <profile>read only</profile>
+            <profile>sales insights integration user</profile>
+            <profile>salesforce api only system integrations</profile>
+        </profiles>
+    </assignments>
+    <label>Educational_Strategist</label>
+    <skillType>Educational_Strategist</skillType>
+</Skill>
