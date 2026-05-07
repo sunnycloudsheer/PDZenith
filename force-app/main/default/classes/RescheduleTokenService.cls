@@ -1,9 +1,9 @@
 // Issues reschedule/cancel tokens for ServiceAppointments and provides the public Aura endpoints used by the booking site to validate or cancel a meeting.
 public without sharing class RescheduleTokenService {
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Admin-editable per environment via Custom Label Booking_Site_Base_URL (host only, no path).
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     private static final Set<String> TERMINAL_STATUSES = new Set<String>{
         'Canceled', 'Cannot Complete', 'Completed'

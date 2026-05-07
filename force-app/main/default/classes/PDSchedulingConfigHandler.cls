@@ -1,6 +1,6 @@
 public without sharing class PDSchedulingConfigHandler {
 
-    private static final String PD_PROFILE_NAME = 'Program Director';
+    private static final String PD_PROFILE_NAME = System.Label.PD_Profile_Name;
 
     public class ConfigRequest {
         @InvocableVariable(required=true label='Opportunity Id')
@@ -88,7 +88,7 @@ public without sharing class PDSchedulingConfigHandler {
                             AND IsActive = true
                             ORDER BY CreatedDate DESC LIMIT 1
                         ];
-                    } catch (Exception e) { }
+                    } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
 
                     if (!territories.isEmpty()) {
                         targetTerritoryId = territories[0].Id;
@@ -191,7 +191,7 @@ public without sharing class PDSchedulingConfigHandler {
                                     targetWorkTypeId  = stwt.WorkTypeId;
                                 }
                             }
-                        } catch (Exception e) { }
+                        } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
                     }
 
                     if (targetTerritoryId == null && !stmList.isEmpty()) {
@@ -224,7 +224,7 @@ public without sharing class PDSchedulingConfigHandler {
                                 targetWorkTypeId = stwt.WorkTypeId;
                             }
                         }
-                    } catch (Exception e) { }
+                    } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
 
                     if (targetWorkTypeId == null) {
                         try {
@@ -235,7 +235,7 @@ public without sharing class PDSchedulingConfigHandler {
                                 ORDER BY CreatedDate DESC LIMIT 1
                             ];
                             if (!wtList.isEmpty()) targetWorkTypeId = wtList[0].Id;
-                        } catch (Exception e) { }
+                        } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
                     }
 
                     if (targetWorkTypeId == null) {
@@ -534,7 +534,7 @@ public without sharing class PDSchedulingConfigHandler {
                 ]) {
                     matchingTerritories.add(stwt.ServiceTerritoryId);
                 }
-            } catch (Exception e) { }
+            } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
         }
 
         if (!allTerritoryIds.isEmpty()) {
@@ -547,7 +547,7 @@ public without sharing class PDSchedulingConfigHandler {
                 ]) {
                     matchingTerritories.add(stMatch.Id);
                 }
-            } catch (Exception e) { }
+            } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
         }
 
         List<String> allIds = new List<String>();
@@ -602,7 +602,7 @@ public without sharing class PDSchedulingConfigHandler {
                 ]) {
                     territoriesWithSTWT.add(stwt.ServiceTerritoryId);
                 }
-            } catch (Exception e) { }
+            } catch (Exception e) { System.debug(LoggingLevel.WARN, 'PDSchedulingConfigHandler: optional SOQL/lookup skipped: ' + e.getMessage()); }
         }
 
         cachedBestTerritoryId = null;

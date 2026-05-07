@@ -1,11 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
     <labels>
+        <fullName>Booking_FSS_CC_Address</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Booking FSS CC Address</shortDescription>
+        <value>fss@zenithprepacademy.com</value>
+    </labels>
+    <labels>
+        <fullName>Booking_Org_Sender_Address</fullName>
+        <categories>Booking</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Booking Org Sender Address</shortDescription>
+        <value>info@zenithprepacademy.com</value>
+    </labels>
+    <labels>
         <fullName>Booking_Site_Base_URL</fullName>
         <categories>Booking</categories>
         <language>en_US</language>
         <protected>false</protected>
         <shortDescription>Booking Site Base URL</shortDescription>
-        <value>https://site-enterprise-6958--dev2.sandbox.my.site.com</value>
+        <value>https://site-enterprise-6958--uat.sandbox.my.site.com</value>
+    </labels>
+    <labels>
+        <fullName>PD_First_SOM_Meeting_Type</fullName>
+        <categories>Scheduling</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Meeting Type label for first PD SOM call</shortDescription>
+        <value>Program Director - 60 Minutes</value>
+    </labels>
+    <labels>
+        <fullName>PD_Followup_Meeting_Type</fullName>
+        <categories>Scheduling</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Meeting Type label for PD follow-up call</shortDescription>
+        <value>Program Director Follow Up</value>
+    </labels>
+    <labels>
+        <fullName>PD_Profile_Name</fullName>
+        <categories>Scheduling</categories>
+        <language>en_US</language>
+        <protected>false</protected>
+        <shortDescription>Program Director Profile Name</shortDescription>
+        <value>Program Director</value>
     </labels>
 </CustomLabels>

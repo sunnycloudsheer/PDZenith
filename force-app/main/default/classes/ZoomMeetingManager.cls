@@ -10,13 +10,37 @@ public without sharing class ZoomMeetingManager {
     public static final String STATUS_SKIPPED = 'SKIPPED';
 
     private static final String NAMED_CREDENTIAL   = 'callout:Zoom_App';
-    private static final String ORG_SENDER_ADDRESS = 'info@zenithprepacademy.com';
+    private static final String ORG_SENDER_ADDRESS = System.Label.Booking_Org_Sender_Address;
     private static final String ORG_SENDER_NAME    = 'Zenith Prep Academy';
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
-    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID   = '00XQU00000ARwzs';
-    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb0000031aCbEAI';
-    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb000003UJbN';
+    // Resolved by DeveloperName so the same code works in sandbox + prod (Ids differ between orgs).
+    private static final String SCHEDULED_EMAIL_TEMPLATE_DEV_NAME    = 'Meeting_Schedule_Email_Template_1765244752004';
+    private static final String IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME = 'Initial_Consultation_Meeting_Scheduled';
+    private static final String RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME  = 'Meeting_Rescheduled_Send_Email';
+
+    private static Map<String, Id> templateIdByDevName;
+
+    private static Map<String, Id> getTemplateIdMap() {
+        if (templateIdByDevName != null) return templateIdByDevName;
+        templateIdByDevName = new Map<String, Id>();
+        Set<String> names = new Set<String>{
+            SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
+            IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
+            RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME
+        };
+        for (EmailTemplate et : [
+            SELECT Id, DeveloperName FROM EmailTemplate
+            WHERE DeveloperName IN :names
+        ]) {
+            templateIdByDevName.put(et.DeveloperName, et.Id);
+        }
+        return templateIdByDevName;
+    }
+
+    private static Id getScheduledEmailTemplateId()   { return getTemplateIdMap().get(SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
+    private static Id getIcScheduledEmailTemplateId() { return getTemplateIdMap().get(IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
+    private static Id getRescheduledEmailTemplateId() { return getTemplateIdMap().get(RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
 
     private static final String ROLE_ES  = 'ES';
     private static final String ROLE_AC  = 'AC';
@@ -195,13 +219,12 @@ public without sharing class ZoomMeetingManager {
         Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
         if (targetId != null) {
             sin.templateId = isLeadBased
-                ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
-                : SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+                ? getIcScheduledEmailTemplateId()
+                : getScheduledEmailTemplateId();
         }
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         return sin;
     }
 
@@ -219,12 +242,11 @@ public without sharing class ZoomMeetingManager {
         sin.targetObjectId = sa.ContactId;
         sin.logEmailOnSend = false;
         if (sa.ContactId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+            sin.templateId = getScheduledEmailTemplateId();
         }
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         return sin;
     }
 
@@ -336,11 +358,10 @@ public without sharing class ZoomMeetingManager {
             sin.logEmailOnSend = (sa.ContactId != null);
             if (sa.ContactId != null) {
                 sin.templateId = templateId;
-            } else {
-                sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
-                sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
-                sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             }
+            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
+            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
+            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             emailBatch.add(sin);
             emailOwners.add(owner);
         }
@@ -643,10 +664,6 @@ public without sharing class ZoomMeetingManager {
             if (ctx.role == ROLE_AC && isUsable(ctx.parentLead.Assigned_Admission_Counsellor__r)) {
                 ctx.host = ctx.parentLead.Assigned_Admission_Counsellor__r;
                 ctx.hostSource = 'Lead.Assigned_Admission_Counsellor__c'; return;
-            }
-            if (ctx.role == ROLE_PD && isUsable(ctx.parentLead.Assigned_PD__r)) {
-                ctx.host = ctx.parentLead.Assigned_PD__r;
-                ctx.hostSource = 'Lead.Assigned_PD__c'; return;
             }
         }
 
@@ -1051,20 +1068,23 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails   = buildCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        sin.targetObjectId = sa.ContactId;
-        sin.logEmailOnSend = (sa.ContactId != null);
+        Id targetId = sa.ContactId != null
+                      ? sa.ContactId
+                      : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
+        sin.targetObjectId = targetId;
+        sin.logEmailOnSend = (targetId != null);
 
-        if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING
-                && sa.ContactId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
-        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE
-                && sa.ContactId != null) {
-            sin.templateId = RESCHEDULED_EMAIL_TEMPLATE_ID;
-        } else {
-            sin.subject   = buildSubject(inviteType, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
-            sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
+        if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING && targetId != null) {
+            Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
+            sin.templateId = isLeadBased
+                ? getIcScheduledEmailTemplateId()
+                : getScheduledEmailTemplateId();
+        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE && targetId != null) {
+            sin.templateId = getRescheduledEmailTemplateId();
         }
+        sin.subject   = buildSubject(inviteType, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
+        sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
 
         emailBatch.add(sin);
         emailOwners.add(out);
@@ -1360,13 +1380,7 @@ public without sharing class ZoomMeetingManager {
                    Assigned_Admission_Counsellor__r.FirstName,
                    Assigned_Admission_Counsellor__r.LastName,
                    Assigned_Admission_Counsellor__r.Email,
-                   Assigned_Admission_Counsellor__r.TimeZoneSidKey,
-                   Assigned_PD__c,
-                   Assigned_PD__r.Name,
-                   Assigned_PD__r.FirstName,
-                   Assigned_PD__r.LastName,
-                   Assigned_PD__r.Email,
-                   Assigned_PD__r.TimeZoneSidKey
+                   Assigned_Admission_Counsellor__r.TimeZoneSidKey
             FROM Lead
             WHERE Id IN :leadIds
         ]);

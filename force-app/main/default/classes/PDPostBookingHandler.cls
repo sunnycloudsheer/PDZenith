@@ -1,6 +1,6 @@
 public without sharing class PDPostBookingHandler {
 
-    private static final String PD_PROFILE_NAME = 'Program Director';
+    private static final String PD_PROFILE_NAME = System.Label.PD_Profile_Name;
 
     public class PostBookingRequest {
         @InvocableVariable(required=true label='Opportunity Id')
@@ -161,8 +161,8 @@ public without sharing class PDPostBookingHandler {
             try {
                 Boolean followUp    = (req.isFollowUp != null && req.isFollowUp);
                 String  meetingType = followUp
-                    ? 'Program Director Follow Up'
-                    : 'Program Director - 60 Minutes';
+                    ? System.Label.PD_Followup_Meeting_Type
+                    : System.Label.PD_First_SOM_Meeting_Type;
 
                 ServiceAppointment sa = saMap.get(req.serviceAppointmentId);
                 if (sa == null) {

@@ -1,9 +1,9 @@
 // Generates a fresh IC schedule token + booking URL for a Lead; called from Lead_Generate_IC_Schedule_Token flow.
 public without sharing class LeadICScheduleTokenStamper {
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Admin-editable per environment via Custom Label Booking_Site_Base_URL (host only, no path).
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     public class Request {
         @InvocableVariable(label='Lead Id') public Id leadId;

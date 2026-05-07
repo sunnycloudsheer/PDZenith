@@ -74,8 +74,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00Xbb000003T4o5EAC</stringValue>
+                <elementReference>Get_Template_2hr.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -148,8 +147,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00Xbb000003T2zBEAS</stringValue>
+                <elementReference>Get_Template_48hr.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -225,8 +223,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzu2AD</stringValue>
+                <elementReference>Get_Template_86hr.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -302,8 +299,7 @@
         <inputParameters>
             <name>emailTemplateId</name>
             <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzv2AD</stringValue>
+                <elementReference>Get_Template_8hr.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
@@ -685,6 +681,118 @@
         <object>Contact</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
+    <recordLookups>
+        <name>Get_Template_2hr</name>
+        <label>Get 2-Hour Reminder Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Meeting_Still_Scheduled_Check4</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>X2_Hours_Prior_to_Scheduled_Meeting_Email_Template_1777036457115</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_48hr</name>
+        <label>Get 48-Hour Reminder Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Meeting_Still_Scheduled_Check3</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>X48_Hours_Prior_to_Scheduled_Meeting_Email_Template_1777031949438</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_86hr</name>
+        <label>Get 86-Hour Reminder Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Meeting_Still_Scheduled_Check</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>X86_Hours_Prior_to_Scheduled_Meeting_Email_Template_1765245833404</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Template_8hr</name>
+        <label>Get 8-Hour Reminder Template</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Copy_1_of_Meeting_Still_Scheduled_Check</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>X8_Hours_Prior_to_Scheduled_Meeting_Email_Template_1765245884943</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>IsActive</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>EmailTemplate</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
     <recordUpdates>
         <name>Update_Event</name>
         <label>Update Event</label>
@@ -774,7 +882,7 @@
         <scheduledPaths>
             <name>X86_Hours_in_Advance</name>
             <connector>
-                <targetReference>Meeting_Still_Scheduled_Check</targetReference>
+                <targetReference>Get_Template_86hr</targetReference>
             </connector>
             <label>86 Hours in Advance</label>
             <offsetNumber>-86</offsetNumber>
@@ -785,7 +893,7 @@
         <scheduledPaths>
             <name>X8_Hours_in_Advance</name>
             <connector>
-                <targetReference>Copy_1_of_Meeting_Still_Scheduled_Check</targetReference>
+                <targetReference>Get_Template_8hr</targetReference>
             </connector>
             <label>8 Hours in Advance</label>
             <offsetNumber>-8</offsetNumber>
@@ -796,7 +904,7 @@
         <scheduledPaths>
             <name>X48_Hours_in_Advance</name>
             <connector>
-                <targetReference>Meeting_Still_Scheduled_Check3</targetReference>
+                <targetReference>Get_Template_48hr</targetReference>
             </connector>
             <label>48 Hours in Advance</label>
             <offsetNumber>-48</offsetNumber>
@@ -807,7 +915,7 @@
         <scheduledPaths>
             <name>X2_Hours_in_Advance</name>
             <connector>
-                <targetReference>Meeting_Still_Scheduled_Check4</targetReference>
+                <targetReference>Get_Template_2hr</targetReference>
             </connector>
             <label>2 Hours in Advance</label>
             <offsetNumber>-2</offsetNumber>

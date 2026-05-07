@@ -5,7 +5,7 @@ public without sharing class GuestSchedulerController {
 
     private static final String ADMISSION_PROFILE_NAME     = 'Admission Counsellor';
     private static final String ADMISSION_PROFILE_NAME_ALT = 'Admission Counselor';
-    private static final String PD_PROFILE_NAME            = 'Program Director';
+    private static final String PD_PROFILE_NAME            = System.Label.PD_Profile_Name;
     private static final String FSS_PROFILE_NAME           = 'FSS Onboarding';
     private static final Integer DEFAULT_SCAN_DAYS     = 30;
     private static final Integer DEFAULT_ADVANCE_HOURS = 2;
@@ -13,14 +13,14 @@ public without sharing class GuestSchedulerController {
 
     private static final Map<String, String> MEETING_TYPE_MAP = new Map<String, String>{
         'IC'    => 'Initial Consultation',
-        'PD'    => 'Program Director - 60 Minutes',
-        'PD-FU' => 'Program Director Follow Up',
+        'PD'    => System.Label.PD_First_SOM_Meeting_Type,
+        'PD-FU' => System.Label.PD_Followup_Meeting_Type,
         'FSS'   => 'FSS Onboarding'
     };
     private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
         'IC'    => 'Initial Consultation - Zenith Prep Academy',
-        'PD'    => 'Program Director - 60 Minutes - Zenith Prep Academy',
-        'PD-FU' => 'Program Director Follow Up - Zenith Prep Academy',
+        'PD'    => System.Label.PD_First_SOM_Meeting_Type + ' - Zenith Prep Academy',
+        'PD-FU' => System.Label.PD_Followup_Meeting_Type + ' - Zenith Prep Academy',
         'FSS'   => 'FSS Onboarding Meeting - Zenith Prep Academy'
     };
 
@@ -1434,9 +1434,9 @@ public without sharing class GuestSchedulerController {
         return bType == 'PD' || bType == 'FSS';
     }
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Admin-editable per environment via Custom Label Booking_Site_Base_URL (host only, no path).
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {
