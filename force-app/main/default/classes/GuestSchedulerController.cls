@@ -4,7 +4,6 @@ public without sharing class GuestSchedulerController {
     public class SchedulerConfigException extends Exception {}
 
     private static final String ADMISSION_PROFILE_NAME     = 'Admission Counsellor';
-    private static final String ADMISSION_PROFILE_NAME_ALT = 'Admission Counselor';
     private static final String PD_PROFILE_NAME            = 'Program Director';
     private static final String FSS_PROFILE_NAME           = 'FSS Onboarding';
     private static final Integer DEFAULT_SCAN_DAYS     = 30;
@@ -19,9 +18,9 @@ public without sharing class GuestSchedulerController {
     };
     private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
         'IC'    => 'Initial Consultation - Zenith Prep Academy',
-        'PD'    => 'Program Director - 60 Minutes - Zenith Prep Academy',
-        'PD-FU' => 'Program Director Follow Up - Zenith Prep Academy',
-        'FSS'   => 'FSS Onboarding Meeting - Zenith Prep Academy'
+        'PD'    => 'Program Director Meeting  - Zenith Prep Academy',
+        'PD-FU' => 'Program Director Follow Up Meeting - Zenith Prep Academy',
+        'FSS'   => 'FSS Onboarding - Zenith Prep Academy'
     };
 
     private class DiscoveredConfig {
@@ -74,7 +73,7 @@ public without sharing class GuestSchedulerController {
     private static List<String> getProfileNames(String bType) {
         if (bType == 'PD' || bType == 'PD-FU') return new List<String>{ PD_PROFILE_NAME };
         if (bType == 'FSS') return new List<String>{ FSS_PROFILE_NAME };
-        return new List<String>{ ADMISSION_PROFILE_NAME, ADMISSION_PROFILE_NAME_ALT };
+        return new List<String>{ ADMISSION_PROFILE_NAME };
     }
 
     // Build DMLOptions that allow saving past duplicate rules.
@@ -1436,7 +1435,7 @@ public without sharing class GuestSchedulerController {
 
     // Resolved at class-load time from the org's My Domain URL.
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Base_URL.removeEnd('/') + '/booking';
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {

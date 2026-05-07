@@ -1,7 +1,7 @@
 public without sharing class BookingTokenUtil {
 
     // AES-256 key (32 bytes). Move to Custom Metadata or Protected Custom Setting for rotation.
-    private static final String KEY_HEX = 'a3f1c9b2e4d6f8071523a4b6c8d0e2f4a1b3c5d7e9f0123456789abcdef01234';
+    private static final String KEY_HEX = System.Label.Booking_Token_Encryption_Key_Hex;
 
     private static final String SEPARATOR = '|';
 

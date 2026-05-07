@@ -1,15 +1,14 @@
 public without sharing class SchedulingEmailSender {
 
     // Resolved at class-load time from the org's My Domain URL.
-    private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+    private static final String BOOKING_BASE_URL = System.Label.Booking_Base_URL.removeEnd('/') + '/booking';
 
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
 
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
-        'PD'  => 'PD_Scheduling_Link_Send_Email_1778062406702',
-        'FSS' => 'FSS_Scheduling_Link_Send_Email_1778065360225'
+        'PD'  => 'PD_Scheduling_Link_Send_Email',
+        'FSS' => 'FSS_Scheduling_Link_Send_Email'
     };
 
     public class EmailRequest {
