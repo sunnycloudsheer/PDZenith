@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TimeZone</fullName>
+    <inlineHelpText>This must be set if booking ad hoc via NEW function. Otherwise, his field automatically captures the time zone used during the booking process via the buttons. It serves as the reference point for appointment times in email notifications, ensuring both the student and counselor see the time in the same local context, regardless of their current location.</inlineHelpText>
+    <trackHistory>false</trackHistory>
+</CustomField>

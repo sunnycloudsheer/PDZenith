@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Meeting_Start_Time_text__c</fullName>
+    <description>For Email Templates</description>
+    <externalId>false</externalId>
+    <formula>TEXT(MONTH(DATEVALUE(SchedStartTime + 
+CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)))) &amp; &quot;/&quot; &amp; 
+
+TEXT(DAY(DATEVALUE(SchedStartTime + 
+CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)))) &amp; &quot;/&quot; &amp; 
+
+TEXT(YEAR(DATEVALUE(SchedStartTime + 
+CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)))) &amp; &quot; &quot; &amp; 
+
+IF(OR( 
+VALUE(MID(TEXT(SchedStartTime + CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)), 12, 2)) = 0, 
+VALUE(MID(TEXT(SchedStartTime + CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)), 12, 2)) = 12 
+), &quot;12&quot;, 
+
+TEXT(VALUE(MID(TEXT(SchedStartTime + CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)), 12, 2)) - 
+IF(VALUE(MID(TEXT(SchedStartTime + CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)), 12, 2)) &gt; 12, 12, 0)) ) 
+
+&amp; &quot;:&quot; &amp; MID(TEXT(SchedStartTime), 15, 2) &amp; 
+
+IF(VALUE(MID(TEXT(SchedStartTime + CASE(TEXT(TimeZone), &quot;America/Kentucky/Louisville&quot;,-5/24, &quot;America/Indiana/Indianapolis&quot;,-5/24, &quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;,-6/24, &quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;,-7/24, &quot;America/Vancouver&quot;,-8/24, &quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;,-8/24, -5/24)), 12, 2)) &gt;= 12, &quot;PM&quot;, &quot;AM&quot;) 
+
+&amp; &quot; &quot; &amp; 
+
+CASE(TEXT(TimeZone), 
+&quot;(GMT-06:00) Central Standard Time (America/Chicago)&quot;, &quot;CST&quot;, 
+&quot;(GMT-07:00) Mountain Standard Time (America/Denver)&quot;, &quot;MST&quot;, 
+&quot;America/Vancouver&quot;, &quot;PST&quot;,
+&quot;(GMT-08:00) Pacific Standard Time (America/Los_Angeles)&quot;, &quot;PST&quot;, 
+&quot;America/Kentucky/Louisville&quot;, &quot;EST&quot;,
+&quot;America/Indiana/Indianapolis&quot;, &quot;EST&quot;,
+&quot;EST&quot; )</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Meeting Start Time (Text)</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

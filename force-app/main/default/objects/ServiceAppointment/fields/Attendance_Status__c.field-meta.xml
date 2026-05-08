@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Attendance_Status__c</fullName>
+    <label>Attendance Status</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Attended – On Time</fullName>
+                <default>false</default>
+                <label>Attended – On Time</label>
+            </value>
+            <value>
+                <fullName>Attended – Late</fullName>
+                <default>false</default>
+                <label>Attended – Late</label>
+            </value>
+            <value>
+                <fullName>Attended – Left Early</fullName>
+                <default>false</default>
+                <label>Attended – Left Early</label>
+            </value>
+            <value>
+                <fullName>Partial Attendance</fullName>
+                <default>false</default>
+                <label>Partial Attendance</label>
+            </value>
+            <value>
+                <fullName>Did Not Show</fullName>
+                <default>false</default>
+                <label>Did Not Show</label>
+            </value>
+            <value>
+                <fullName>Did Not Show – Attempted Contact</fullName>
+                <default>false</default>
+                <label>Did Not Show – Attempted Contact</label>
+            </value>
+            <value>
+                <fullName>No Show – Reschedule Requested</fullName>
+                <default>false</default>
+                <label>No Show – Reschedule Requested</label>
+            </value>
+            <value>
+                <fullName>Cancelled by Student</fullName>
+                <default>false</default>
+                <label>Cancelled by Student</label>
+            </value>
+            <value>
+                <fullName>Cancelled by Staff</fullName>
+                <default>false</default>
+                <label>Cancelled by Staff</label>
+            </value>
+            <value>
+                <fullName>Rescheduled by Student</fullName>
+                <default>false</default>
+                <label>Rescheduled by Student</label>
+            </value>
+            <value>
+                <fullName>Rescheduled by Staff</fullName>
+                <default>false</default>
+                <label>Rescheduled by Staff</label>
+            </value>
+            <value>
+                <fullName>Unable to Contact</fullName>
+                <default>false</default>
+                <label>Unable to Contact</label>
+            </value>
+            <value>
+                <fullName>Technical Issues</fullName>
+                <default>false</default>
+                <label>Technical Issues</label>
+            </value>
+            <value>
+                <fullName>Call Declined</fullName>
+                <default>false</default>
+                <label>Call Declined</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

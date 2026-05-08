@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Timezone_Abrev__c</fullName>
+    <externalId>false</externalId>
+    <formula>IF(CONTAINS(TEXT(TimeZone),&quot;GMT-04&quot;),&quot;EDT&quot;,
+IF(CONTAINS(TEXT(TimeZone),&quot;GMT-05&quot;),&quot;EST&quot;,
+IF(CONTAINS(TEXT(TimeZone),&quot;GMT-06&quot;),&quot;CST&quot;,
+IF(CONTAINS(TEXT(TimeZone),&quot;GMT-07&quot;),&quot;MST&quot;,
+IF(CONTAINS(TEXT(TimeZone),&quot;GMT-08&quot;),&quot;PST&quot;,
+
+IF(CONTAINS(TEXT(TimeZone),&quot;Eastern&quot;),IF(DST__c,&quot;EDT&quot;,&quot;EST&quot;),
+IF(CONTAINS(TEXT(TimeZone),&quot;Central&quot;),IF(DST__c,&quot;CDT&quot;,&quot;CST&quot;),
+IF(CONTAINS(TEXT(TimeZone),&quot;Mountain&quot;),IF(DST__c,&quot;MDT&quot;,&quot;MST&quot;),
+IF(CONTAINS(TEXT(TimeZone),&quot;Pacific&quot;),IF(DST__c,&quot;PDT&quot;,&quot;PST&quot;),
+&quot;&quot;
+))))
+)))))</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Timezone Abrev</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

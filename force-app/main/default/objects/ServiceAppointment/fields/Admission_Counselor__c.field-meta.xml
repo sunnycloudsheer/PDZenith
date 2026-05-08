@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Admission_Counselor__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <label>Admission Counselor</label>
+    <lookupFilter>
+        <active>true</active>
+        <filterItems>
+            <field>User.Profile.Name</field>
+            <operation>equals</operation>
+            <value>Admission Counsellor</value>
+        </filterItems>
+        <isOptional>false</isOptional>
+    </lookupFilter>
+    <referenceTo>User</referenceTo>
+    <relationshipName>Meetings</relationshipName>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <type>Lookup</type>
+</CustomField>

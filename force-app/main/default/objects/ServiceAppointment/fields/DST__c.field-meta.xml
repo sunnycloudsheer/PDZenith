@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>DST__c</fullName>
+    <formula>AND(
+  DATEVALUE(SchedStartTime) &gt;=
+    (
+      DATE(YEAR(DATEVALUE(SchedStartTime)),3,1)
+      + MOD(1 - WEEKDAY(DATE(YEAR(DATEVALUE(SchedStartTime)),3,1)), 7)
+      + 7
+    ),
+  DATEVALUE(SchedStartTime) &lt;
+    (
+      DATE(YEAR(DATEVALUE(SchedStartTime)),11,1)
+      + MOD(1 - WEEKDAY(DATE(YEAR(DATEVALUE(SchedStartTime)),11,1)), 7)
+    )
+)</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>DST</label>
+    <trackHistory>false</trackHistory>
+    <type>Checkbox</type>
+</CustomField>

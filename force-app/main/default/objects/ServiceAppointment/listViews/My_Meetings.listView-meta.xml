@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>My_Meetings</fullName>
+    <columns>Student_Full_Name__c</columns>
+    <columns>Name</columns>
+    <columns>Status</columns>
+    <columns>SchedStartTime</columns>
+    <columns>SchedEndTime</columns>
+    <columns>Educational_Strategist__c</columns>
+    <columns>Contact</columns>
+    <columns>Account</columns>
+    <columns>CreatedDate</columns>
+    <filterScope>Mine</filterScope>
+    <label>My Meetings</label>
+</ListView>

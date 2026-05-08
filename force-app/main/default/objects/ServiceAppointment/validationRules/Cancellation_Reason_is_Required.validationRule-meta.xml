@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cancellation_Reason_is_Required</fullName>
+    <active>true</active>
+    <description>A Cancellation Reason is required to cancel a meeting.</description>
+    <errorConditionFormula>AND(
+ISBLANK( CancellationReason ),
+ISPICKVAL(
+Status ,
+&quot;Meeting Canceled by Student&quot;
+)
+||
+ISPICKVAL(
+Status,
+&quot;Canceled&quot;
+)
+||
+ISPICKVAL(
+Status,
+&quot;Meeting Canceled by Educational Strategist&quot;
+)
+||
+ISPICKVAL(
+Status,
+&quot;Meeting Canceled by Parent&quot;
+)
+)</errorConditionFormula>
+    <errorDisplayField>CancellationReason</errorDisplayField>
+    <errorMessage>Please provide a Cancellation Reason before marking the meeting as canceled.</errorMessage>
+</ValidationRule>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Is_Duplicate_Family__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>Flagged by Duplicate Family Detection flow when a family already has a prior IC on record.</description>
+    <label>Is Duplicate Family</label>
+    <trackHistory>false</trackHistory>
+    <type>Checkbox</type>
+</CustomField>
