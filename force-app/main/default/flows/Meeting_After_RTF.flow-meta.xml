@@ -280,59 +280,6 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </actionCalls>
     <actionCalls>
-        <name>Send_Cancellation_Email_Notification</name>
-        <label>Send Cancellation Email Notification</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <actionName>ZoomMeetingCancelEmailAction</actionName>
-        <actionType>apex</actionType>
-        <connector>
-            <targetReference>Get_Related_Event</targetReference>
-        </connector>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>serviceAppointmentId</name>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>emailTemplateId</name>
-            <value>
-                <stringValue>00XQU00000ARwzr2AD</stringValue>
-            </value>
-        </inputParameters>
-        <nameSegment>ZoomMeetingCancelEmailAction</nameSegment>
-        <offset>0</offset>
-    </actionCalls>
-    <actionCalls>
-        <name>Send_Client_Cancellation_Email</name>
-        <label>Send Client Cancellation Email</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <actionName>ZoomMeetingCancelEmailAction</actionName>
-        <actionType>apex</actionType>
-        <connector>
-            <isGoTo>true</isGoTo>
-            <targetReference>Get_Related_Event</targetReference>
-        </connector>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>serviceAppointmentId</name>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>emailTemplateId</name>
-            <value>
-                <stringValue>00XQU00000ARwzq2AD</stringValue>
-            </value>
-        </inputParameters>
-        <nameSegment>ZoomMeetingCancelEmailAction</nameSegment>
-        <offset>0</offset>
-    </actionCalls>
-    <actionCalls>
         <name>Send_Meeting_Scheduled_Email_notification</name>
         <label>Send Meeting Scheduled Email notification</label>
         <locationX>0</locationX>
@@ -351,159 +298,6 @@
         </inputParameters>
         <nameSegment>ZoomMeetingEmailService</nameSegment>
         <offset>0</offset>
-    </actionCalls>
-    <actionCalls>
-        <name>Send_No_Show_Email_Notification</name>
-        <label>Send No Show Email Notification</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <actionName>emailSimple</actionName>
-        <actionType>emailSimple</actionType>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>recipientAddresses</name>
-            <value>
-                <collectionElements>
-                    <elementReference>ccEmails</elementReference>
-                </collectionElements>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>senderType</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>OrgWideEmailAddress</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>senderAddress</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>info@zenithprepacademy.com</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>useEmailTemplate</name>
-            <value>
-                <stringValue>True</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>emailTemplateId</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzp2AD</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>recipientId</name>
-            <value>
-                <elementReference>$Record.ContactId</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>relatedRecordId</name>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-                <inputConfiguratorMode>Resource</inputConfiguratorMode>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>logEmailOnSend</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>addThreadingTokenToBody</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>addThreadingTokenToSubject</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <nameSegment>emailSimple</nameSegment>
-        <offset>0</offset>
-        <versionString>2.0.1</versionString>
-    </actionCalls>
-    <actionCalls>
-        <name>Send_No_Show_Email_Notification_Lead</name>
-        <label>Send No Show Email Notification - Lead</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <actionName>emailSimple</actionName>
-        <actionType>emailSimple</actionType>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>recipientAddresses</name>
-            <value>
-                <collectionElements>
-                    <elementReference>$Record.Lead__r.Email</elementReference>
-                </collectionElements>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>senderType</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>OrgWideEmailAddress</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>senderAddress</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>info@zenithprepacademy.com</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>useEmailTemplate</name>
-            <value>
-                <stringValue>True</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>emailTemplateId</name>
-            <value>
-                <inputConfiguratorMode>Custom</inputConfiguratorMode>
-                <stringValue>00XQU00000ARwzp2AD</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>recipientId</name>
-            <value>
-                <elementReference>$Record.Lead__r.Id</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>relatedRecordId</name>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-                <inputConfiguratorMode>Resource</inputConfiguratorMode>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>logEmailOnSend</name>
-        </inputParameters>
-        <inputParameters>
-            <name>addThreadingTokenToBody</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>addThreadingTokenToSubject</name>
-            <value>
-                <booleanValue>true</booleanValue>
-            </value>
-        </inputParameters>
-        <nameSegment>emailSimple</nameSegment>
-        <offset>0</offset>
-        <versionString>2.0.1</versionString>
     </actionCalls>
     <apiVersion>66.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
@@ -614,6 +408,7 @@
                 </rightValue>
             </conditions>
             <connector>
+                <isGoTo>true</isGoTo>
                 <targetReference>Send_Meeting_Scheduled_Email_notification</targetReference>
             </connector>
             <label>Zoom URL Added</label>
@@ -766,140 +561,6 @@
         </rules>
     </decisions>
     <decisions>
-        <name>Check_Meeting_Status</name>
-        <label>Check Meeting Status</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Check_If_Parents_Needs_To_Be_Queried</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
-        <rules>
-            <name>Meeting_Cancelled_by_Educational_Strategist</name>
-            <conditionLogic>(1 OR 2 OR 4 OR 5) AND (3 OR 6)</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Educational Strategist</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Admission Counselor</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Contact.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Program Director</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by FSS Onboarding</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Send_Cancellation_Email_Notification</targetReference>
-            </connector>
-            <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
-            <label>Meeting Cancelled by Admin (ES / AC / PD / FSS)</label>
-        </rules>
-        <rules>
-            <name>Family_No_Showed</name>
-            <conditionLogic>1 AND ( 2 OR 3 )</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>No Show (15+ mins late)</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Contact.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>If_Lead</targetReference>
-            </connector>
-            <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
-            <label>Family No-Showed</label>
-        </rules>
-        <rules>
-            <name>Meeting_Cancelled_by_Student_or_Parent</name>
-            <conditionLogic>(1 OR 2 OR 4) AND (3 OR 5)</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Student</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Parent</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Contact.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Status</leftValueReference>
-                <operator>EqualTo</operator>
-                <rightValue>
-                    <stringValue>Meeting Canceled by Customer</stringValue>
-                </rightValue>
-            </conditions>
-            <conditions>
-                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Send_Client_Cancellation_Email</targetReference>
-            </connector>
-            <label>Meeting Cancelled by Student or Parent</label>
-        </rules>
-    </decisions>
-    <decisions>
         <name>Check_Parent_1_Email_Exists</name>
         <label>Check Parent 1 Email Exists</label>
         <locationX>0</locationX>
@@ -974,53 +635,6 @@
             <label>Student Email Available</label>
         </rules>
     </decisions>
-    <decisions>
-        <name>Event_Found</name>
-        <label>Event Found</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
-        <rules>
-            <name>Is_Event_found</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Related_Event</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Delete_Event</targetReference>
-            </connector>
-            <label>Is Event found</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <name>If_Lead</name>
-        <label>If Lead</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Send_No_Show_Email_Notification</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
-        <rules>
-            <name>Yes</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Send_No_Show_Email_Notification_Lead</targetReference>
-            </connector>
-            <label>Yes</label>
-        </rules>
-    </decisions>
     <description>This will send email on meeting notes change
 This will send initial email on meeting booking and after the zoom link has been added
 This will update the Schedule Start Display field in text format from the schedule start date time field based on time zone.
@@ -1083,13 +697,6 @@ ISBLANK({!ccEmails}),
         </value>
     </processMetadataValues>
     <processType>AutoLaunchedFlow</processType>
-    <recordDeletes>
-        <name>Delete_Event</name>
-        <label>Delete Event</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <inputReference>Get_Related_Event</inputReference>
-    </recordDeletes>
     <recordLookups>
         <name>Get_Parent_Records</name>
         <label>Get Parent Records</label>
@@ -1125,48 +732,6 @@ ISBLANK({!ccEmails}),
         <object>Contact</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
-    <recordLookups>
-        <name>Get_Related_Event</name>
-        <label>Get Related Event</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
-        <connector>
-            <targetReference>Event_Found</targetReference>
-        </connector>
-        <filterLogic>and</filterLogic>
-        <filters>
-            <field>Service_Appointment__c</field>
-            <operator>EqualTo</operator>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </filters>
-        <filters>
-            <field>WhoId</field>
-            <operator>EqualTo</operator>
-            <value>
-                <elementReference>$Record.ContactId</elementReference>
-            </value>
-        </filters>
-        <filters>
-            <field>WhatId</field>
-            <operator>EqualTo</operator>
-            <value>
-                <elementReference>$Record.Contact.AccountId</elementReference>
-            </value>
-        </filters>
-        <filters>
-            <field>Subject</field>
-            <operator>EqualTo</operator>
-            <value>
-                <elementReference>$Record.Subject</elementReference>
-            </value>
-        </filters>
-        <getFirstRecordOnly>true</getFirstRecordOnly>
-        <object>Event</object>
-        <storeOutputAutomatically>true</storeOutputAutomatically>
-    </recordLookups>
     <recordUpdates>
         <name>Update_Scheduled_Start_Display</name>
         <label>Update Scheduled Start Display</label>
@@ -1184,7 +749,7 @@ ISBLANK({!ccEmails}),
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Check_Meeting_Status</targetReference>
+            <targetReference>Check_If_Parents_Needs_To_Be_Queried</targetReference>
         </connector>
         <object>ServiceAppointment</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>

@@ -2,7 +2,7 @@
 public without sharing class RescheduleTokenService {
 
     // Resolved at class-load time from the org's My Domain URL.
-    private static final String BOOKING_BASE_URL = System.Label.Booking_Base_URL.removeEnd('/') + '/booking';
+    private static final String BOOKING_BASE_URL = System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     private static final Set<String> TERMINAL_STATUSES = new Set<String>{
         'Canceled', 'Cannot Complete', 'Completed'

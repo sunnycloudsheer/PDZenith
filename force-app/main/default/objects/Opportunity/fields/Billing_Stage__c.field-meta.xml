@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Billing_Stage__c</fullName>
+    <label>Billing Stage</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>In Program</fullName>
+                <default>true</default>
+                <label>In Program</label>
+            </value>
+            <value>
+                <fullName>In Legal - Not Suspended</fullName>
+                <default>false</default>
+                <label>In Legal - Not Suspended</label>
+            </value>
+            <value>
+                <fullName>Paused - Not Delinquent</fullName>
+                <default>false</default>
+                <label>Paused - Not Delinquent</label>
+            </value>
+            <value>
+                <fullName>Suspended - In Legal</fullName>
+                <default>false</default>
+                <label>Suspended - In Legal</label>
+            </value>
+            <value>
+                <fullName>Terminated</fullName>
+                <default>false</default>
+                <label>Terminated</label>
+            </value>
+            <value>
+                <fullName>Terminated - MBG</fullName>
+                <default>false</default>
+                <label>Terminated - MBG</label>
+            </value>
+            <value>
+                <fullName>Suspended - Delinquent</fullName>
+                <default>false</default>
+                <label>Suspended - Delinquent</label>
+            </value>
+            <value>
+                <fullName>Pending Termination - Future Payment Due</fullName>
+                <default>false</default>
+                <label>Pending Termination - Future Payment Due</label>
+            </value>
+            <value>
+                <fullName>Pending Termination - No Payment Due</fullName>
+                <default>false</default>
+                <label>Pending Termination - No Payment Due</label>
+            </value>
+            <value>
+                <fullName>Pending Termination - Payment Still Due</fullName>
+                <default>false</default>
+                <label>Pending Termination - Payment Still Due</label>
+            </value>
+            <value>
+                <fullName>Delinquent</fullName>
+                <default>false</default>
+                <label>Delinquent</label>
+            </value>
+            <value>
+                <fullName>In program - Approaching MBG</fullName>
+                <default>false</default>
+                <label>In program - Approaching MBG</label>
+            </value>
+            <value>
+                <fullName>In program - MBG window</fullName>
+                <default>false</default>
+                <label>In program - MBG window</label>
+            </value>
+            <value>
+                <fullName>In program - Post MBG</fullName>
+                <default>false</default>
+                <label>In program - Post MBG</label>
+            </value>
+            <value>
+                <fullName>Delinquent - Approaching MBG</fullName>
+                <default>false</default>
+                <label>Delinquent - Approaching MBG</label>
+            </value>
+            <value>
+                <fullName>Delinquent - MBG window</fullName>
+                <default>false</default>
+                <label>Delinquent - MBG window</label>
+            </value>
+            <value>
+                <fullName>Delinquent - Post MBG</fullName>
+                <default>false</default>
+                <label>Delinquent - Post MBG</label>
+            </value>
+            <value>
+                <fullName>Graduated - No payment due</fullName>
+                <default>false</default>
+                <label>Graduated - No payment due</label>
+            </value>
+            <value>
+                <fullName>Terminated - Delinquent</fullName>
+                <default>false</default>
+                <label>Terminated - Delinquent</label>
+            </value>
+            <value>
+                <fullName>Delinquent (email only - no collections)</fullName>
+                <default>false</default>
+                <label>Delinquent (email only - no collections)</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

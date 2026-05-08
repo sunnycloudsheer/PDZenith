@@ -14,9 +14,34 @@ public without sharing class ZoomMeetingManager {
     private static final String ORG_SENDER_NAME    = 'Zenith Prep Academy';
     private static final String ICS_UID_DOMAIN     = '@zenithprepacademy.com';
 
-    private static final Id SCHEDULED_EMAIL_TEMPLATE_ID   = '00XQU00000ARwzs';
-    private static final Id IC_SCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb0000031aCbEAI';
-    private static final Id RESCHEDULED_EMAIL_TEMPLATE_ID = '00Xbb000003UJbN';
+    // Email template DeveloperNames — same source applies in sandbox + prod (Ids differ between orgs).
+    // If a template is renamed in Setup, update the matching constant here.
+    private static final String SCHEDULED_EMAIL_TEMPLATE_DEV_NAME    = 'Meeting_Schedule_Email_Template_1765244752004';
+    private static final String IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME = 'Initial_Consultation_Meeting_Scheduled';
+    private static final String RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME  = 'Meeting_Rescheduled_Send_Email';
+
+    private static Map<String, Id> templateIdByDevName;
+
+    private static Map<String, Id> getTemplateIdMap() {
+        if (templateIdByDevName != null) return templateIdByDevName;
+        templateIdByDevName = new Map<String, Id>();
+        Set<String> names = new Set<String>{
+            SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
+            IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
+            RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME
+        };
+        for (EmailTemplate et : [
+            SELECT Id, DeveloperName FROM EmailTemplate
+            WHERE DeveloperName IN :names
+        ]) {
+            templateIdByDevName.put(et.DeveloperName, et.Id);
+        }
+        return templateIdByDevName;
+    }
+
+    private static Id getScheduledEmailTemplateId()   { return getTemplateIdMap().get(SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
+    private static Id getIcScheduledEmailTemplateId() { return getTemplateIdMap().get(IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
+    private static Id getRescheduledEmailTemplateId() { return getTemplateIdMap().get(RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
 
     private static final String ROLE_ES  = 'ES';
     private static final String ROLE_AC  = 'AC';
@@ -195,8 +220,8 @@ public without sharing class ZoomMeetingManager {
         Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
         if (targetId != null) {
             sin.templateId = isLeadBased
-                ? IC_SCHEDULED_EMAIL_TEMPLATE_ID
-                : SCHEDULED_EMAIL_TEMPLATE_ID;
+                ? getIcScheduledEmailTemplateId()
+                : getScheduledEmailTemplateId();
         } else {
             sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
             sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
@@ -219,7 +244,7 @@ public without sharing class ZoomMeetingManager {
         sin.targetObjectId = sa.ContactId;
         sin.logEmailOnSend = false;
         if (sa.ContactId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
+            sin.templateId = getScheduledEmailTemplateId();
         } else {
             sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
             sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
@@ -1056,10 +1081,10 @@ public without sharing class ZoomMeetingManager {
 
         if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING
                 && sa.ContactId != null) {
-            sin.templateId = SCHEDULED_EMAIL_TEMPLATE_ID;
+            sin.templateId = getScheduledEmailTemplateId();
         } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE
                 && sa.ContactId != null) {
-            sin.templateId = RESCHEDULED_EMAIL_TEMPLATE_ID;
+            sin.templateId = getRescheduledEmailTemplateId();
         } else {
             sin.subject   = buildSubject(inviteType, sa, ctx);
             sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);

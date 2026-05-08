@@ -155,6 +155,15 @@
         <expression>{!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}&amp; &apos; - &apos; &amp; &apos;Operating Hours&apos;</expression>
     </formulas>
     <formulas>
+        <description>WorkType-name prefix derived from the new user&apos;s profile. Maps Admission Counsellor / Counselor → &quot;Admissions Counselor&quot;, Program Director → &quot;Program Director&quot;, FSS Onboarding → &quot;FSS Onboarding&quot;, else &quot;Educational Strategist&quot;.</description>
+        <name>profilePrefix</name>
+        <dataType>String</dataType>
+        <expression>IF(OR({!$Record.Profile.Name} = &apos;Admission Counsellor&apos;, {!$Record.Profile.Name} = &apos;Admission Counselor&apos;), &apos;Admissions Counselor&apos;,
+IF({!$Record.Profile.Name} = &apos;Program Director&apos;, &apos;Program Director&apos;,
+IF({!$Record.Profile.Name} = &apos;FSS Onboarding&apos;, &apos;FSS Onboarding&apos;,
+&apos;Educational Strategist&apos;)))</expression>
+    </formulas>
+    <formulas>
         <name>serviceResourceName</name>
         <dataType>String</dataType>
         <expression>{!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName} &amp; &apos; - &apos;  &amp; &apos;Service Resource&apos;</expression>
@@ -170,6 +179,15 @@
         <expression>{!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName} &amp; &apos; - &apos; &amp; &apos;Service Territory - 60 Min&apos;</expression>
     </formulas>
     <formulas>
+        <description>Skill DeveloperName for Get_Skill_Set, derived from profile. Admission Counsellor / Counselor → Admissions_Counselor, Program Director → Program_Director, FSS Onboarding → FSS_Onboarding, else Educational_Strategist.</description>
+        <name>skillDeveloperName</name>
+        <dataType>String</dataType>
+        <expression>IF(OR({!$Record.Profile.Name} = &apos;Admission Counsellor&apos;, {!$Record.Profile.Name} = &apos;Admission Counselor&apos;), &apos;Admissions_Counselor&apos;,
+IF({!$Record.Profile.Name} = &apos;Program Director&apos;, &apos;Program_Director&apos;,
+IF({!$Record.Profile.Name} = &apos;FSS Onboarding&apos;, &apos;FSS_Onboarding&apos;,
+&apos;Educational_Strategist&apos;)))</expression>
+    </formulas>
+    <formulas>
         <name>workTypeGroupName</name>
         <dataType>String</dataType>
         <expression>{!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}&amp; &apos; - &apos; &amp; &apos;Work Type Group&apos;</expression>
@@ -177,12 +195,12 @@
     <formulas>
         <name>workTypeNameFor30Minutes</name>
         <dataType>String</dataType>
-        <expression>&apos;Educational Strategist Meeting - 30 min - &apos; &amp; {!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}</expression>
+        <expression>{!profilePrefix} &amp; &apos; Meeting - 30 min - &apos; &amp; {!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}</expression>
     </formulas>
     <formulas>
         <name>workTypeNameFor60Minutes</name>
         <dataType>String</dataType>
-        <expression>&apos;Educational Strategist Meeting - 60 Minutes - &apos; &amp; {!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}</expression>
+        <expression>{!profilePrefix} &amp; &apos; Meeting - 60 Minutes - &apos; &amp; {!$Record.FirstName} &amp; &apos; &apos; &amp; {!$Record.LastName}</expression>
     </formulas>
     <interviewLabel>User After RTF:  Service Record Creation Upon User Creation {!$Flow.CurrentDateTime}</interviewLabel>
     <label>User After RTF:  Service Record Creation Upon User Creation</label>
@@ -913,7 +931,7 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>This component retrieves the skill set associated with the counselor using the developer name field.</description>
+        <description>Retrieves the Skill record matching the new user&apos;s profile via DeveloperName resolved by the skillDeveloperName formula.</description>
         <name>Get_Skill_Set</name>
         <label>Get Skill Set</label>
         <locationX>0</locationX>
@@ -927,7 +945,7 @@
             <field>DeveloperName</field>
             <operator>EqualTo</operator>
             <value>
-                <stringValue>Educational_Strategist</stringValue>
+                <elementReference>skillDeveloperName</elementReference>
             </value>
         </filters>
         <getFirstRecordOnly>true</getFirstRecordOnly>
@@ -972,7 +990,7 @@
         </scheduledPaths>
         <triggerType>RecordAfterSave</triggerType>
     </start>
-    <status>Draft</status>
+    <status>Active</status>
     <textTemplates>
         <name>operatingHoursDescription</name>
         <isViewedAsPlainText>true</isViewedAsPlainText>
@@ -981,12 +999,12 @@
     <textTemplates>
         <name>workTypeDescriptionFor30Minutes</name>
         <isViewedAsPlainText>true</isViewedAsPlainText>
-        <text>Book a meeting with Educational Strategist  for 30 min - ( {!$Record.FirstName} {!$Record.LastName} )</text>
+        <text>Book a meeting with {!profilePrefix} for 30 min - ( {!$Record.FirstName} {!$Record.LastName} )</text>
     </textTemplates>
     <textTemplates>
         <name>workTypeDescriptionFor60Minutes</name>
         <isViewedAsPlainText>true</isViewedAsPlainText>
-        <text>Book a meeting with Educational Strategist for 60 minutes - (  {!$Record.FirstName} {!$Record.LastName}  )</text>
+        <text>Book a meeting with {!profilePrefix} for 60 minutes - (  {!$Record.FirstName} {!$Record.LastName}  )</text>
     </textTemplates>
     <variables>
         <name>ServiceResourceId</name>

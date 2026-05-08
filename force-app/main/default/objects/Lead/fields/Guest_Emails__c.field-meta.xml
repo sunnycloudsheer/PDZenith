@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Guest_Emails__c</fullName>
-    <description>BACKEND-ONLY. Comma-separated list of additional guest email addresses captured at booking time via the Add Guests UI on the public scheduler. Read by ZoomMeetingManager (via the SA's Lead__r relationship) so guests are CC'd on the schedule / reschedule / cancel emails and listed as ICS ATTENDEE entries on the calendar invite. Populated by GuestSchedulerController.bookIC at lead-creation time.</description>
-    <externalId>false</externalId>
+    <description>BACKEND-ONLY. Comma-separated list of additional guest email addresses captured at booking time via the Add Guests UI on the public scheduler. Read by ZoomMeetingManager (via the SA&apos;s Lead__r relationship) so guests are CC&apos;d on the schedule / reschedule / cancel emails and listed as ICS ATTENDEE entries on the calendar invite. Populated by GuestSchedulerController.bookIC at lead-creation time.</description>
     <inlineHelpText>Backend-only. Populated automatically by the booking widget; do not edit manually.</inlineHelpText>
     <label>Guest Emails</label>
     <length>1300</length>
-    <required>false</required>
-    <trackTrending>false</trackTrending>
+    <trackFeedHistory>false</trackFeedHistory>
     <type>LongTextArea</type>
     <visibleLines>4</visibleLines>
 </CustomField>

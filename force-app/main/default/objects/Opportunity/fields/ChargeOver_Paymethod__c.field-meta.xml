@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ChargeOver_Paymethod__c</fullName>
+    <label>ChargeOver Paymethod</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>inv</fullName>
+                <default>true</default>
+                <label>inv</label>
+            </value>
+            <value>
+                <fullName>crd</fullName>
+                <default>false</default>
+                <label>crd</label>
+            </value>
+            <value>
+                <fullName>ach</fullName>
+                <default>false</default>
+                <label>ach</label>
+            </value>
+            <value>
+                <fullName>any</fullName>
+                <default>false</default>
+                <label>any</label>
+            </value>
+            <value>
+                <fullName>tok</fullName>
+                <default>false</default>
+                <label>tok</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

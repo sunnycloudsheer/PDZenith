@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Owner_of_last_meeting_from_Meetings_tool__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Support - Owner of the meeting selected in the round robin</description>
+    <label>Owner of last meeting from Meetings tool</label>
+    <referenceTo>User</referenceTo>
+    <relationshipName>Leads3</relationshipName>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <type>Lookup</type>
+</CustomField>

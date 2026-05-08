@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Assigned_PD__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The PD assigned to this lead via round-robin. Once set, all future PD calls route to this person.</description>
+    <label>Assigned Program Director</label>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>PD Assigned Leads</relationshipLabel>
+    <relationshipName>PD_Leads</relationshipName>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <type>Lookup</type>
+</CustomField>

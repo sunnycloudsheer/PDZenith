@@ -7,7 +7,7 @@
     <label>IC Reschedule Token</label>
     <length>64</length>
     <required>false</required>
-    <trackTrending>false</trackTrending>
+    <trackFeedHistory>false</trackFeedHistory>
     <type>Text</type>
     <unique>true</unique>
 </CustomField>

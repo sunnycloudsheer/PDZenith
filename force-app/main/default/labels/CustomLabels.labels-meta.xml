@@ -6,6 +6,6 @@
         <language>en_US</language>
         <protected>false</protected>
         <shortDescription>Booking Site Base URL</shortDescription>
-        <value>https://site-enterprise-6958--dev2.sandbox.my.site.com</value>
+        <value>https://site-enterprise-6958--uat.sandbox.my.site.com</value>
     </labels>
 </CustomLabels>

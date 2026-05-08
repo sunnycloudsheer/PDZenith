@@ -3,8 +3,7 @@
     <fullName>IC_Meeting_Rescheduled__c</fullName>
     <defaultValue>false</defaultValue>
     <description>Set to TRUE by GuestSchedulerController.bookAppointment after a successful IC rebook (i.e. the family used IC_Reschedule_Link__c to book a new SA against this Lead). Lets reporting / admin views distinguish leads who recovered from a cancellation vs. leads who stayed canceled. Also acts as a single-use guard — lookupLeadByRebookToken refuses to resolve a Lead whose IC_Meeting_Rescheduled__c is already true.</description>
-    <externalId>false</externalId>
     <label>IC Meeting Rescheduled</label>
-    <trackTrending>false</trackTrending>
+    <trackFeedHistory>false</trackFeedHistory>
     <type>Checkbox</type>
 </CustomField>

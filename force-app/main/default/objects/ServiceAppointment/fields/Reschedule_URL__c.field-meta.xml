@@ -5,7 +5,7 @@
     <formula>IF(ISBLANK(Reschedule_Token__c), &quot;&quot;, $Label.Booking_Site_Base_URL &amp; &quot;/booking?token=&quot; &amp; Reschedule_Token__c &amp; &quot;&amp;action=reschedule&quot;)</formula>
     <label>Reschedule URL</label>
     <required>false</required>
-    <trackTrending>false</trackTrending>
+    <trackHistory>false</trackHistory>
     <type>Text</type>
     <unique>false</unique>
 </CustomField>

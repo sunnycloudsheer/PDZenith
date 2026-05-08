@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ID_of_Last_Meeting_from_Meetings_Tool__c</fullName>
+    <description>Support field - The ID of the call that was booked</description>
+    <externalId>false</externalId>
+    <label>ID of Last Meeting from Meetings Tool</label>
+    <length>255</length>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

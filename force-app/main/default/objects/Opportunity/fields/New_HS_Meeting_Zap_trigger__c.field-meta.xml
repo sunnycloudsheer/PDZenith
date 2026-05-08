@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>New_HS_Meeting_Zap_trigger__c</fullName>
+    <description>Support field - Used to trigger other automations whenever there&apos;s an update on calls</description>
+    <externalId>false</externalId>
+    <label>New HS Meeting (Zap trigger)</label>
+    <length>255</length>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

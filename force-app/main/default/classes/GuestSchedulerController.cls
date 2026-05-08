@@ -1435,7 +1435,7 @@ public without sharing class GuestSchedulerController {
 
     // Resolved at class-load time from the org's My Domain URL.
     private static final String BOOKING_BASE_URL =
-        System.Label.Booking_Base_URL.removeEnd('/') + '/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     // Add reschedule + cancel URLs (driven by the SA's reschedule token) into the result map.
     private static void stampActionUrls(Map<String, String> res, String token) {
