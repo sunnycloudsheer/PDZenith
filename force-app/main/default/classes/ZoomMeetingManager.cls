@@ -108,6 +108,12 @@ public without sharing class ZoomMeetingManager {
             label='Email Template Developer Name'
             description='Optional. DeveloperName of the Lightning email template to use for RESCHEDULE or CANCEL. If blank, falls back to the class constant. Ignored for CREATE (uses Contact vs Lead routing).')
         public String emailTemplateDeveloperName;
+
+        @InvocableVariable(
+            required=false
+            label='Skip Customer Email'
+            description='When true, manage() still creates/updates/cancels the Zoom meeting and stamps the SA, but does NOT send the customer-facing scheduled/rescheduled/cancelled email. Set to true from the Event-triggered Create-Zoom flow so Meeting_After_RTF can be the single sender of the Lightning-template scheduled email.')
+        public Boolean skipCustomerEmail;
     }
 
     public class OutputWrapper {
@@ -218,14 +224,24 @@ public without sharing class ZoomMeetingManager {
 
                 Id overrideTplId = resolveOverrideTemplateId(ip.emailTemplateDeveloperName);
 
+                Boolean skipEmail = (ip.skipCustomerEmail == true);
+                // When skipEmail is set, route this row's collected SendInputs into a throwaway batch
+                // so dispatch() still performs Zoom CRUD + SA stamping but the customer email never
+                // reaches deliverEmailBatch — Meeting_After_RTF becomes the single source of truth.
+                List<ZoomMeetingEmailService.SendInput> rowBatch =
+                    skipEmail ? new List<ZoomMeetingEmailService.SendInput>() : emailBatch;
+                List<OutputWrapper> rowOwners =
+                    skipEmail ? new List<OutputWrapper>() : emailOwners;
+
                 System.debug(LoggingLevel.INFO,
                     '>>> ZMM manage ROW: SA=' + ip.serviceAppointmentId +
                     ' action=' + out.action +
                     ' flowTemplateName="' + ip.emailTemplateDeveloperName + '"' +
-                    ' resolvedOverrideId=' + overrideTplId);
+                    ' resolvedOverrideId=' + overrideTplId +
+                    ' skipCustomerEmail=' + skipEmail);
 
                 dispatch(out, sa, ctx, parentsByAcct, orgWideId, http,
-                         emailBatch, emailOwners, sasToPersist, overrideTplId);
+                         rowBatch, rowOwners, sasToPersist, overrideTplId);
 
             } catch (Exception e) {
                 out.status = STATUS_ERROR;
@@ -312,20 +328,23 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails      = buildFamilyCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
+        sin.activityRelatedToId = sa.Opportunity__c;
         Id targetId = sa.ContactId != null
                       ? sa.ContactId
                       : ((sa.ParentRecordType == 'Lead') ? sa.ParentRecordId : null);
         sin.targetObjectId = targetId;
         sin.logEmailOnSend = (targetId != null);
         Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
+        // Always populate the Apex-built subject + bodies so ZoomMeetingEmailService can use them
+        // as a fallback when Messaging.renderStoredEmailTemplate throws — without falling back
+        // we'd lose the ICS attachment (Salesforce drops setFileAttachments when setTemplateId fires).
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         if (targetId != null) {
             sin.templateId = isLeadBased
                 ? getIcScheduledEmailTemplateId()
                 : getScheduledEmailTemplateId();
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         }
         return sin;
     }
@@ -341,14 +360,15 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails      = new List<String>();
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
+        sin.activityRelatedToId = sa.Opportunity__c;
         sin.targetObjectId = sa.ContactId;
         sin.logEmailOnSend = false;
+        // Apex-built fallback for the renderStoredEmailTemplate catch path — keeps ICS attached.
+        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
+        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         if (sa.ContactId != null) {
             sin.templateId = getScheduledEmailTemplateId();
-        } else {
-            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
         }
         return sin;
     }
@@ -457,14 +477,16 @@ public without sharing class ZoomMeetingManager {
             sin.ccEmails      = buildCcList(sa, ctx, parentsByAcct);
             sin.orgWideEmailId = orgWideId;
             sin.relatedWhatId  = sa.Id;
+            sin.activityRelatedToId = sa.Opportunity__c;
             sin.targetObjectId = sa.ContactId;
             sin.logEmailOnSend = (sa.ContactId != null);
+            // Apex-built fallback for the renderStoredEmailTemplate catch path — keeps the
+            // METHOD:CANCEL .ics attached so the customer's calendar removes the event.
+            sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
+            sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
+            sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             if (sa.ContactId != null) {
                 sin.templateId = templateId;
-            } else {
-                sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx);
-                sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
-                sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.CANCELLATION, sa, ctx, null);
             }
             emailBatch.add(sin);
             emailOwners.add(owner);
@@ -1302,6 +1324,7 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails   = buildCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
+        sin.activityRelatedToId = sa.Opportunity__c;
         sin.targetObjectId = targetId;
         sin.logEmailOnSend = (targetId != null);
 
@@ -1342,12 +1365,14 @@ public without sharing class ZoomMeetingManager {
             ' canUseTemplate=' + canUseTemplate +
             ' source=' + (canUseTemplate ? templateSource : 'apex-body'));
 
+        // Always populate the Apex-built subject + bodies so ZoomMeetingEmailService can use them
+        // as a fallback when Messaging.renderStoredEmailTemplate throws — without it Salesforce
+        // would drop the .ics attachment (setFileAttachments is silently ignored after setTemplateId).
+        sin.subject   = buildSubject(inviteType, sa, ctx);
+        sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
+        sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
         if (canUseTemplate) {
             sin.templateId = resolvedTemplateId;
-        } else {
-            sin.subject   = buildSubject(inviteType, sa, ctx);
-            sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
-            sin.plainBody = buildPlainBody(inviteType, sa, ctx, zoomInvitationText);
         }
 
         emailBatch.add(sin);
@@ -1619,6 +1644,7 @@ public without sharing class ZoomMeetingManager {
           + '       Family_Success_Specialist__c, '
           + '       Family_Success_Specialist__r.Name, Family_Success_Specialist__r.FirstName, Family_Success_Specialist__r.LastName, Family_Success_Specialist__r.Email, Family_Success_Specialist__r.TimeZoneSidKey, '
           + '       ParentRecordId, ParentRecordType, '
+          + '       Opportunity__c, '
           + '       OwnerId'
           + (hasGuestEmailsField() ? ', Lead__r.Guest_Emails__c ' : ' ')
           + 'FROM ServiceAppointment WHERE Id IN :saIds';

@@ -23,6 +23,12 @@
                 <stringValue>CREATE</stringValue>
             </value>
         </inputParameters>
+        <inputParameters>
+            <name>skipCustomerEmail</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
         <nameSegment>ZoomMeetingManager</nameSegment>
         <offset>0</offset>
         <storeOutputAutomatically>true</storeOutputAutomatically>
@@ -925,7 +931,7 @@
         </scheduledPaths>
         <triggerType>RecordAfterSave</triggerType>
     </start>
-    <status>Draft</status>
+    <status>Active</status>
     <textTemplates>
         <name>eventDescription</name>
         <isViewedAsPlainText>true</isViewedAsPlainText>

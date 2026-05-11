@@ -21,6 +21,10 @@ public class ZoomMeetingEmailService {
         public Id relatedWhatId;
         public Id targetObjectId;
         public Boolean logEmailOnSend;
+        // Optional. When set, sendBulk re-stamps the created EmailMessage.RelatedToId to this Id
+        // (typically the Opportunity) so the email lands on the Opportunity's activity timeline.
+        // relatedWhatId stays as the SA so the Lightning template's SA merge fields still resolve.
+        public Id activityRelatedToId;
     }
 
     // Sends a batch of calendar-invite emails in a single Messaging.sendEmail invocation.
@@ -48,6 +52,8 @@ public class ZoomMeetingEmailService {
 
         if (messages.isEmpty()) return results;
 
+        DateTime sendStartTime = DateTime.now();
+
         Messaging.SendEmailResult[] sendResults;
         try {
             sendResults = Messaging.sendEmail(messages, false);
@@ -65,17 +71,55 @@ public class ZoomMeetingEmailService {
             return results;
         }
 
+        // Collect successful (toAddress → activityRelatedToId) pairs so we can re-stamp the
+        // resulting EmailMessage.RelatedToId onto the Opportunity (etc.). relatedWhatId stayed
+        // on the SA so Lightning template merge fields render correctly; this post-process is
+        // what makes the email show up on the Opportunity activity timeline.
+        Map<String, Id> activityRelatedByToAddr = new Map<String, Id>();
+
         Integer sentIdx = 0;
         for (Integer i = 0; i < inputs.size(); i++) {
             if (!sendable[i]) continue;
             Messaging.SendEmailResult r = sendResults[sentIdx++];
             if (r.isSuccess()) {
                 results[i].success = true;
+                SendInput inp = inputs[i];
+                if (inp.activityRelatedToId != null && String.isNotBlank(inp.toEmail)) {
+                    activityRelatedByToAddr.put(inp.toEmail.toLowerCase().trim(), inp.activityRelatedToId);
+                }
             } else {
                 Messaging.SendEmailError[] errs = r.getErrors();
                 results[i].errorMessage = (errs != null && errs.size() > 0)
                     ? errs[0].getStatusCode() + ': ' + errs[0].getMessage()
                     : 'Unknown email error';
+            }
+        }
+
+        if (!activityRelatedByToAddr.isEmpty()) {
+            try {
+                Id currentUserId = UserInfo.getUserId();
+                List<EmailMessage> recents = [
+                    SELECT Id, ToAddress, RelatedToId
+                    FROM EmailMessage
+                    WHERE CreatedDate >= :sendStartTime
+                    AND CreatedById = :currentUserId
+                    LIMIT 200
+                ];
+                List<EmailMessage> toUpdate = new List<EmailMessage>();
+                for (EmailMessage em : recents) {
+                    if (em.ToAddress == null) continue;
+                    Id target = activityRelatedByToAddr.get(em.ToAddress.toLowerCase().trim());
+                    if (target != null && em.RelatedToId != target) {
+                        em.RelatedToId = target;
+                        toUpdate.add(em);
+                    }
+                }
+                if (!toUpdate.isEmpty()) {
+                    Database.update(toUpdate, false);
+                }
+            } catch (Exception emEx) {
+                System.debug(LoggingLevel.WARN,
+                    'EmailMessage RelatedToId post-process failed (non-fatal): ' + emEx.getMessage());
             }
         }
 
@@ -160,7 +204,10 @@ public class ZoomMeetingEmailService {
         return msg;
     }
 
-    // Renders a stored Lightning Email Template onto the message; falls back to setTemplateId on error.
+    // Renders a stored Lightning Email Template onto the message.
+    // If rendering fails, fall back to the Apex-built subject/htmlBody/plainBody on the SendInput
+    // — NEVER call msg.setTemplateId() here, because Salesforce silently drops setFileAttachments
+    // (the .ics calendar invite) on any message that uses setTemplateId.
     private static void renderTemplateOntoMessage(
         Messaging.SingleEmailMessage msg, SendInput inp
     ) {
@@ -175,8 +222,10 @@ public class ZoomMeetingEmailService {
                 + ' targetObjectId=' + inp.targetObjectId
                 + ' relatedWhatId=' + inp.relatedWhatId
                 + ' — ' + e.getMessage()
-                + ' | falling back to setTemplateId()');
-            msg.setTemplateId(inp.templateId);
+                + ' | using Apex-built fallback body (keeps ICS attachment intact).');
+            if (String.isNotBlank(inp.subject))   msg.setSubject(inp.subject);
+            if (String.isNotBlank(inp.htmlBody))  msg.setHtmlBody(inp.htmlBody);
+            if (String.isNotBlank(inp.plainBody)) msg.setPlainTextBody(inp.plainBody);
             return;
         }
 
