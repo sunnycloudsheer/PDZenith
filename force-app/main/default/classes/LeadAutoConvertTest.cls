@@ -236,7 +236,7 @@ private class LeadAutoConvertTest {
         List<Opportunity> opps = [SELECT Id, StageName FROM Opportunity WHERE AccountId = :converted.ConvertedAccountId];
         System.assertEquals(2, opps.size(), 'Expected one Opportunity per enrolling student.');
         for (Opportunity o : opps) {
-            System.assertEquals('Ready to Schedule SOM', o.StageName, 'Each new Opp should land in the SOM stage.');
+            System.assertEquals('SOM Ready', o.StageName, 'Each new Opp should land in the SOM stage.');
         }
 
         Set<Id> oppIds = (new Map<Id, Opportunity>(opps)).keySet();
@@ -411,7 +411,7 @@ private class LeadAutoConvertTest {
         Opportunity opp = [SELECT Name, StageName FROM Opportunity WHERE Id = :converted.ConvertedOpportunityId];
         System.assertEquals(studentContact.Name + ' - ' + acc.Name, opp.Name,
             'Opp name should be "{Student Contact Name} - {Account Name}". Got: ' + opp.Name);
-        System.assertEquals('Ready to Schedule SOM', opp.StageName, 'New Opp should land in the SOM stage.');
+        System.assertEquals('SOM Ready', opp.StageName, 'New Opp should land in the SOM stage.');
     }
 
     // Verifies pre-generated Parent / Student IDs propagate from Lead to the resulting Contacts.

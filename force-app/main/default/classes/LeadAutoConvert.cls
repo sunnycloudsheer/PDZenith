@@ -10,7 +10,7 @@ public with sharing class LeadAutoConvert {
     private static final String OCR_ROLE_PARENT  = 'Parent';
     private static final String OCR_ROLE_STUDENT = 'Student';
 
-    private static final String OPPORTUNITY_STAGE = 'Ready to Schedule SOM';
+    private static final String OPPORTUNITY_STAGE = 'SOM Ready';
 
     public static Boolean bypassTrigger = false;
 
@@ -212,13 +212,11 @@ public with sharing class LeadAutoConvert {
         }
 
         if (!primaryUpdates.isEmpty()) {
-            applyAllowDuplicateOptions(primaryUpdates);
-            Database.SaveResult[] updateResults = Database.update(primaryUpdates, false);
+            Database.SaveResult[] updateResults = Database.update(primaryUpdates, allowDuplicateOptions());
             logSaveErrors('Primary Contact update', updateResults);
         }
         if (!extraContacts.isEmpty()) {
-            applyAllowDuplicateOptions(extraContacts);
-            Database.SaveResult[] insertResults = Database.insert(extraContacts, false);
+            Database.SaveResult[] insertResults = Database.insert(extraContacts, allowDuplicateOptions());
             logSaveErrors('Extra Contact insert', insertResults);
 
             Integer idx = 0;
@@ -551,10 +549,14 @@ public with sharing class LeadAutoConvert {
         logSaveErrors('Opportunity stage', r);
     }
 
-    private static void applyAllowDuplicateOptions(List<SObject> records) {
+    // Per-record setOptions(DMLOptions) is silently ignored by Database.insert(list, Boolean),
+    // so the DuplicateRuleHeader.AllowSave flag has to be passed to the DML call directly via
+    // Database.insert/update(list, DMLOptions). OptAllOrNone=false preserves partial-success behavior.
+    private static Database.DMLOptions allowDuplicateOptions() {
         Database.DMLOptions opt = new Database.DMLOptions();
         opt.DuplicateRuleHeader.AllowSave = true;
-        for (SObject r : records) r.setOptions(opt);
+        opt.OptAllOrNone = false;
+        return opt;
     }
 
     private static void logSaveErrors(String label, Database.SaveResult[] results) {

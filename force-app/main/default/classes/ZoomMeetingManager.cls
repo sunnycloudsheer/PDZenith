@@ -16,9 +16,11 @@ public without sharing class ZoomMeetingManager {
 
     // Email template DeveloperNames — same source applies in sandbox + prod (Ids differ between orgs).
     // If a template is renamed in Setup, update the matching constant here.
+    // These are FALLBACKS — the Flow can override RESCHEDULE / CANCEL templates via InputWrapper.emailTemplateDeveloperName.
     private static final String SCHEDULED_EMAIL_TEMPLATE_DEV_NAME    = 'Meeting_Schedule_Email_Template_1765244752004';
     private static final String IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME = 'Initial_Consultation_Meeting_Scheduled';
     private static final String RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME  = 'Meeting_Rescheduled_Send_Email';
+    private static final String CANCELLED_EMAIL_TEMPLATE_DEV_NAME    = 'Meeting_Cancelled_Send_Email';
 
     private static Map<String, Id> templateIdByDevName;
 
@@ -28,7 +30,8 @@ public without sharing class ZoomMeetingManager {
         Set<String> names = new Set<String>{
             SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
             IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
-            RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME
+            RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME,
+            CANCELLED_EMAIL_TEMPLATE_DEV_NAME
         };
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
@@ -42,6 +45,48 @@ public without sharing class ZoomMeetingManager {
     private static Id getScheduledEmailTemplateId()   { return getTemplateIdMap().get(SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
     private static Id getIcScheduledEmailTemplateId() { return getTemplateIdMap().get(IC_SCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
     private static Id getRescheduledEmailTemplateId() { return getTemplateIdMap().get(RESCHEDULED_EMAIL_TEMPLATE_DEV_NAME); }
+    private static Id getCancelledEmailTemplateId()   { return getTemplateIdMap().get(CANCELLED_EMAIL_TEMPLATE_DEV_NAME); }
+
+    // Resolves a Flow-supplied template DeveloperName to its Id. Adds it to the cache on first sight.
+    // Returns null if the name is blank or no matching template exists in the org.
+    private static Id resolveOverrideTemplateId(String devName) {
+        if (String.isBlank(devName)) {
+            System.debug(LoggingLevel.INFO, '>>> ZMM resolveOverrideTemplateId: blank devName -> null');
+            return null;
+        }
+        String trimmed = devName.trim();
+        getTemplateIdMap(); // ensure cache initialised
+        if (templateIdByDevName.containsKey(trimmed) && templateIdByDevName.get(trimmed) != null) {
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM resolveOverrideTemplateId: cache hit for "' + trimmed +
+                '" -> ' + templateIdByDevName.get(trimmed));
+            return templateIdByDevName.get(trimmed);
+        }
+        try {
+            List<EmailTemplate> rows = [
+                SELECT Id, DeveloperName FROM EmailTemplate
+                WHERE DeveloperName = :trimmed
+                LIMIT 1
+            ];
+            if (rows.isEmpty()) {
+                System.debug(LoggingLevel.WARN,
+                    '>>> ZMM resolveOverrideTemplateId: NO EmailTemplate found for DeveloperName="' + trimmed +
+                    '" (case-sensitive). Falling back to class default.');
+                templateIdByDevName.put(trimmed, null);
+                return null;
+            }
+            templateIdByDevName.put(rows[0].DeveloperName, rows[0].Id);
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM resolveOverrideTemplateId: SOQL hit for "' + trimmed +
+                '" -> ' + rows[0].Id);
+            return rows[0].Id;
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR,
+                '>>> ZMM resolveOverrideTemplateId: exception for "' + trimmed +
+                '" -> ' + e.getMessage());
+            return null;
+        }
+    }
 
     private static final String ROLE_ES  = 'ES';
     private static final String ROLE_AC  = 'AC';
@@ -57,6 +102,12 @@ public without sharing class ZoomMeetingManager {
             label='Action'
             description='CREATE (default) | UPDATE (reschedule) | CANCEL')
         public String action;
+
+        @InvocableVariable(
+            required=false
+            label='Email Template Developer Name'
+            description='Optional. DeveloperName of the Lightning email template to use for RESCHEDULE or CANCEL. If blank, falls back to the class constant. Ignored for CREATE (uses Contact vs Lead routing).')
+        public String emailTemplateDeveloperName;
     }
 
     public class OutputWrapper {
@@ -88,11 +139,51 @@ public without sharing class ZoomMeetingManager {
         List<OutputWrapper> outputs = new List<OutputWrapper>();
         if (inputs == null || inputs.isEmpty()) return outputs;
 
+        // Log every incoming row so we can see exactly what Flow is sending.
+        for (Integer i = 0; i < inputs.size(); i++) {
+            InputWrapper ip = inputs[i];
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM manage IN[' + i + ']: saId=' + (ip == null ? null : ip.serviceAppointmentId) +
+                ' action=' + (ip == null ? null : ip.action) +
+                ' emailTemplateDeveloperName=' + (ip == null ? null : ip.emailTemplateDeveloperName));
+        }
+
         Set<Id> saIds = new Set<Id>();
         for (InputWrapper ip : inputs) {
             if (ip != null && ip.serviceAppointmentId != null) saIds.add(ip.serviceAppointmentId);
         }
         if (saIds.isEmpty()) return outputs;
+
+        // Pre-warm the template cache with any Flow-supplied DeveloperNames so resolveOverrideTemplateId is free per-row.
+        Set<String> flowSuppliedNames = new Set<String>();
+        for (InputWrapper ip : inputs) {
+            if (ip != null && String.isNotBlank(ip.emailTemplateDeveloperName)) {
+                flowSuppliedNames.add(ip.emailTemplateDeveloperName.trim());
+            }
+        }
+        if (!flowSuppliedNames.isEmpty()) {
+            getTemplateIdMap(); // ensure cache initialised
+            Set<String> missing = new Set<String>();
+            for (String n : flowSuppliedNames) {
+                if (!templateIdByDevName.containsKey(n)) missing.add(n);
+            }
+            if (!missing.isEmpty()) {
+                for (EmailTemplate et : [
+                    SELECT Id, DeveloperName FROM EmailTemplate
+                    WHERE DeveloperName IN :missing
+                ]) {
+                    templateIdByDevName.put(et.DeveloperName, et.Id);
+                }
+                // Stamp nulls for any names that didn't resolve so we don't re-query per-row.
+                for (String n : missing) {
+                    if (!templateIdByDevName.containsKey(n)) {
+                        templateIdByDevName.put(n, null);
+                    }
+                }
+            }
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM manage: Flow-supplied names pre-warmed. Resolved map snapshot: ' + templateIdByDevName);
+        }
 
         Map<Id, ServiceAppointment> saMap         = loadAppointments(saIds);
         Map<Id, Lead>               leadsById     = loadParentLeads(saMap.values());
@@ -125,7 +216,16 @@ public without sharing class ZoomMeetingManager {
                 out.resolvedRole       = ctx.role;
                 out.resolvedHostSource = ctx.hostSource;
 
-                dispatch(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist);
+                Id overrideTplId = resolveOverrideTemplateId(ip.emailTemplateDeveloperName);
+
+                System.debug(LoggingLevel.INFO,
+                    '>>> ZMM manage ROW: SA=' + ip.serviceAppointmentId +
+                    ' action=' + out.action +
+                    ' flowTemplateName="' + ip.emailTemplateDeveloperName + '"' +
+                    ' resolvedOverrideId=' + overrideTplId);
+
+                dispatch(out, sa, ctx, parentsByAcct, orgWideId, http,
+                         emailBatch, emailOwners, sasToPersist, overrideTplId);
 
             } catch (Exception e) {
                 out.status = STATUS_ERROR;
@@ -385,6 +485,18 @@ public without sharing class ZoomMeetingManager {
         }
         System.debug(LoggingLevel.INFO,
             'deliverEmailBatch: dispatching ' + batch.size() + ' message(s)');
+        // One-line summary of every send so you can see which templateId actually went out.
+        for (Integer i = 0; i < batch.size(); i++) {
+            ZoomMeetingEmailService.SendInput s = batch[i];
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM deliverEmailBatch[' + i + ']:' +
+                ' to=' + s.toEmail +
+                ' inviteType=' + s.inviteType +
+                ' templateId=' + s.templateId +
+                ' targetObjectId=' + s.targetObjectId +
+                ' relatedWhatId=' + s.relatedWhatId +
+                ' usingApexBody=' + (s.templateId == null));
+        }
         List<ZoomMeetingEmailService.SendResult> results = ZoomMeetingEmailService.sendBulk(batch);
         for (Integer i = 0; i < results.size(); i++) {
             ZoomMeetingEmailService.SendResult r = results[i];
@@ -410,12 +522,13 @@ public without sharing class ZoomMeetingManager {
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
         List<OutputWrapper> emailOwners,
-        Map<Id, ServiceAppointment> sasToPersist
+        Map<Id, ServiceAppointment> sasToPersist,
+        Id overrideTemplateId
     ) {
         switch on out.action {
-            when 'CREATE' { handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist); }
-            when 'UPDATE' { handleUpdate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist); }
-            when 'CANCEL' { handleCancel(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners); }
+            when 'CREATE' { handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist, overrideTemplateId, false); }
+            when 'UPDATE' { handleUpdate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist, overrideTemplateId); }
+            when 'CANCEL' { handleCancel(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, overrideTemplateId); }
             when else {
                 out.status = STATUS_ERROR;
                 out.errorMessage = 'Unknown action: ' + out.action + '. Use CREATE | UPDATE | CANCEL.';
@@ -423,13 +536,17 @@ public without sharing class ZoomMeetingManager {
         }
     }
 
-    // CREATE handler: POST a new Zoom meeting, hydrate SA fields, and queue the SA for persistence.
+    // CREATE handler: POST a new Zoom meeting, hydrate SA fields, queue email + persistence.
+    // When the user's *intent* was UPDATE but we had to CREATE (no meetingId / Zoom 404),
+    // `calledFromUpdate=true` makes the queued email be RESCHEDULE rather than NEW_BOOKING.
     private static void handleCreate(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
         List<OutputWrapper> emailOwners,
-        Map<Id, ServiceAppointment> sasToPersist
+        Map<Id, ServiceAppointment> sasToPersist,
+        Id overrideTemplateId,
+        Boolean calledFromUpdate
     ) {
         if (!validateForCreate(out, sa, ctx)) return;
 
@@ -451,31 +568,59 @@ public without sharing class ZoomMeetingManager {
         out.meetingUrl = out.joinUrl;
         out.hostEmail  = ctx.host.Email;
 
-        if (String.isBlank(sa.Zoom_Join_URL__c))  sa.Zoom_Join_URL__c  = out.joinUrl;
-        if (String.isBlank(sa.Zoom_Link__c))      sa.Zoom_Link__c      = out.joinUrl;
-        if (String.isBlank(sa.Zoom_Start_URL__c)) sa.Zoom_Start_URL__c = out.startUrl;
-        if (String.isBlank(sa.Zoom_Meeting_ID__c)) sa.Zoom_Meeting_ID__c = out.meetingId;
+        // Pure CREATE keeps the existing semantics where Zoom_* fields only get hydrated if blank.
+        // The CREATE-via-UPDATE path *overwrites* them, because the previous Zoom meeting is gone.
+        if (calledFromUpdate) {
+            sa.Zoom_Join_URL__c  = out.joinUrl;
+            sa.Zoom_Link__c      = out.joinUrl;
+            sa.Zoom_Start_URL__c = out.startUrl;
+            sa.Zoom_Meeting_ID__c = out.meetingId;
+        } else {
+            if (String.isBlank(sa.Zoom_Join_URL__c))  sa.Zoom_Join_URL__c  = out.joinUrl;
+            if (String.isBlank(sa.Zoom_Link__c))      sa.Zoom_Link__c      = out.joinUrl;
+            if (String.isBlank(sa.Zoom_Start_URL__c)) sa.Zoom_Start_URL__c = out.startUrl;
+            if (String.isBlank(sa.Zoom_Meeting_ID__c)) sa.Zoom_Meeting_ID__c = out.meetingId;
+        }
         if (sasToPersist != null) sasToPersist.put(sa.Id, sa);
 
         String uid = computeIcsUid(sa);
-        Integer seq = 0;
+        Integer seq = calledFromUpdate ? deriveSequence(sa) : 0;
         out.icsUid      = uid;
         out.icsSequence = seq;
+
+        // CREATE-via-UPDATE: send RESCHEDULE email so users see "rescheduled", not a fresh booking.
+        if (calledFromUpdate
+            && ctx != null && String.isNotBlank(ctx.attendeeEmail)) {
+            String zoomInvitationText = fetchZoomInvitation(http, out.meetingId);
+            String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
+                                  out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct);
+            queueInvite(ZoomMeetingEmailService.InviteType.RESCHEDULE,
+                        sa, ctx, parentsByAcct, orgWideId, ics, zoomInvitationText,
+                        out, emailBatch, emailOwners, overrideTemplateId);
+            // Surface the fact that we had to recreate, so admins can see it in the OutputWrapper.
+            out.action = ACTION_UPDATE;
+        }
 
         out.status = STATUS_SUCCESS;
     }
 
-    // UPDATE handler: PATCH the existing Zoom meeting and queue a RESCHEDULE email; falls back to CREATE if 404 / no meeting id.
+    // UPDATE handler: PATCH the existing Zoom meeting and queue a RESCHEDULE email;
+    // if Zoom_Meeting_ID__c is missing or Zoom returns 404, falls back to creating a new
+    // meeting AND still sends a RESCHEDULE email (handleCreate with calledFromUpdate=true).
     private static void handleUpdate(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
         List<OutputWrapper> emailOwners,
-        Map<Id, ServiceAppointment> sasToPersist
+        Map<Id, ServiceAppointment> sasToPersist,
+        Id overrideTemplateId
     ) {
         if (String.isBlank(sa.Zoom_Meeting_ID__c)) {
-            out.action = ACTION_CREATE;
-            handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist);
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM handleUpdate: SA ' + sa.Id +
+                ' has no Zoom_Meeting_ID__c, falling back to CREATE-as-UPDATE (RESCHEDULE email).');
+            handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http,
+                         emailBatch, emailOwners, sasToPersist, overrideTemplateId, true);
             return;
         }
         if (!validateForCreate(out, sa, ctx)) return;
@@ -485,8 +630,14 @@ public without sharing class ZoomMeetingManager {
         HttpResponse res = doCallout(http, 'PATCH', endpoint, payload);
 
         if (res.getStatusCode() == 404) {
-            out.action = ACTION_CREATE;
-            handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http, emailBatch, emailOwners, sasToPersist);
+            System.debug(LoggingLevel.WARN,
+                '>>> ZMM handleUpdate: Zoom PATCH 404 for meetingId=' + sa.Zoom_Meeting_ID__c +
+                ' on SA ' + sa.Id + ', meeting no longer exists in Zoom. ' +
+                'Falling back to CREATE-as-UPDATE (RESCHEDULE email).');
+            // Clear the stale id so handleCreate writes the fresh one.
+            sa.Zoom_Meeting_ID__c = null;
+            handleCreate(out, sa, ctx, parentsByAcct, orgWideId, http,
+                         emailBatch, emailOwners, sasToPersist, overrideTemplateId, true);
             return;
         }
         if (!isSuccess(res)) {
@@ -512,37 +663,63 @@ public without sharing class ZoomMeetingManager {
                               out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct);
         queueInvite(ZoomMeetingEmailService.InviteType.RESCHEDULE,
                     sa, ctx, parentsByAcct, orgWideId, ics, zoomInvitationText,
-                    out, emailBatch, emailOwners);
+                    out, emailBatch, emailOwners, overrideTemplateId);
 
         out.status = STATUS_SUCCESS;
     }
 
-    // CANCEL handler: flip Lead status if Lead-based, DELETE the Zoom meeting, populate output fields.
+    // CANCEL handler:
+    //   1. Flip the parent Lead's Status (best-effort, only for Lead-based SAs).
+    //   2. Best-effort Zoom DELETE so the join URL stops working (skipped if no meetingId).
+    //   3. ALWAYS queue the cancellation email when we have an attendee — independent of
+    //      whether step 2 ran/succeeded. The user's intent is "send cancellation"; the
+    //      Zoom side-effect is a nice-to-have.
     private static void handleCancel(
         OutputWrapper out, ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct, Id orgWideId, Http http,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
-        List<OutputWrapper> emailOwners
+        List<OutputWrapper> emailOwners,
+        Id overrideTemplateId
     ) {
         flipLeadStatusToCanceled(sa);
 
-        if (String.isBlank(sa.Zoom_Meeting_ID__c)) {
-            out.status = STATUS_SKIPPED;
-            out.errorMessage = 'No Zoom meeting found to cancel.';
-            return;
-        }
-
+        // Step 2 — Zoom DELETE (best-effort). 404 from Zoom is fine: the meeting is already gone.
+        Boolean zoomDeleted = false;
+        Boolean zoomDeleteFailed = false;
+        String  zoomDeleteError = null;
         if (String.isNotBlank(sa.Zoom_Meeting_ID__c)) {
-            String endpoint = NAMED_CREDENTIAL + '/meetings/' + sa.Zoom_Meeting_ID__c
-                            + '?schedule_for_reminder=false&cancel_meeting_reminder=true';
-            HttpResponse res = doCallout(http, 'DELETE', endpoint, null);
-            if (!isSuccess(res) && res.getStatusCode() != 404) {
-                out.status = STATUS_ERROR;
-                out.errorMessage = 'Zoom delete failed: ' + describe(res);
-                return;
+            try {
+                String endpoint = NAMED_CREDENTIAL + '/meetings/' + sa.Zoom_Meeting_ID__c
+                                + '?schedule_for_reminder=false&cancel_meeting_reminder=true';
+                HttpResponse res = doCallout(http, 'DELETE', endpoint, null);
+                if (isSuccess(res) || res.getStatusCode() == 404) {
+                    zoomDeleted = true;
+                    System.debug(LoggingLevel.INFO,
+                        '>>> ZMM handleCancel: Zoom DELETE ok for SA ' + sa.Id +
+                        ' meetingId=' + sa.Zoom_Meeting_ID__c +
+                        ' (statusCode=' + res.getStatusCode() + ')');
+                } else {
+                    zoomDeleteFailed = true;
+                    zoomDeleteError = describe(res);
+                    System.debug(LoggingLevel.WARN,
+                        '>>> ZMM handleCancel: Zoom DELETE FAILED for SA ' + sa.Id +
+                        ' meetingId=' + sa.Zoom_Meeting_ID__c + ' — ' + zoomDeleteError +
+                        '. Cancellation email will still be sent.');
+                }
+            } catch (Exception e) {
+                zoomDeleteFailed = true;
+                zoomDeleteError = e.getMessage();
+                System.debug(LoggingLevel.WARN,
+                    '>>> ZMM handleCancel: Zoom DELETE threw for SA ' + sa.Id + ': ' + zoomDeleteError +
+                    '. Cancellation email will still be sent.');
             }
+        } else {
+            System.debug(LoggingLevel.INFO,
+                '>>> ZMM handleCancel: no Zoom_Meeting_ID__c on SA ' + sa.Id +
+                ' — skipping Zoom DELETE, still sending cancellation email.');
         }
 
+        // Populate output fields so Flow / callers can see what happened.
         String joinUrlForIcs = (sa.Zoom_Join_URL__c != null) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
         String uid = computeIcsUid(sa);
         Integer seq = deriveSequence(sa);
@@ -554,7 +731,35 @@ public without sharing class ZoomMeetingManager {
         out.meetingUrl = joinUrlForIcs;
         out.hostEmail  = (ctx != null && ctx.host != null) ? ctx.host.Email : null;
 
+        // Step 3 — Cancellation email. Always send when we have an attendee.
+        if (ctx == null || String.isBlank(ctx.attendeeEmail)) {
+            out.status = STATUS_ERROR;
+            out.errorMessage = 'Cancellation: no attendee email could be resolved. '
+                             + 'Populate Contact.Email (for converted leads) or Lead.Email / SA.Email.';
+            System.debug(LoggingLevel.WARN,
+                '>>> ZMM handleCancel: SA ' + sa.Id + ' — no attendee email, no cancellation email sent.');
+            return;
+        }
+
+        System.debug(LoggingLevel.INFO,
+            '>>> ZMM handleCancel: SA=' + sa.Id +
+            ' attendee=' + ctx.attendeeEmail +
+            ' overrideTemplateId=' + overrideTemplateId +
+            ' zoomDeleted=' + zoomDeleted +
+            ' zoomDeleteFailed=' + zoomDeleteFailed);
+
+        String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_CANCEL,
+                              joinUrlForIcs, sa.Zoom_Meeting_ID__c, null, parentsByAcct);
+        queueInvite(ZoomMeetingEmailService.InviteType.CANCELLATION,
+                    sa, ctx, parentsByAcct, orgWideId, ics, null,
+                    out, emailBatch, emailOwners, overrideTemplateId);
+
+        // Final status: SUCCESS if Zoom delete went OK or wasn't needed; otherwise still SUCCESS
+        // for the email path but surface the Zoom failure in errorMessage for visibility.
         out.status = STATUS_SUCCESS;
+        if (zoomDeleteFailed && String.isBlank(out.errorMessage)) {
+            out.errorMessage = 'Cancellation email queued, but Zoom DELETE failed: ' + zoomDeleteError;
+        }
     }
 
     public class MeetingContext {
@@ -880,14 +1085,20 @@ public without sharing class ZoomMeetingManager {
     // Queueable wrapper around manage(action='UPDATE') so callers can enqueue the Zoom PATCH after committing the new SchedStartTime.
     public class ZoomRescheduleQueueable implements Queueable, Database.AllowsCallouts {
         private Id serviceAppointmentId;
+        private String emailTemplateDeveloperName;
         public ZoomRescheduleQueueable(Id saId) {
+            this(saId, null);
+        }
+        public ZoomRescheduleQueueable(Id saId, String emailTemplateDeveloperName) {
             this.serviceAppointmentId = saId;
+            this.emailTemplateDeveloperName = emailTemplateDeveloperName;
         }
         public void execute(QueueableContext ctx) {
             if (serviceAppointmentId == null) return;
             InputWrapper input = new InputWrapper();
             input.serviceAppointmentId = serviceAppointmentId;
             input.action = ACTION_UPDATE;
+            input.emailTemplateDeveloperName = emailTemplateDeveloperName;
             ZoomMeetingManager.manage(new List<InputWrapper>{ input });
         }
     }
@@ -1060,6 +1271,14 @@ public without sharing class ZoomMeetingManager {
     }
 
     // Builds a SendInput for this SA and adds it to the transaction-wide email batch.
+    //
+    // Template selection rules (per your Flow requirement):
+    //   1. Flow-supplied overrideTemplateId wins, regardless of Contact vs Lead parent.
+    //   2. If override is null, fall back to the per-inviteType class-constant default.
+    //   3. If neither resolves to a real EmailTemplate Id, fall back to the Apex-built body.
+    //
+    // targetObjectId must be a Contact, Lead, or User. For Lead-parented SAs we use the
+    // parent Lead's Id so Lightning templates have a valid recipient for merge fields.
     private static void queueInvite(
         ZoomMeetingEmailService.InviteType inviteType,
         ServiceAppointment sa, MeetingContext ctx,
@@ -1067,8 +1286,15 @@ public without sharing class ZoomMeetingManager {
         Id orgWideId, String ics, String zoomInvitationText,
         OutputWrapper out,
         List<ZoomMeetingEmailService.SendInput> emailBatch,
-        List<OutputWrapper> emailOwners
+        List<OutputWrapper> emailOwners,
+        Id overrideTemplateId
     ) {
+        // Resolve a valid targetObjectId — Contact for converted SAs, Lead for IC SAs, else null.
+        Id targetId = sa.ContactId;
+        if (targetId == null && sa.ParentRecordType == 'Lead' && sa.ParentRecordId != null) {
+            targetId = sa.ParentRecordId;
+        }
+
         ZoomMeetingEmailService.SendInput sin = new ZoomMeetingEmailService.SendInput();
         sin.inviteType = inviteType;
         sin.icsContent = ics;
@@ -1076,15 +1302,48 @@ public without sharing class ZoomMeetingManager {
         sin.ccEmails   = buildCcList(sa, ctx, parentsByAcct);
         sin.orgWideEmailId = orgWideId;
         sin.relatedWhatId  = sa.Id;
-        sin.targetObjectId = sa.ContactId;
-        sin.logEmailOnSend = (sa.ContactId != null);
+        sin.targetObjectId = targetId;
+        sin.logEmailOnSend = (targetId != null);
 
-        if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING
-                && sa.ContactId != null) {
-            sin.templateId = getScheduledEmailTemplateId();
-        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE
-                && sa.ContactId != null) {
-            sin.templateId = getRescheduledEmailTemplateId();
+        // Pick the template Id we want to use for this invite.
+        Id resolvedTemplateId = null;
+        String templateSource;
+        if (overrideTemplateId != null) {
+            resolvedTemplateId = overrideTemplateId;
+            templateSource = 'flow-override';
+        } else if (inviteType == ZoomMeetingEmailService.InviteType.NEW_BOOKING) {
+            // CREATE keeps Contact-vs-Lead routing to the existing class defaults.
+            Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
+            resolvedTemplateId = isLeadBased
+                ? getIcScheduledEmailTemplateId()
+                : getScheduledEmailTemplateId();
+            templateSource = 'create-default';
+        } else if (inviteType == ZoomMeetingEmailService.InviteType.RESCHEDULE) {
+            resolvedTemplateId = getRescheduledEmailTemplateId();
+            templateSource = 'reschedule-default';
+        } else if (inviteType == ZoomMeetingEmailService.InviteType.CANCELLATION) {
+            resolvedTemplateId = getCancelledEmailTemplateId();
+            templateSource = 'cancel-default';
+        } else {
+            templateSource = 'apex-body';
+        }
+
+        // Lightning templates require targetObjectId. If we don't have one, we cannot
+        // use a template — fall through to the Apex-built body even if a template Id resolved.
+        Boolean canUseTemplate = resolvedTemplateId != null && targetId != null;
+
+        System.debug(LoggingLevel.INFO,
+            '>>> ZMM queueInvite: SA=' + sa.Id +
+            ' inviteType=' + inviteType +
+            ' contactId=' + sa.ContactId +
+            ' targetObjectId=' + targetId +
+            ' overrideIn=' + overrideTemplateId +
+            ' resolvedTemplateId=' + resolvedTemplateId +
+            ' canUseTemplate=' + canUseTemplate +
+            ' source=' + (canUseTemplate ? templateSource : 'apex-body'));
+
+        if (canUseTemplate) {
+            sin.templateId = resolvedTemplateId;
         } else {
             sin.subject   = buildSubject(inviteType, sa, ctx);
             sin.htmlBody  = buildHtmlBody(inviteType, sa, ctx, zoomInvitationText);
@@ -1095,7 +1354,7 @@ public without sharing class ZoomMeetingManager {
         emailOwners.add(out);
     }
 
-    // CC list for create / reschedule = verified parents + resolved host.
+    // CC list for create / reschedule / cancellation = verified parents + resolved host.
     private static List<String> buildCcList(
         ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct
