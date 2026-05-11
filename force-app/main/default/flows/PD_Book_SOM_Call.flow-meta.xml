@@ -441,6 +441,13 @@
                 <elementReference>Get_FSS_Service_Territory.State</elementReference>
             </value>
         </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Family_Success_Specialist__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Opportunity_Record.Family_Success_Specialist__c</elementReference>
+            </value>
+        </assignmentItems>
         <connector>
             <targetReference>FSS_Review_Screen</targetReference>
         </connector>
@@ -560,6 +567,13 @@
             <operator>Assign</operator>
             <value>
                 <elementReference>Get_PD_Service_Territory.State</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>ServiceAppointment.Program_Director__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_PD_Service_Resource.RelatedRecordId</elementReference>
             </value>
         </assignmentItems>
         <connector>

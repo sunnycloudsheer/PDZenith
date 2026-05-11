@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
+    <assignments>
+        <name>Assign_Event_Fields</name>
+        <label>Assign Event Fields</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>eventRecord.WhatId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ParentRecordId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.WhoId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ContactId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.StartDateTime</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.SchedStartTime</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.EndDateTime</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.SchedEndTime</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.ServiceAppointmentId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.Subject</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Subject</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.OwnerId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Service_Resource.RelatedRecordId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.Description</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>eventDescription</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.Attendees</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.ContactId</elementReference>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>eventRecord.Service_Appointment__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Create_Calendar_Event</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <description>Check if Service Resource was found for the counselor</description>
+        <name>Check_Service_Resource</name>
+        <label>Check Service Resource</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>No Service Resource - Stop</defaultConnectorLabel>
+        <rules>
+            <name>Service_Resource_Found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Service_Resource</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Check_Existing_Event</targetReference>
+            </connector>
+            <label>Service Resource Found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Event_Already_Exists</name>
+        <label>Event Already Exists</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>Event Exists - Skip</defaultConnectorLabel>
+        <rules>
+            <name>No_Event_Create_One</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Check_Existing_Event</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Event_Fields</targetReference>
+            </connector>
+            <label>No Event - Create One</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Only create a calendar Event if the meeting start time is in the future.</description>
+        <name>Is_Meeting_In_Future</name>
+        <label>Is Meeting In Future</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnectorLabel>Meeting Is In Past - Stop</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Future_Meeting</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>isMeetingInFuture</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.ContactId</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Contact_Record</targetReference>
+            </connector>
+            <label>Yes - Future Meeting</label>
+        </rules>
+    </decisions>
+    <description>Triggers on ServiceAppointment creation. Automatically finds the counselor (via Substitute or Contact Owner), then creates a calendar Event. Only for future-dated meetings. No manual Assigned Resource creation needed.</description>
+    <environments>Default</environments>
+    <formulas>
+        <description>Determines the counselor: uses Substitute Educational Strategist if active substitute exists, otherwise uses the Contact Owner. Same logic as the Screen Flow.</description>
+        <name>assignedResourceValue</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  NOT(ISBLANK({!Get_Substitute.Id})),
+  {!Get_Substitute.Substitute_Educational_Strategist__c},
+  {!Get_Contact_Record.OwnerId}
+)</expression>
+    </formulas>
+    <formulas>
+        <description>Returns TRUE if the meeting start time is after the current time.</description>
+        <name>isMeetingInFuture</name>
+        <dataType>Boolean</dataType>
+        <expression>{!$Record.SchedStartTime} &gt; NOW()</expression>
+    </formulas>
+    <interviewLabel>Sync Service Appointment To Calendar {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Sync Service Appointment To Calendar</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordCreates>
+        <name>Create_Calendar_Event</name>
+        <label>Create Calendar Event</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <inputReference>eventRecord</inputReference>
+    </recordCreates>
+    <recordLookups>
+        <name>Check_Existing_Event</name>
+        <label>Check Existing Event</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Event_Already_Exists</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>ServiceAppointmentId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Event</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Contact_Record</name>
+        <label>Get Contact Record</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Substitute</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.ContactId</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Contact</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Find the Service Resource for the counselor using Substitute ES or Contact Owner</description>
+        <name>Get_Service_Resource</name>
+        <label>Get Service Resource</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Check_Service_Resource</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>RelatedRecordId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>assignedResourceValue</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>ServiceResource</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Check for active substitute, same as Screen Flow</description>
+        <name>Get_Substitute</name>
+        <label>Get Substitute</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Service_Resource</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Contact__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>Get_Contact_Record.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Active__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Substitute__c</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <runInMode>SystemModeWithoutSharing</runInMode>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Is_Meeting_In_Future</targetReference>
+        </connector>
+        <object>ServiceAppointment</object>
+        <recordTriggerType>Create</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+    <textTemplates>
+        <name>eventDescription</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>Meeting with {!Get_Contact_Record.Name} is scheduled.
+
+Location: This is a Zoom web conference.
+
+You can join this meeting from your computer, tablet, or smartphone.
+To navigate to the student record, click the link:  https://site-enterprise-6958.lightning.force.com/lightning/r/Contact/{!Get_Contact_Record.Id}/view
+
+Thanks!</text>
+    </textTemplates>
+    <textTemplates>
+        <name>Subject</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>{!Get_Contact_Record.Name} - Educational Strategist Meeting</text>
+    </textTemplates>
+    <variables>
+        <name>eventRecord</name>
+        <dataType>SObject</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <objectType>Event</objectType>
+    </variables>
+</Flow>

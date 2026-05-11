@@ -1181,53 +1181,51 @@ public without sharing class GuestSchedulerController {
         res.put('eventId', booking.Id);
         res.put('success', 'true');
 
+        Id saTerritoryId = (assignment.territoryId != null)
+            ? assignment.territoryId : cfg.serviceTerritoryId;
+        ServiceAppointment sa = new ServiceAppointment();
+        sa.ParentRecordId = mktLead.Id;
+        sa.ServiceTerritoryId = saTerritoryId;
+        sa.WorkTypeId = cfg.workTypeId;
+        DateTime saEndDT = startDT.addMinutes(60);
+        sa.EarliestStartTime = startDT;
+        sa.DueDate = saEndDT;
+        sa.SchedStartTime = startDT;
+        sa.SchedEndTime = saEndDT;
+        sa.ArrivalWindowStartTime = startDT;
+        sa.ArrivalWindowEndTime = saEndDT;
+        sa.DurationType = cfg.durationType;
+        sa.AppointmentType = cfg.appointmentType;
+        sa.Status = 'Scheduled';
+        sa.Subject = SUBJECT_MAP.get('IC');
+        sa.Street = cfg.street;
+        sa.City = cfg.city;
+        sa.State = cfg.state;
+        sa.Phone = cleanPhone;
+        sa.Email = cleanEmail;
+        sa.Meeting_Type__c = MEETING_TYPE_MAP.get('IC');
+        sa.AdditionalInformation = cfg.workTypeName;
+        sa.Admission_Counselor__c = assignment.userId;
+        if (String.isNotBlank(clientTimezone)) sa.TimeZone = normalizeTimezone(clientTimezone);
+        sa.Student_Grade__c = studentGrade;
+        sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
+        tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
+        tryPut(sa, 'Lead__c', mktLead.Id);
+        tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
+        insert sa;
+
+        AssignedResource ar = new AssignedResource();
+        ar.ServiceAppointmentId = sa.Id;
+        ar.ServiceResourceId = assignment.resourceId;
+        insert ar;
+
+        res.put('appointmentId', sa.Id);
+        stampActionUrls(res, sa.Reschedule_Token__c);
         try {
-            Id saTerritoryId = (assignment.territoryId != null)
-                ? assignment.territoryId : cfg.serviceTerritoryId;
-            ServiceAppointment sa = new ServiceAppointment();
-            sa.ParentRecordId = mktLead.Id;
-            sa.ServiceTerritoryId = saTerritoryId;
-            sa.WorkTypeId = cfg.workTypeId;
-            DateTime saEndDT = startDT.addMinutes(60);
-            sa.EarliestStartTime = startDT;
-            sa.DueDate = saEndDT;
-            sa.SchedStartTime = startDT;
-            sa.SchedEndTime = saEndDT;
-            sa.ArrivalWindowStartTime = startDT;
-            sa.ArrivalWindowEndTime = saEndDT;
-            sa.DurationType = cfg.durationType;
-            sa.AppointmentType = cfg.appointmentType;
-            sa.Status = 'Scheduled';
-            sa.Subject = SUBJECT_MAP.get('IC');
-            sa.Street = cfg.street;
-            sa.City = cfg.city;
-            sa.State = cfg.state;
-            sa.Phone = cleanPhone;
-            sa.Email = cleanEmail;
-            sa.Meeting_Type__c = MEETING_TYPE_MAP.get('IC');
-            sa.AdditionalInformation = cfg.workTypeName;
-            sa.Admission_Counselor__c = assignment.userId;
-            if (String.isNotBlank(clientTimezone)) sa.TimeZone = normalizeTimezone(clientTimezone);
-            sa.Student_Grade__c = studentGrade;
-            sa.Reschedule_Token__c = RescheduleTokenService.generateToken();
-            tryPut(sa, 'Customer_Name__c', cleanFirst + ' ' + cleanLast);
-            tryPut(sa, 'Lead__c', mktLead.Id);
-            tryPut(sa, 'Landing_Page_Source__c', landingPageSource);
-            insert sa;
-
-            AssignedResource ar = new AssignedResource();
-            ar.ServiceAppointmentId = sa.Id;
-            ar.ServiceResourceId = assignment.resourceId;
-            insert ar;
-
-            res.put('appointmentId', sa.Id);
-            stampActionUrls(res, sa.Reschedule_Token__c);
-            try {
-                tryPut(booking, 'Service_Appointment__c', sa.Id);
-                booking.Description += '\nAppointment: ' + sa.Id;
-                update booking;
-            } catch (Exception ue) { }
-        } catch (Exception saEx) { }
+            tryPut(booking, 'Service_Appointment__c', sa.Id);
+            booking.Description += '\nAppointment: ' + sa.Id;
+            update booking;
+        } catch (Exception ue) { }
 
         try {
             Lead upd = new Lead(Id = mktLead.Id);
