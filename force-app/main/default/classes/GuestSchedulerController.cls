@@ -50,6 +50,9 @@ public without sharing class GuestSchedulerController {
         List<Id> orderedResourceIds = new List<Id>();
         Map<Id,Id> resourceToUserId = new Map<Id,Id>();
         Map<Id,Id> resourceToTerritoryId = new Map<Id,Id>();
+        // STM.OperatingHoursId for each resource. Resources without an OperatingHoursId
+        // (no working hours configured at all) are excluded entirely in loadResources.
+        Map<Id,Id> resourceToOperatingHoursId = new Map<Id,Id>();
     }
 
     private class ResourceAssignment {
@@ -84,13 +87,19 @@ public without sharing class GuestSchedulerController {
         return d;
     }
 
-    // Count how many resources are free in the given UTC window.
+    // Count how many resources are free in the given UTC window. A resource counts only when
+    // (a) its personal OperatingHours covers the slot in tz-local time, AND (b) it has no
+    // overlapping busy interval. Pre-fix this checked busy only — resources with no working hours
+    // at the requested time would still be counted, and could be picked round-robin at booking.
     private static Integer countFreeResources(
         ResourceBundle rb, Map<Id, List<List<DateTime>>> rawBusy,
+        Map<Id, Map<String, List<TimeSlot>>> hoursByOh,
+        String tzId,
         DateTime slotStart, DateTime slotEnd
     ) {
         Integer freeCount = 0;
         for (Id rId : rb.resourceIds) {
+            if (!resourceCoversSlot(rId, slotStart, slotEnd, rb, hoursByOh, tzId)) continue;
             List<List<DateTime>> ivs = rawBusy.get(rId);
             Boolean free = true;
             if (ivs != null) {
@@ -741,6 +750,8 @@ public without sharing class GuestSchedulerController {
                 }
             }
 
+            Map<Id, Map<String, List<TimeSlot>>> hoursByOh = loadOperatingHoursForResources(rb);
+
             DateTime dayStart = localToUtc(reqDate, 0, tz);
             DateTime dayEnd = localToUtc(reqDate.addDays(1), 0, tz);
             Map<Id, List<List<DateTime>>> rawBusy =
@@ -748,10 +759,10 @@ public without sharing class GuestSchedulerController {
 
             List<SlotInfo> candidateSlots = generateSlotsForDate(
                 reqDate, cfg.durationMinutes, cfg.slotIntervalMinutes,
-                cfg.timeframeStartDays, slotsByDay, rb, rawBusy, tz, tzId);
+                cfg.timeframeStartDays, slotsByDay, rb, rawBusy, hoursByOh, tz, tzId);
 
             for (SlotInfo si : candidateSlots) {
-                Integer freeCount = countFreeResources(rb, rawBusy, si.startUtc, si.endUtc);
+                Integer freeCount = countFreeResources(rb, rawBusy, hoursByOh, tzId, si.startUtc, si.endUtc);
                 if (freeCount > 0) {
                     result.add(new Map<String, String>{
                         'startUtc' => si.startUtc.formatGmt('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''),
@@ -1521,11 +1532,18 @@ public without sharing class GuestSchedulerController {
         ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, bType);
         if (rb.resourceIds.isEmpty()) return null;
 
+        Map<Id, Map<String, List<TimeSlot>>> hoursByOh = loadOperatingHoursForResources(rb);
+        String tzId = cfg.territoryTimezone;
+
         Map<Id, List<List<DateTime>>> rawBusy =
             buildRawBusyMap(rb, cfg.allTerritoryIds, startDT.addHours(-2), endDT.addHours(2));
 
         List<Id> freeRes = new List<Id>();
         for (Id rId : rb.orderedResourceIds) {
+            // Per-user OH coverage check — a resource is only a candidate if its personal hours
+            // include the requested window. Pre-fix this loop skipped this check, which caused
+            // users with no operating hours at the requested time to be picked round-robin.
+            if (!resourceCoversSlot(rId, startDT, endDT, rb, hoursByOh, tzId)) continue;
             List<List<DateTime>> ivs = rawBusy.get(rId);
             Boolean free = true;
             if (ivs != null) {
@@ -1578,7 +1596,9 @@ public without sharing class GuestSchedulerController {
     private static List<SlotInfo> generateSlotsForDate(
         Date d, Integer duration, Integer slotInterval, Integer timeframeStartDays,
         Map<String, List<TimeSlot>> slotsByDay, ResourceBundle rb,
-        Map<Id, List<List<DateTime>>> rawBusy, TimeZone tz, String tzId
+        Map<Id, List<List<DateTime>>> rawBusy,
+        Map<Id, Map<String, List<TimeSlot>>> hoursByOh,
+        TimeZone tz, String tzId
     ) {
         List<SlotInfo> out = new List<SlotInfo>();
         Date today = Date.today();
@@ -1614,11 +1634,17 @@ public without sharing class GuestSchedulerController {
             Integer we = tw.EndTime.hour()*60 + tw.EndTime.minute();
             Integer ss = ws;
             while (ss + duration <= we) {
-                if (ss >= minStart && isAnyResourceFree(rb.resourceIds, ss, ss+duration, busyMap)) {
-                    SlotInfo si = new SlotInfo();
-                    si.startUtc = localToUtc(d, ss, tz);
-                    si.endUtc = localToUtc(d, ss+duration, tz);
-                    out.add(si);
+                if (ss >= minStart) {
+                    DateTime slotStartUtc = localToUtc(d, ss, tz);
+                    DateTime slotEndUtc   = localToUtc(d, ss + duration, tz);
+                    // Slot is viable only if at least one resource's personal OH covers this
+                    // window AND that resource has no overlapping busy interval.
+                    if (anyResourceAvailable(rb, slotStartUtc, slotEndUtc, busyMap, ss, ss+duration, hoursByOh, tzId)) {
+                        SlotInfo si = new SlotInfo();
+                        si.startUtc = slotStartUtc;
+                        si.endUtc   = slotEndUtc;
+                        out.add(si);
+                    }
                 }
                 ss += interval;
             }
@@ -1643,6 +1669,8 @@ public without sharing class GuestSchedulerController {
         ResourceBundle rb = loadResources(cfg.allTerritoryIds, today, scanEnd, cfg.bookingType);
         if (rb.resourceIds.isEmpty()) return out;
 
+        Map<Id, Map<String, List<TimeSlot>>> hoursByOh = loadOperatingHoursForResources(rb);
+
         DateTime scanStartUtc = localToUtc(today, 0, tz).addHours(-2);
         DateTime scanEndUtc = localToUtc(scanEnd.addDays(1), 0, tz).addHours(2);
 
@@ -1652,10 +1680,12 @@ public without sharing class GuestSchedulerController {
         for (Integer i = 0; i < scanDays && out.size() < targetDays; i++) {
             Date d = today.addDays(i);
             List<SlotInfo> slots = generateSlotsForDate(
-                d, dur, interval, cfg.timeframeStartDays, slotsByDay, rb, rawBusy, tz, tzId);
+                d, dur, interval, cfg.timeframeStartDays, slotsByDay, rb, rawBusy, hoursByOh, tz, tzId);
             Boolean hasAvail = false;
             for (SlotInfo si : slots) {
-                if (countFreeResources(rb, rawBusy, si.startUtc, si.endUtc) > 0) { hasAvail = true; break; }
+                if (countFreeResources(rb, rawBusy, hoursByOh, tzId, si.startUtc, si.endUtc) > 0) {
+                    hasAvail = true; break;
+                }
             }
             if (hasAvail) out.add(toDateStr(d));
         }
@@ -1675,16 +1705,68 @@ public without sharing class GuestSchedulerController {
         return m;
     }
 
+    // Bulk-load TimeSlots for many OperatingHours ids at once, keyed by OH id then day-of-week.
+    // Used by per-resource hour checks so a candidate slot only counts for resources whose own
+    // OperatingHours actually cover the requested window.
+    private static Map<Id, Map<String, List<TimeSlot>>> loadOperatingHoursForResources(ResourceBundle rb) {
+        Map<Id, Map<String, List<TimeSlot>>> out = new Map<Id, Map<String, List<TimeSlot>>>();
+        Set<Id> ohIds = new Set<Id>(rb.resourceToOperatingHoursId.values());
+        ohIds.remove(null);
+        if (ohIds.isEmpty()) return out;
+        for (Id ohId : ohIds) out.put(ohId, new Map<String, List<TimeSlot>>());
+        for (TimeSlot ts : [
+            SELECT OperatingHoursId, DayOfWeek, StartTime, EndTime FROM TimeSlot
+            WHERE OperatingHoursId IN :ohIds ORDER BY StartTime ASC
+        ]) {
+            Map<String, List<TimeSlot>> byDay = out.get(ts.OperatingHoursId);
+            if (byDay == null) {
+                byDay = new Map<String, List<TimeSlot>>();
+                out.put(ts.OperatingHoursId, byDay);
+            }
+            if (!byDay.containsKey(ts.DayOfWeek)) byDay.put(ts.DayOfWeek, new List<TimeSlot>());
+            byDay.get(ts.DayOfWeek).add(ts);
+        }
+        return out;
+    }
+
+    // Does this resource's personal OperatingHours cover the given UTC window in `tzId` local time?
+    // Returns false if the resource has no OH mapping, no TimeSlot rows for that day-of-week, or
+    // no slot whose StartTime/EndTime fully contains the requested window.
+    private static Boolean resourceCoversSlot(
+        Id resourceId, DateTime slotStartUtc, DateTime slotEndUtc,
+        ResourceBundle rb, Map<Id, Map<String, List<TimeSlot>>> hoursByOh,
+        String tzId
+    ) {
+        Id ohId = rb.resourceToOperatingHoursId.get(resourceId);
+        if (ohId == null) return false;
+        Map<String, List<TimeSlot>> byDay = hoursByOh.get(ohId);
+        if (byDay == null) return false;
+        String dayName = slotStartUtc.format('EEEE', tzId);
+        List<TimeSlot> windows = byDay.get(dayName);
+        if (windows == null || windows.isEmpty()) return false;
+        Integer localStartMin = Integer.valueOf(slotStartUtc.format('H', tzId)) * 60
+                              + Integer.valueOf(slotStartUtc.format('m', tzId));
+        Integer durMin = (Integer)((slotEndUtc.getTime() - slotStartUtc.getTime()) / (1000L * 60L));
+        Integer localEndMin = localStartMin + durMin;
+        for (TimeSlot tw : windows) {
+            Integer ws = tw.StartTime.hour() * 60 + tw.StartTime.minute();
+            Integer we = tw.EndTime.hour() * 60 + tw.EndTime.minute();
+            if (localStartMin >= ws && localEndMin <= we) return true;
+        }
+        return false;
+    }
+
     // Load the active resources (filtered by profile) and their territory + user mappings.
     private static ResourceBundle loadResources(
         Set<Id> territoryIds, Date rangeStart, Date rangeEnd, String bType
     ) {
         ResourceBundle rb = new ResourceBundle();
         Map<Id,Id> bestTerritory = new Map<Id,Id>();
+        Map<Id,Id> bestOh = new Map<Id,Id>();
         Set<Id> candidates = new Set<Id>();
 
         for (ServiceTerritoryMember m : [
-            SELECT ServiceResourceId, ServiceTerritoryId
+            SELECT ServiceResourceId, ServiceTerritoryId, OperatingHoursId
             FROM ServiceTerritoryMember
             WHERE ServiceTerritoryId IN :territoryIds
             AND EffectiveStartDate <= :rangeEnd
@@ -1695,6 +1777,12 @@ public without sharing class GuestSchedulerController {
             candidates.add(m.ServiceResourceId);
             if (!bestTerritory.containsKey(m.ServiceResourceId)) {
                 bestTerritory.put(m.ServiceResourceId, m.ServiceTerritoryId);
+            }
+            // Capture the first non-null OperatingHoursId seen for the resource. Resources whose
+            // STMs all have null OperatingHoursId are dropped below — they have no work hours
+            // configured and must not be picked round-robin or counted toward slot availability.
+            if (m.OperatingHoursId != null && !bestOh.containsKey(m.ServiceResourceId)) {
+                bestOh.put(m.ServiceResourceId, m.OperatingHoursId);
             }
         }
         if (candidates.isEmpty()) return rb;
@@ -1726,11 +1814,13 @@ public without sharing class GuestSchedulerController {
         }
 
         for (Id srId : srToUser.keySet()) {
-            if (validUsers.contains(srToUser.get(srId))) {
+            // Exclude resources with no STM operating hours — no hours = not bookable.
+            if (validUsers.contains(srToUser.get(srId)) && bestOh.containsKey(srId)) {
                 rb.resourceIds.add(srId);
                 rb.orderedResourceIds.add(srId);
                 rb.resourceToUserId.put(srId, srToUser.get(srId));
                 rb.resourceToTerritoryId.put(srId, bestTerritory.get(srId));
+                rb.resourceToOperatingHoursId.put(srId, bestOh.get(srId));
             }
         }
         return rb;
@@ -1795,16 +1885,26 @@ public without sharing class GuestSchedulerController {
         return busy;
     }
 
-    // Returns true if at least one resource has no overlap in the local-minute window.
-    private static Boolean isAnyResourceFree(
-        Set<Id> rIds, Integer ss, Integer se, Map<Id, List<List<Integer>>> busyMap
+    // Returns true if at least one resource has BOTH (a) personal OH covering [slotStartUtc, slotEndUtc]
+    // AND (b) no overlapping busy interval in the local-minute window [ss, se].
+    // The slot-start/end is passed in both UTC (for the per-resource OH check) and local minutes
+    // (for the pre-computed busyMap check) to avoid re-converting twice per call.
+    private static Boolean anyResourceAvailable(
+        ResourceBundle rb,
+        DateTime slotStartUtc, DateTime slotEndUtc,
+        Map<Id, List<List<Integer>>> busyMap,
+        Integer ss, Integer se,
+        Map<Id, Map<String, List<TimeSlot>>> hoursByOh,
+        String tzId
     ) {
-        for (Id rId : rIds) {
+        for (Id rId : rb.resourceIds) {
+            if (!resourceCoversSlot(rId, slotStartUtc, slotEndUtc, rb, hoursByOh, tzId)) continue;
             List<List<Integer>> b = busyMap.get(rId);
-            if (b == null || b.isEmpty()) return true;
             Boolean free = true;
-            for (List<Integer> iv : b) {
-                if (ss < iv[1] && se > iv[0]) { free = false; break; }
+            if (b != null) {
+                for (List<Integer> iv : b) {
+                    if (ss < iv[1] && se > iv[0]) { free = false; break; }
+                }
             }
             if (free) return true;
         }

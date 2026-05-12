@@ -424,7 +424,7 @@
                 <leftValueReference>$Record.SchedStartTime</leftValueReference>
                 <operator>GreaterThan</operator>
                 <rightValue>
-                    <elementReference>NOW</elementReference>
+                    <elementReference>Cutoff_8h</elementReference>
                 </rightValue>
             </conditions>
             <connector>
@@ -482,7 +482,7 @@
                 <leftValueReference>$Record.SchedStartTime</leftValueReference>
                 <operator>GreaterThan</operator>
                 <rightValue>
-                    <elementReference>NOW</elementReference>
+                    <elementReference>Cutoff_86h</elementReference>
                 </rightValue>
             </conditions>
             <connector>
@@ -514,6 +514,13 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>$Record.SchedStartTime</leftValueReference>
+                <operator>GreaterThan</operator>
+                <rightValue>
+                    <elementReference>Cutoff_48h</elementReference>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Send_48_Hours_Prior_Email_notification</targetReference>
             </connector>
@@ -543,6 +550,13 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>$Record.SchedStartTime</leftValueReference>
+                <operator>GreaterThan</operator>
+                <rightValue>
+                    <elementReference>Cutoff_2h</elementReference>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Send_2_Hours_Prior_Email_notification</targetReference>
             </connector>
@@ -567,6 +581,30 @@
         <name>NOW</name>
         <dataType>DateTime</dataType>
         <expression>NOW()</expression>
+    </formulas>
+    <formulas>
+        <name>Cutoff_86h</name>
+        <dataType>DateTime</dataType>
+        <description>Threshold for the 86-hour-prior reminder. Reminder fires only when SchedStartTime is still &gt; this value, i.e. the trigger time hasn't passed.</description>
+        <expression>NOW() + (86/24)</expression>
+    </formulas>
+    <formulas>
+        <name>Cutoff_48h</name>
+        <dataType>DateTime</dataType>
+        <description>Threshold for the 48-hour-prior reminder.</description>
+        <expression>NOW() + (48/24)</expression>
+    </formulas>
+    <formulas>
+        <name>Cutoff_8h</name>
+        <dataType>DateTime</dataType>
+        <description>Threshold for the 8-hour-prior reminder.</description>
+        <expression>NOW() + (8/24)</expression>
+    </formulas>
+    <formulas>
+        <name>Cutoff_2h</name>
+        <dataType>DateTime</dataType>
+        <description>Threshold for the 2-hour-prior reminder.</description>
+        <expression>NOW() + (2/24)</expression>
     </formulas>
     <interviewLabel>Create Meeting Zoom Link And Send Reminders {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Create Meeting Zoom Link And Send Reminders</label>

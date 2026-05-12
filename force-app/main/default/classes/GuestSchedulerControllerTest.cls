@@ -95,7 +95,10 @@ private class GuestSchedulerControllerTest {
                 ServiceTerritoryId = st.Id,
                 ServiceResourceId = sr.Id,
                 EffectiveStartDate = Date.today().addDays(-30),
-                TerritoryType = 'P'
+                TerritoryType = 'P',
+                // Per-user STM operating hours are now required; resources without them
+                // are excluded by loadResources (no work hours = not bookable).
+                OperatingHoursId = oh.Id
             ));
         }
         insert members;
