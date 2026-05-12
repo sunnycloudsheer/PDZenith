@@ -305,9 +305,13 @@ public without sharing class ZoomMeetingManager {
             emailOwners.add(owner);
 
             if (ctx.host != null && String.isNotBlank(ctx.host.Email)) {
-                String hostIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
+                // Host's dedicated copy. METHOD:PUBLISH so Gmail/Outlook accept the event
+                // when the recipient equals the organizer (METHOD:REQUEST fails this check
+                // with "Unable to load event"). ORGANIZER stays as the host's real email
+                // so their calendar shows them as the organizer, not the org-wide mailbox.
+                String hostIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_PUBLISH,
                                           joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
-                                          ORG_SENDER_ADDRESS);
+                                          null);
                 emailBatch.add(buildHostSendInput(sa, ctx, orgWideId, hostIcs));
                 emailOwners.add(owner);
             }

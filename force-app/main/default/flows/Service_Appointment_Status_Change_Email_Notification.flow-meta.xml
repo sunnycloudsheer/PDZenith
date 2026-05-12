@@ -17,7 +17,8 @@
         <inputParameters>
             <name>emailTemplateDeveloperName</name>
             <value>
-                <stringValue>Parent_or_Student_Email_Change_Email_Template_1769714143763</stringValue>
+                <inputConfiguratorMode>Custom</inputConfiguratorMode>
+                <stringValue>Meeting_Cancelled_by_Client_Email_Template_1765299787160</stringValue>
             </value>
         </inputParameters>
         <inputParameters>
@@ -48,30 +49,6 @@
             <name>emailTemplateDeveloperName</name>
             <value>
                 <stringValue>Meeting_Cancelled_by_Educational_Strategist_Email_Template_1765299931137</stringValue>
-            </value>
-        </inputParameters>
-        <inputParameters>
-            <name>serviceAppointmentId</name>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </inputParameters>
-        <nameSegment>ZoomMeetingManager</nameSegment>
-        <offset>0</offset>
-        <storeOutputAutomatically>true</storeOutputAutomatically>
-    </actionCalls>
-    <actionCalls>
-        <name>Call_Cancel_Default</name>
-        <label>Zoom Manager - CANCEL (fallback template)</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <actionName>ZoomMeetingManager</actionName>
-        <actionType>apex</actionType>
-        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
-        <inputParameters>
-            <name>action</name>
-            <value>
-                <stringValue>CANCEL</stringValue>
             </value>
         </inputParameters>
         <inputParameters>
@@ -213,7 +190,7 @@
         <defaultConnectorLabel>No action</defaultConnectorLabel>
         <rules>
             <name>Is_Cancelled</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>1 AND ( 2 OR 3 )</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.StatusCategory</leftValueReference>
                 <operator>EqualTo</operator>
@@ -228,6 +205,13 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Decide_Cancel_Template</targetReference>
             </connector>
@@ -235,7 +219,7 @@
         </rules>
         <rules>
             <name>Is_Rescheduled</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>1 AND ( 2 OR 3 )</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.StatusCategory</leftValueReference>
                 <operator>EqualTo</operator>
@@ -250,6 +234,13 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Call_Update</targetReference>
             </connector>
@@ -257,7 +248,7 @@
         </rules>
         <rules>
             <name>Is_No_Show</name>
-            <conditionLogic>and</conditionLogic>
+            <conditionLogic>1 AND (2 OR 3)</conditionLogic>
             <conditions>
                 <leftValueReference>$Record.Status</leftValueReference>
                 <operator>EqualTo</operator>
@@ -267,6 +258,13 @@
             </conditions>
             <conditions>
                 <leftValueReference>$Record.Contact.Email</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Lead__r.Email</leftValueReference>
                 <operator>IsNull</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
@@ -283,9 +281,6 @@
         <label>Decide Cancel Template</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <defaultConnector>
-            <targetReference>Call_Cancel_Default</targetReference>
-        </defaultConnector>
         <defaultConnectorLabel>Other cancel reason (fallback template)</defaultConnectorLabel>
         <rules>
             <name>Cancelled_By_Staff</name>
@@ -457,7 +452,7 @@
     <start>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <filterLogic>(1 OR 2 OR 3) AND 4 AND 5</filterLogic>
+        <filterLogic>(1 OR 2 OR 3) AND (4 OR (5 AND 6))</filterLogic>
         <filters>
             <field>Status</field>
             <operator>IsChanged</operator>
@@ -480,7 +475,7 @@
             </value>
         </filters>
         <filters>
-            <field>ContactId</field>
+            <field>Lead__c</field>
             <operator>IsNull</operator>
             <value>
                 <booleanValue>false</booleanValue>
@@ -488,6 +483,13 @@
         </filters>
         <filters>
             <field>Student__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <filters>
+            <field>ContactId</field>
             <operator>IsNull</operator>
             <value>
                 <booleanValue>false</booleanValue>
