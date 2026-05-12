@@ -53,12 +53,6 @@
         </connector>
         <flowTransactionModel>Automatic</flowTransactionModel>
         <inputParameters>
-            <name>existingUid</name>
-            <value>
-                <elementReference>Get_Service_Appointment_Record.ICS_UID__c</elementReference>
-            </value>
-        </inputParameters>
-        <inputParameters>
             <name>familyTimezone</name>
             <value>
                 <elementReference>Get_Service_Appointment_Record.TimeZone</elementReference>

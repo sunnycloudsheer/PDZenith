@@ -217,7 +217,7 @@ private class RescheduleTokenServiceTest {
         Test.stopTest();
 
         // Result indicates success regardless of whether the org's Status picklist has the
-        // 'Meeting Canceled by Customer' value (the controller falls back to 'Meeting
+        // 'Meeting Canceled by Parent' value (the controller falls back to 'Meeting
         // Canceled by Student'). Either way, the call should not throw.
         System.assertNotEquals(null, result, 'Result must be populated');
         if ('true'.equals(result.get('success'))) {

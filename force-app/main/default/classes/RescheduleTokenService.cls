@@ -128,7 +128,7 @@ public without sharing class RescheduleTokenService {
             }
 
             // Customer-facing cancel status fires the family-cancel rule in Meeting_After_RTF.
-            sa.Status = 'Meeting Canceled by Customer';
+            sa.Status = 'Meeting Canceled by Parent';
             String reasonText = String.isNotBlank(reason) ? reason : 'Not specified';
             String existingDesc = (sa.Description != null) ? (sa.Description + '\n') : '';
             sa.Description = existingDesc + 'Cancellation reason: ' + reasonText;
