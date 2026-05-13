@@ -3,6 +3,28 @@ private class RescheduleTokenServiceTest {
 
     @TestSetup
     static void setupData() {
+        Profile p = [
+            SELECT Id
+            FROM Profile
+            WHERE Name = 'Admission Counsellor'
+            LIMIT 1
+        ];
+        
+        User u = new User(
+            FirstName = 'Test',
+            LastName = 'Education Strategist',
+            Alias = 'tuser',
+            Email = 'testuser@example.com',
+            Username = 'edstrat@example.com',
+            ProfileId = p.Id,
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+
+        insert u;
+
         Account a = new Account(Name = 'Reschedule Family');
         insert a;
         Contact c = new Contact(
@@ -39,7 +61,9 @@ private class RescheduleTokenServiceTest {
             DueDate = futureStart.addHours(1),
             Status = 'Scheduled',
             Subject = 'Rescheduable SOM',
-            Reschedule_Token__c = 'rt-valid-token-' + System.currentTimeMillis()
+            Reschedule_Token__c = 'rt-valid-token-' + System.currentTimeMillis(),
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = u.Id
         );
         insert saValid;
 
@@ -55,7 +79,9 @@ private class RescheduleTokenServiceTest {
             EarliestStartTime = pastStart,
             DueDate = pastStart.addHours(1),
             Status = 'Scheduled',
-            Reschedule_Token__c = 'rt-past-token-' + System.currentTimeMillis()
+            Reschedule_Token__c = 'rt-past-token-' + System.currentTimeMillis(),
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = u.Id
         );
         insert saPast;
 
@@ -70,7 +96,9 @@ private class RescheduleTokenServiceTest {
             EarliestStartTime = futureStart.addDays(1),
             DueDate = futureStart.addDays(1).addHours(1),
             Status = 'Scheduled',
-            Reschedule_Token__c = 'rt-terminal-token-' + System.currentTimeMillis()
+            Reschedule_Token__c = 'rt-terminal-token-' + System.currentTimeMillis(),
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = u.Id
         );
         insert saTerminal;
         saTerminal.Status = 'Completed';

@@ -38,15 +38,6 @@
         <won>false</won>
     </standardValue>
     <standardValue>
-        <fullName>Proposal Sent</fullName>
-        <default>false</default>
-        <label>Proposal Sent</label>
-        <closed>false</closed>
-        <forecastCategory>Pipeline</forecastCategory>
-        <probability>60</probability>
-        <won>false</won>
-    </standardValue>
-    <standardValue>
         <fullName>Contract Sent</fullName>
         <default>false</default>
         <label>Contract Sent</label>
@@ -56,30 +47,39 @@
         <won>false</won>
     </standardValue>
     <standardValue>
-        <fullName>Enrollment Pending</fullName>
-        <default>false</default>
-        <label>Enrollment Pending</label>
-        <closed>false</closed>
-        <forecastCategory>Pipeline</forecastCategory>
-        <probability>10</probability>
-        <won>false</won>
-    </standardValue>
-    <standardValue>
-        <fullName>Enrollment Pending - Extended</fullName>
-        <default>false</default>
-        <label>Enrollment Pending - Extended</label>
-        <closed>false</closed>
-        <forecastCategory>Pipeline</forecastCategory>
-        <probability>10</probability>
-        <won>false</won>
-    </standardValue>
-    <standardValue>
         <fullName>Contract Signed</fullName>
         <default>false</default>
         <label>Contract Signed</label>
         <closed>false</closed>
         <forecastCategory>Pipeline</forecastCategory>
         <probability>90</probability>
+        <won>false</won>
+    </standardValue>
+    <standardValue>
+        <fullName>Awaiting Payment</fullName>
+        <default>false</default>
+        <label>Awaiting Payment</label>
+        <closed>false</closed>
+        <forecastCategory>Forecast</forecastCategory>
+        <probability>95</probability>
+        <won>false</won>
+    </standardValue>
+    <standardValue>
+        <fullName>FSS Scheduled</fullName>
+        <default>false</default>
+        <label>FSS Scheduled</label>
+        <closed>false</closed>
+        <forecastCategory>Pipeline</forecastCategory>
+        <probability>20</probability>
+        <won>false</won>
+    </standardValue>
+    <standardValue>
+        <fullName>FSS Completed</fullName>
+        <default>false</default>
+        <label>FSS Completed</label>
+        <closed>false</closed>
+        <forecastCategory>Pipeline</forecastCategory>
+        <probability>50</probability>
         <won>false</won>
     </standardValue>
     <standardValue>

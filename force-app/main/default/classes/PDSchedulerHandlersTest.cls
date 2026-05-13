@@ -3,6 +3,28 @@ private class PDSchedulerHandlersTest {
 
     @TestSetup
     static void setupData() {
+        Profile profileAc = [
+            SELECT Id
+            FROM Profile
+            WHERE Name = 'Admission Counsellor'
+            LIMIT 1
+        ];
+        
+        User u = new User(
+            FirstName = 'Test',
+            LastName = 'Education Strategist',
+            Alias = 'tuser',
+            Email = 'testuser@example.com',
+            Username = 'edstrat@example.com',
+            ProfileId = profileAc.Id,
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+
+        insert u;
+        
         OperatingHours oh = new OperatingHours(Name = 'PD Hours', TimeZone = 'America/Chicago');
         insert oh;
 
@@ -186,6 +208,8 @@ private class PDSchedulerHandlersTest {
     // Verifies first-call post-booking assigns a PD via round-robin and updates the Opportunity.
     @isTest
     static void testPostBooking_FirstCall_AssignsPDViaRoundRobin() {
+        Id educationalStrategistUserId = [SELECT Id FROM User WHERE Username = 'edstrat@example.com' LIMIT 1].Id;
+        
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 1' LIMIT 1];
         WorkType wt = [SELECT Id FROM WorkType WHERE Name='PD SOM Meeting - 1hr' LIMIT 1];
@@ -196,7 +220,9 @@ private class PDSchedulerHandlersTest {
             ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
-            Status='Scheduled', Email='jane@test.com', Phone='5551234567'
+            Status='Scheduled', Email='jane@test.com', Phone='5551234567',
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = educationalStrategistUserId
         );
         insert sa;
 
@@ -241,6 +267,8 @@ private class PDSchedulerHandlersTest {
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 2' LIMIT 1];
         WorkType wt = [SELECT Id FROM WorkType WHERE Name='PD Follow-up - 30min' LIMIT 1];
 
+        Id educationalStrategistUserId = [SELECT Id FROM User WHERE Username = 'edstrat@example.com' LIMIT 1].Id;
+        
         opp.Program_Director__c = pd2.RelatedRecordId;
         opp.StageName = 'SOM Scheduled';
         update opp;
@@ -251,7 +279,9 @@ private class PDSchedulerHandlersTest {
             ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(30),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(30),
-            Status='Scheduled', Email='jane@test.com'
+            Status='Scheduled', Email='jane@test.com',
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = educationalStrategistUserId
         );
         insert sa;
 
@@ -288,12 +318,16 @@ private class PDSchedulerHandlersTest {
 
         Account acct = [SELECT Id FROM Account LIMIT 1];
         DateTime startDT = DateTime.now().addDays(5);
+        
+        Id educationalStrategistUserId = [SELECT Id FROM User WHERE Username = 'edstrat@example.com' LIMIT 1].Id;
 
         ServiceAppointment conflictSA = new ServiceAppointment(
             ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
-            Status='Scheduled'
+            Status='Scheduled',
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = educationalStrategistUserId
         );
         insert conflictSA;
         insert new AssignedResource(ServiceAppointmentId=conflictSA.Id, ServiceResourceId=pd1.Id);
@@ -302,7 +336,9 @@ private class PDSchedulerHandlersTest {
             ParentRecordId=acct.Id, ServiceTerritoryId=st.Id, WorkTypeId=wt.Id,
             SchedStartTime=startDT, SchedEndTime=startDT.addMinutes(60),
             EarliestStartTime=startDT, DueDate=startDT.addMinutes(60),
-            Status='Scheduled', Email='jane@test.com'
+            Status='Scheduled', Email='jane@test.com',
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = educationalStrategistUserId
         );
         insert sa;
 

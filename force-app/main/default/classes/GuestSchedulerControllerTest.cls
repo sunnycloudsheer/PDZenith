@@ -551,7 +551,9 @@ private class GuestSchedulerControllerTest {
             DueDate = DateTime.newInstanceGmt(futureDate, Time.newInstance(15, 0, 0, 0)),
             SchedStartTime = DateTime.newInstanceGmt(futureDate, Time.newInstance(14, 0, 0, 0)),
             SchedEndTime = DateTime.newInstanceGmt(futureDate, Time.newInstance(15, 0, 0, 0)),
-            Status = 'Scheduled'
+            Status = 'Scheduled',
+            TimeZone		  = 'America/Los_Angeles',
+            Educational_Strategist__c = counselorUser.Id
         );
         insert sa;
 
