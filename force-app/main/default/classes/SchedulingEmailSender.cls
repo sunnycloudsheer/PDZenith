@@ -121,7 +121,10 @@ public without sharing class SchedulingEmailSender {
             try {
                 String bType = (req.emailType != null) ? req.emailType.toUpperCase() : 'PD';
                 String templateDevName = TEMPLATE_MAP.get(bType);
-                if (templateDevName == null) {
+                // PD-FU / FSS-FU are generate-only variants (no email template); each shares
+                // its parent type's *_Scheduling_Link__c field.
+                Boolean isGenerateOnlyVariant = skipEmail && (bType == 'PD-FU' || bType == 'FSS-FU');
+                if (templateDevName == null && !isGenerateOnlyVariant) {
                     throw new AuraHandledException('Unknown email type: ' + req.emailType);
                 }
 
@@ -195,17 +198,23 @@ public without sharing class SchedulingEmailSender {
                 }
 
                 // Stamp link on Opportunity; advance Stage only on Send-Email path.
+                // Also clear the matching *_Link_Used_At__c — a fresh link must be
+                // treated as unused, otherwise isLinkAlreadyUsed (in GuestSchedulerController)
+                // will reject the click with LINK_ALREADY_USED based on a stale timestamp
+                // from a prior booking.
                 Opportunity oppUpd = new Opportunity(Id = req.opportunityId);
-                if (bType == 'PD') {
+                if (bType == 'PD' || bType == 'PD-FU') {
                     oppUpd.PD_Scheduling_Link__c = bookingLink;
-                    if (!skipEmail && oppRead != null
+                    oppUpd.PD_Link_Used_At__c    = null;
+                    if (bType == 'PD' && !skipEmail && oppRead != null
                         && oppRead.StageName != 'SOM Scheduled'
                         && oppRead.StageName != 'Closed Won'
                         && oppRead.StageName != 'Closed Lost') {
                         oppUpd.StageName = 'SOM Link Sent';
                     }
-                } else if (bType == 'FSS') {
+                } else if (bType == 'FSS' || bType == 'FSS-FU') {
                     oppUpd.FSS_Scheduling_Link__c = bookingLink;
+                    oppUpd.FSS_Link_Used_At__c    = null;
                 }
                 oppsByRequestIndex.put(i, oppUpd);
 
@@ -297,6 +306,11 @@ public without sharing class SchedulingEmailSender {
                 if (src.PD_Scheduling_Link__c  != null) dst.PD_Scheduling_Link__c  = src.PD_Scheduling_Link__c;
                 if (src.FSS_Scheduling_Link__c != null) dst.FSS_Scheduling_Link__c = src.FSS_Scheduling_Link__c;
                 if (src.StageName              != null) dst.StageName              = src.StageName;
+                // Used_At is explicitly set to null on every fresh stamp; propagate that
+                // clearing into the merged record so isLinkAlreadyUsed sees the reset.
+                Map<String, Object> srcPop = src.getPopulatedFieldsAsMap();
+                if (srcPop.containsKey('PD_Link_Used_At__c'))  dst.PD_Link_Used_At__c  = src.PD_Link_Used_At__c;
+                if (srcPop.containsKey('FSS_Link_Used_At__c')) dst.FSS_Link_Used_At__c = src.FSS_Link_Used_At__c;
             }
             try {
                 logSaveErrors('Opportunity link update',

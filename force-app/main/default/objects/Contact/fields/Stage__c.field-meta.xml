@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Stage__c</fullName>
+    <label>Stage</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>SOM Scheduled</fullName>
+                <default>false</default>
+                <label>SOM Scheduled</label>
+            </value>
+            <value>
+                <fullName>SOM Completed</fullName>
+                <default>false</default>
+                <label>SOM Completed</label>
+            </value>
+            <value>
+                <fullName>1062633550</fullName>
+                <default>false</default>
+                <label>(WIP) Upcoming Students</label>
+            </value>
+            <value>
+                <fullName>1083265542</fullName>
+                <default>false</default>
+                <label>FSS Onboarding</label>
+            </value>
+            <value>
+                <fullName>266117750</fullName>
+                <default>false</default>
+                <label>New Students</label>
+            </value>
+            <value>
+                <fullName>266117751</fullName>
+                <default>false</default>
+                <label>In Program</label>
+            </value>
+            <value>
+                <fullName>266117752</fullName>
+                <default>false</default>
+                <label>Graduated</label>
+            </value>
+            <value>
+                <fullName>266754070</fullName>
+                <default>false</default>
+                <label>Transfer</label>
+            </value>
+            <value>
+                <fullName>936529426</fullName>
+                <default>false</default>
+                <label>Paused</label>
+            </value>
+            <value>
+                <fullName>1029396323</fullName>
+                <default>false</default>
+                <label>Terminated</label>
+            </value>
+            <value>
+                <fullName>1077888160</fullName>
+                <default>false</default>
+                <label>Terminated - MBG</label>
+            </value>
+            <value>
+                <fullName>1089129246</fullName>
+                <default>false</default>
+                <label>Manually added student</label>
+            </value>
+            <value>
+                <fullName>1308099661</fullName>
+                <default>false</default>
+                <label>Pending Termination - No Payment Due</label>
+            </value>
+            <value>
+                <fullName>1308099660</fullName>
+                <default>false</default>
+                <label>Pending Termination - Payment Still Due</label>
+            </value>
+            <value>
+                <fullName>Booked Call</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Booked Call</label>
+            </value>
+            <value>
+                <fullName>Closed Won</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Closed Won</label>
+            </value>
+            <value>
+                <fullName>Closed lost</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Closed lost</label>
+            </value>
+            <value>
+                <fullName>Confirmed (contract sent)</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Confirmed (contract sent)</label>
+            </value>
+            <value>
+                <fullName>Decision (1 week)</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Decision (1 week)</label>
+            </value>
+            <value>
+                <fullName>First Meeting</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>First Meeting</label>
+            </value>
+            <value>
+                <fullName>Info Verified</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Info Verified</label>
+            </value>
+            <value>
+                <fullName>Initial Consultation</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Initial Consultation</label>
+            </value>
+            <value>
+                <fullName>Interview</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Interview</label>
+            </value>
+            <value>
+                <fullName>Needs Analysis</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Needs Analysis</label>
+            </value>
+            <value>
+                <fullName>Negotiation</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Negotiation</label>
+            </value>
+            <value>
+                <fullName>Payment</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Payment</label>
+            </value>
+            <value>
+                <fullName>Proposal</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Proposal</label>
+            </value>
+            <value>
+                <fullName>Qualification</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Qualification</label>
+            </value>
+            <value>
+                <fullName>Strategy Overview</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Strategy Overview</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

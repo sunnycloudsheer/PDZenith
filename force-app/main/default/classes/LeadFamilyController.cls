@@ -198,8 +198,11 @@ public with sharing class LeadFamilyController {
 
     private static Lead queryLead(Id leadId) {
         if (leadId == null) throw buildError('Lead Id is required.');
+        // FirstName / LastName / Email / Phone are the canonical "Primary" source per saveParent;
+        // Parent_1_* fields are derived (or pre-populated at insert) but historically not always
+        // backfilled — buildPrimaryAdult falls back to these standard fields when Parent_1_* is blank.
         List<Lead> results = [
-            SELECT Id, Name,
+            SELECT Id, Name, FirstName, LastName, Email, Phone,
                    No_of_Student_Enrolling_Today__c,
                    Student_Name__c, Student_Email__c, Student_s_Current_Grade__c, Student_ID_1__c,
                    Student_2_Name__c, Student_2_Email__c, Student_2_Grade__c, Student_ID_2__c,
@@ -299,16 +302,32 @@ public with sharing class LeadFamilyController {
     }
 
     private static AdultDTO buildPrimaryAdult(Lead ld) {
-        String[] parts = splitName(ld.Parent_1_Name_First_Last__c);
+        // Prefer the explicit Parent_1_* fields when populated, fall back to standard
+        // Lead.FirstName/LastName/Email/Phone — those are the canonical source per saveParent,
+        // and Leads created via GuestSchedulerController.bookIC historically didn't backfill
+        // Parent_1_*, which would leave the LWC empty even though the Lead had real data.
+        String fullNameFromParent1 = ld.Parent_1_Name_First_Last__c;
+        String fullNameFromStandard = combineName(ld.FirstName, ld.LastName);
+        String resolvedFullName = String.isNotBlank(fullNameFromParent1)
+            ? fullNameFromParent1
+            : fullNameFromStandard;
+        String resolvedEmail = String.isNotBlank(ld.Parent_1_Email__c)
+            ? ld.Parent_1_Email__c
+            : ld.Email;
+        String resolvedPhone = String.isNotBlank(ld.Parent_1_Phone__c)
+            ? ld.Parent_1_Phone__c
+            : ld.Phone;
+
+        String[] parts = splitName(resolvedFullName);
         AdultDTO dto = new AdultDTO();
         dto.role = ROLE_PRIMARY;
         dto.type = 'Parent';
         dto.firstName = parts[0];
         dto.lastName = parts[1];
-        dto.fullName = ld.Parent_1_Name_First_Last__c;
-        dto.email = ld.Parent_1_Email__c;
-        dto.phone = ld.Parent_1_Phone__c;
-        dto.populated = String.isNotBlank(ld.Parent_1_Name_First_Last__c);
+        dto.fullName = resolvedFullName;
+        dto.email = resolvedEmail;
+        dto.phone = resolvedPhone;
+        dto.populated = String.isNotBlank(resolvedFullName);
         dto.parentId = ld.Parent_1_ID__c;
         return dto;
     }

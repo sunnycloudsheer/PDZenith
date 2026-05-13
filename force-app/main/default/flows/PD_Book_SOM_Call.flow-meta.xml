@@ -139,6 +139,92 @@
         <offset>0</offset>
     </actionCalls>
     <actionCalls>
+        <name>Generate_FSS_FollowUp_Link_Action</name>
+        <label>Generate FSS Follow-up Link</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
+        <connector>
+            <isGoTo>true</isGoTo>
+            <targetReference>FSS_Link_Generated_Screen</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Link_Generate_Error_Screen</targetReference>
+        </faultConnector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>opportunityId</name>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>contactId</name>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailType</name>
+            <value>
+                <stringValue>FSS-FU</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>skipEmail</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
+    </actionCalls>
+    <actionCalls>
+        <name>Generate_PD_FollowUp_Link_Action</name>
+        <label>Generate PD Follow-up Link</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>SchedulingEmailSender</actionName>
+        <actionType>apex</actionType>
+        <connector>
+            <isGoTo>true</isGoTo>
+            <targetReference>PD_Link_Generated_Screen</targetReference>
+        </connector>
+        <faultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Link_Generate_Error_Screen</targetReference>
+        </faultConnector>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>opportunityId</name>
+            <value>
+                <elementReference>recordId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>contactId</name>
+            <value>
+                <elementReference>Get_Primary_Contact.ContactId</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailType</name>
+            <value>
+                <stringValue>PD-FU</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>skipEmail</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>SchedulingEmailSender</nameSegment>
+        <offset>0</offset>
+    </actionCalls>
+    <actionCalls>
         <name>Generate_PD_Link_Action</name>
         <label>Generate PD Scheduling Link</label>
         <locationX>0</locationX>
@@ -605,6 +691,14 @@
         </value>
     </choices>
     <choices>
+        <name>choiceFSSFollowUpGenerate</name>
+        <choiceText>Generate Follow-up Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>fss_followup_generate</stringValue>
+        </value>
+    </choices>
+    <choices>
         <name>choiceFSSGenerate</name>
         <choiceText>Generate FSS Scheduling Link</choiceText>
         <dataType>String</dataType>
@@ -618,6 +712,14 @@
         <dataType>String</dataType>
         <value>
             <stringValue>fss_link</stringValue>
+        </value>
+    </choices>
+    <choices>
+        <name>choicePDFollowUpGenerate</name>
+        <choiceText>Generate Follow-up Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>pd_followup_generate</stringValue>
         </value>
     </choices>
     <choices>
@@ -1243,6 +1345,58 @@
                 <targetReference>Generate_PD_Link_Action</targetReference>
             </connector>
             <label>Generate PD Scheduling Link</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Route_FSS_Follow_Up_Selection</name>
+        <label>Route FSS Follow-Up Selection</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Get_FSS_Service_Resource</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Book FSS Follow-Up Call</defaultConnectorLabel>
+        <rules>
+            <name>FSSFollowUp_Is_Generate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>FSSFollowUpRadio</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>fss_followup_generate</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Generate_FSS_FollowUp_Link_Action</targetReference>
+            </connector>
+            <label>Generate FSS Follow-Up Link</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Route_Follow_Up_Selection</name>
+        <label>Route Follow-Up Selection</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <isGoTo>true</isGoTo>
+            <targetReference>Force_Follow_Up</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Follow-Up (default)</defaultConnectorLabel>
+        <rules>
+            <name>FollowUp_Is_PD_FollowUp_Generate</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>FollowUpRadio</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>pd_followup_generate</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Generate_PD_FollowUp_Link_Action</targetReference>
+            </connector>
+            <label>Generate Follow-up Link</label>
         </rules>
     </decisions>
     <decisions>
@@ -2934,8 +3088,7 @@
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <connector>
-            <isGoTo>true</isGoTo>
-            <targetReference>Force_Follow_Up</targetReference>
+            <targetReference>Route_Follow_Up_Selection</targetReference>
         </connector>
         <fields>
             <name>FollowUpHeader</name>
@@ -2953,6 +3106,7 @@
         <fields>
             <name>FollowUpRadio</name>
             <choiceReferences>choiceFollowUp</choiceReferences>
+            <choiceReferences>choicePDFollowUpGenerate</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>follow_up</stringValue>
@@ -2983,7 +3137,7 @@
         <allowFinish>true</allowFinish>
         <allowPause>false</allowPause>
         <connector>
-            <targetReference>Get_FSS_Service_Resource</targetReference>
+            <targetReference>Route_FSS_Follow_Up_Selection</targetReference>
         </connector>
         <fields>
             <name>FSSFollowUpHeader</name>
@@ -3001,6 +3155,7 @@
         <fields>
             <name>FSSFollowUpRadio</name>
             <choiceReferences>choiceFSSFollowUp</choiceReferences>
+            <choiceReferences>choiceFSSFollowUpGenerate</choiceReferences>
             <dataType>String</dataType>
             <defaultValue>
                 <stringValue>fss_follow_up</stringValue>

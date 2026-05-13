@@ -256,4 +256,104 @@ private class RescheduleTokenServiceTest {
             System.assertEquals(null, refreshed.Reschedule_Token__c, 'Token should be cleared on success');
         }
     }
+
+    // Covers the Admission_Counselor name-resolution branch (Meeting_Type__c not starting with
+    // 'Program Director' / 'FSS', Admission_Counselor__r populated) — line 82-83 of
+    // RescheduleTokenService.validateAndGetAppointment.
+    @isTest
+    static void validate_returnsAdmissionCounselorName() {
+        User u = [SELECT Id, Name FROM User WHERE Username = 'edstrat@example.com' LIMIT 1];
+        Account a = [SELECT Id FROM Account LIMIT 1];
+        Contact c = [SELECT Id FROM Contact LIMIT 1];
+        ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name = 'RT Territory' LIMIT 1];
+        WorkType wt = [SELECT Id FROM WorkType WHERE Name = 'RT WorkType' LIMIT 1];
+
+        DateTime futureStart = DateTime.now().addDays(8);
+        ServiceAppointment sa = new ServiceAppointment(
+            ParentRecordId = a.Id, ContactId = c.Id,
+            ServiceTerritoryId = st.Id, WorkTypeId = wt.Id,
+            SchedStartTime = futureStart, SchedEndTime = futureStart.addHours(1),
+            EarliestStartTime = futureStart, DueDate = futureStart.addHours(1),
+            Status = 'Scheduled', Subject = 'IC',
+            Reschedule_Token__c = 'rt-ac-token-' + System.currentTimeMillis(),
+            TimeZone = 'America/Los_Angeles',
+            Admission_Counselor__c = u.Id,
+            Meeting_Type__c = 'Initial Consultation'
+        );
+        insert sa;
+
+        Test.startTest();
+        Map<String, Object> result = RescheduleTokenService.validateAndGetAppointment(sa.Reschedule_Token__c);
+        Test.stopTest();
+
+        System.assertEquals(true, result.get('valid'));
+        System.assertEquals(u.Name, result.get('counselorName'),
+            'Admission_Counselor__r.Name must drive counselorName for IC bookings');
+    }
+
+    // Covers the Program_Director branch (Meeting_Type__c starts with 'Program Director',
+    // Program_Director__r populated) — lines 76-78 of validateAndGetAppointment.
+    @isTest
+    static void validate_returnsProgramDirectorName() {
+        User u = [SELECT Id, Name FROM User WHERE Username = 'edstrat@example.com' LIMIT 1];
+        Account a = [SELECT Id FROM Account LIMIT 1];
+        Contact c = [SELECT Id FROM Contact LIMIT 1];
+        ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name = 'RT Territory' LIMIT 1];
+        WorkType wt = [SELECT Id FROM WorkType WHERE Name = 'RT WorkType' LIMIT 1];
+
+        DateTime futureStart = DateTime.now().addDays(9);
+        ServiceAppointment sa = new ServiceAppointment(
+            ParentRecordId = a.Id, ContactId = c.Id,
+            ServiceTerritoryId = st.Id, WorkTypeId = wt.Id,
+            SchedStartTime = futureStart, SchedEndTime = futureStart.addHours(1),
+            EarliestStartTime = futureStart, DueDate = futureStart.addHours(1),
+            Status = 'Scheduled', Subject = 'SOM',
+            Reschedule_Token__c = 'rt-pd-token-' + System.currentTimeMillis(),
+            TimeZone = 'America/Los_Angeles',
+            Program_Director__c = u.Id,
+            Meeting_Type__c = 'Program Director - 60 Minutes'
+        );
+        insert sa;
+
+        Test.startTest();
+        Map<String, Object> result = RescheduleTokenService.validateAndGetAppointment(sa.Reschedule_Token__c);
+        Test.stopTest();
+
+        System.assertEquals(true, result.get('valid'));
+        System.assertEquals(u.Name, result.get('counselorName'),
+            'Program_Director__r.Name must drive counselorName when meeting type is PD');
+    }
+
+    // Covers the Family_Success_Specialist branch (Meeting_Type__c starts with 'FSS',
+    // Family_Success_Specialist__r populated) — lines 79-81 of validateAndGetAppointment.
+    @isTest
+    static void validate_returnsFssName() {
+        User u = [SELECT Id, Name FROM User WHERE Username = 'edstrat@example.com' LIMIT 1];
+        Account a = [SELECT Id FROM Account LIMIT 1];
+        Contact c = [SELECT Id FROM Contact LIMIT 1];
+        ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name = 'RT Territory' LIMIT 1];
+        WorkType wt = [SELECT Id FROM WorkType WHERE Name = 'RT WorkType' LIMIT 1];
+
+        DateTime futureStart = DateTime.now().addDays(10);
+        ServiceAppointment sa = new ServiceAppointment(
+            ParentRecordId = a.Id, ContactId = c.Id,
+            ServiceTerritoryId = st.Id, WorkTypeId = wt.Id,
+            SchedStartTime = futureStart, SchedEndTime = futureStart.addHours(1),
+            EarliestStartTime = futureStart, DueDate = futureStart.addHours(1),
+            Status = 'Scheduled', Subject = 'FSS Onboarding',
+            Reschedule_Token__c = 'rt-fss-token-' + System.currentTimeMillis(),
+            TimeZone = 'America/Los_Angeles',
+            Family_Success_Specialist__c = u.Id,
+            Meeting_Type__c = 'FSS Onboarding'
+        );
+        insert sa;
+
+        Test.startTest();
+        Map<String, Object> result = RescheduleTokenService.validateAndGetAppointment(sa.Reschedule_Token__c);
+        Test.stopTest();
+
+        System.assertEquals(true, result.get('valid'));
+        System.assertEquals(u.Name, result.get('counselorName'),
+            'Family_Success_Specialist__r.Name must drive counselorName when meeting type is FSS');
+    }
 }

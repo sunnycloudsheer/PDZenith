@@ -20,6 +20,12 @@
                 <elementReference>recordId</elementReference>
             </value>
         </inputParameters>
+        <inputParameters>
+            <name>forceRegenerate</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
         <nameSegment>LeadICScheduleTokenStamper</nameSegment>
         <offset>0</offset>
         <storeOutputAutomatically>true</storeOutputAutomatically>
@@ -49,15 +55,31 @@
     </actionCalls>
     <apiVersion>65.0</apiVersion>
     <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
+    <choices>
+        <name>choiceICGenerate</name>
+        <choiceText>Generate IC Scheduling Link</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>ic_generate</stringValue>
+        </value>
+    </choices>
+    <choices>
+        <name>choiceICSend</name>
+        <choiceText>Send IC Scheduling Email</choiceText>
+        <dataType>String</dataType>
+        <value>
+            <stringValue>ic_send</stringValue>
+        </value>
+    </choices>
     <decisions>
         <name>Check_IC_Link_Already_Shared</name>
-        <label>IC Link Already Shared?</label>
+        <label>IC Already Booked?</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <defaultConnector>
-            <targetReference>Generate_IC_Token</targetReference>
+            <targetReference>Select_IC_Action_Screen</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>Not Shared - Generate &amp; Send</defaultConnectorLabel>
+        <defaultConnectorLabel>Not Booked - Pick Action</defaultConnectorLabel>
         <rules>
             <name>IC_Already_Booked</name>
             <conditionLogic>and</conditionLogic>
@@ -73,9 +95,26 @@
             </connector>
             <label>IC Already Booked</label>
         </rules>
+    </decisions>
+    <decisions>
+        <name>Route_IC_Action_After_Screen</name>
+        <label>Route IC Action After Screen</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Generate_IC_Token</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Generate New Link</defaultConnectorLabel>
         <rules>
-            <name>IC_Link_Already_Sent</name>
+            <name>Existing_Link_Send_Email</name>
             <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>ICActionRadio</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>ic_send</stringValue>
+                </rightValue>
+            </conditions>
             <conditions>
                 <leftValueReference>Get_Lead.IC_Schedule_Link__c</leftValueReference>
                 <operator>IsNull</operator>
@@ -84,9 +123,34 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>IC_Link_Already_Shared_Screen</targetReference>
+                <targetReference>Send_IC_Email</targetReference>
             </connector>
-            <label>IC Link Already Shared</label>
+            <label>Reuse Existing Link - Send Email</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Route_IC_Post_Stamp</name>
+        <label>Route IC Post Stamp</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Send_IC_Email</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Send Email (default)</defaultConnectorLabel>
+        <rules>
+            <name>IC_Generate_Only</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>ICActionRadio</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>ic_generate</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>IC_Generated_Screen</targetReference>
+            </connector>
+            <label>Generate Only</label>
         </rules>
     </decisions>
     <environments>Default</environments>
@@ -133,7 +197,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Send_IC_Email</targetReference>
+            <targetReference>Route_IC_Post_Stamp</targetReference>
         </connector>
         <faultConnector>
             <isGoTo>true</isGoTo>
@@ -162,6 +226,80 @@
         <object>Lead</object>
     </recordUpdates>
     <runInMode>SystemModeWithoutSharing</runInMode>
+    <screens>
+        <name>IC_Generated_Screen</name>
+        <label>IC Scheduling Link Generated</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <fields>
+            <name>ICGeneratedMsg</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 16px;&quot;&gt;IC scheduling link has been generated!&lt;/strong&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;&lt;br&gt;&lt;/p&gt;&lt;p style=&quot;text-align: center;&quot;&gt;The link is now available on the Lead in the IC Schedule Link field. No email was sent.&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Done</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
+    <screens>
+        <name>Select_IC_Action_Screen</name>
+        <label>Select IC Action</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <allowBack>false</allowBack>
+        <allowFinish>true</allowFinish>
+        <allowPause>false</allowPause>
+        <connector>
+            <targetReference>Route_IC_Action_After_Screen</targetReference>
+        </connector>
+        <fields>
+            <name>ICActionHeader</name>
+            <fieldText>&lt;p style=&quot;text-align: center;&quot;&gt;&lt;strong style=&quot;font-size: 20px; font-family: tahoma;&quot;&gt;Send IC Schedule Link&lt;/strong&gt;&lt;/p&gt;</fieldText>
+            <fieldType>DisplayText</fieldType>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <fields>
+            <name>ICActionRadio</name>
+            <choiceReferences>choiceICSend</choiceReferences>
+            <choiceReferences>choiceICGenerate</choiceReferences>
+            <dataType>String</dataType>
+            <defaultValue>
+                <stringValue>ic_send</stringValue>
+            </defaultValue>
+            <fieldText>Select an option</fieldText>
+            <fieldType>RadioButtons</fieldType>
+            <inputsOnNextNavToAssocScrn>UseStoredValues</inputsOnNextNavToAssocScrn>
+            <isRequired>true</isRequired>
+            <styleProperties>
+                <verticalAlignment>
+                    <stringValue>top</stringValue>
+                </verticalAlignment>
+                <width>
+                    <stringValue>12</stringValue>
+                </width>
+            </styleProperties>
+        </fields>
+        <nextOrFinishButtonLabel>Next</nextOrFinishButtonLabel>
+        <showFooter>true</showFooter>
+        <showHeader>false</showHeader>
+    </screens>
     <screens>
         <name>IC_Already_Booked_Screen</name>
         <label>IC Already Booked</label>

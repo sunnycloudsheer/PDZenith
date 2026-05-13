@@ -11,16 +11,18 @@ public without sharing class GuestSchedulerController {
     private static Map<String, DiscoveredConfig> cachedDiscoveryMap = new Map<String, DiscoveredConfig>();
 
     private static final Map<String, String> MEETING_TYPE_MAP = new Map<String, String>{
-        'IC'    => 'Initial Consultation',
-        'PD'    => 'Program Director - 60 Minutes',
-        'PD-FU' => 'Program Director Follow Up',
-        'FSS'   => 'FSS Onboarding'
+        'IC'     => 'Initial Consultation',
+        'PD'     => 'Program Director - 60 Minutes',
+        'PD-FU'  => 'Program Director Follow Up',
+        'FSS'    => 'FSS Onboarding',
+        'FSS-FU' => 'FSS Follow Up'
     };
     private static final Map<String, String> SUBJECT_MAP = new Map<String, String>{
-        'IC'    => 'Initial Consultation - Zenith Prep Academy',
-        'PD'    => 'Program Director Meeting  - Zenith Prep Academy',
-        'PD-FU' => 'Program Director Follow Up Meeting - Zenith Prep Academy',
-        'FSS'   => 'FSS Onboarding - Zenith Prep Academy'
+        'IC'     => 'Initial Consultation - Zenith Prep Academy',
+        'PD'     => 'Program Director Meeting  - Zenith Prep Academy',
+        'PD-FU'  => 'Program Director Follow Up Meeting - Zenith Prep Academy',
+        'FSS'    => 'FSS Onboarding - Zenith Prep Academy',
+        'FSS-FU' => 'FSS Follow Up - Zenith Prep Academy'
     };
 
     private class DiscoveredConfig {
@@ -75,7 +77,7 @@ public without sharing class GuestSchedulerController {
     // Profile names that own the resources for a given booking type.
     private static List<String> getProfileNames(String bType) {
         if (bType == 'PD' || bType == 'PD-FU') return new List<String>{ PD_PROFILE_NAME };
-        if (bType == 'FSS') return new List<String>{ FSS_PROFILE_NAME };
+        if (bType == 'FSS' || bType == 'FSS-FU') return new List<String>{ FSS_PROFILE_NAME };
         return new List<String>{ ADMISSION_PROFILE_NAME };
     }
 
@@ -286,6 +288,9 @@ public without sharing class GuestSchedulerController {
             cfg.durationMinutes = 30;
             cfg.slotIntervalMinutes = 30;
         } else if (bType == 'FSS') {
+            cfg.durationMinutes = 30;
+            cfg.slotIntervalMinutes = 30;
+        } else if (bType == 'FSS-FU') {
             cfg.durationMinutes = 30;
             cfg.slotIntervalMinutes = 30;
         } else {
@@ -500,9 +505,9 @@ public without sharing class GuestSchedulerController {
     // the bookingType is neither (e.g. IC) or no sticky owner has been recorded yet.
     private static Id findStickyResourceForContact(String bType, String contactId, String opportunityId) {
         String fld;
-        if (bType == 'PD')       fld = 'Program_Director__c';
-        else if (bType == 'FSS') fld = 'Family_Success_Specialist__c';
-        else                     return null;
+        if (bType == 'PD' || bType == 'PD-FU')   fld = 'Program_Director__c';
+        else if (bType == 'FSS' || bType == 'FSS-FU') fld = 'Family_Success_Specialist__c';
+        else                                     return null;
 
         if (String.isNotBlank(opportunityId)) {
             try {
@@ -684,7 +689,8 @@ public without sharing class GuestSchedulerController {
             Id stickyResourceId = null;
             // Both PD and FSS are "owned" relationships — once a counselor is assigned to the
             // family, follow-up bookings stay sticky to that counselor.
-            if (cfg.bookingType == 'PD' || cfg.bookingType == 'FSS') {
+            if (cfg.bookingType == 'PD' || cfg.bookingType == 'PD-FU'
+                || cfg.bookingType == 'FSS' || cfg.bookingType == 'FSS-FU') {
                 stickyResourceId = findStickyResourceForContact(cfg.bookingType, contactId, opportunityId);
                 isSticky = (stickyResourceId != null);
             }
@@ -764,7 +770,8 @@ public without sharing class GuestSchedulerController {
             Id stickyResourceId = findStickyResourceForReschedule(rescheduleToken);
             if (stickyResourceId != null && rb.resourceIds.contains(stickyResourceId)) {
                 rb = restrictBundleToResource(rb, stickyResourceId);
-            } else if (cfg.bookingType == 'PD' || cfg.bookingType == 'FSS') {
+            } else if (cfg.bookingType == 'PD' || cfg.bookingType == 'PD-FU'
+                       || cfg.bookingType == 'FSS' || cfg.bookingType == 'FSS-FU') {
                 // Sticky lookup honors both PD and FSS — Family_Success_Specialist__c is the
                 // FSS-side equivalent of Program_Director__c and is read the same way.
                 Id stickyId = findStickyResourceForContact(cfg.bookingType, contactId, opportunityId);
@@ -1184,6 +1191,13 @@ public without sharing class GuestSchedulerController {
         tryPut(mktLead, 'UTM_Medium__c', utmMedium);
         tryPut(mktLead, 'UTM_Ad__c', utmAd);
         tryPut(mktLead, 'UTM_AdSet__c', utmAdSet);
+        // Mirror the booker's identity onto the Parent_1_* fields so leadParentGuardianManager
+        // shows the Parent 1 row and LeadAutoConvert builds the converted Contact with the right
+        // name / email / phone. These fields are plain Text (not formulas) so we have to write
+        // them explicitly at Lead insert.
+        tryPut(mktLead, 'Parent_1_Name_First_Last__c', cleanFirst + ' ' + cleanLast);
+        tryPut(mktLead, 'Parent_1_Email__c', cleanEmail);
+        tryPut(mktLead, 'Parent_1_Phone__c', cleanPhone);
         if (guestList != null && !guestList.isEmpty()) {
             tryPut(mktLead, 'Guest_Emails__c', String.join(guestList, ','));
         }
@@ -1347,10 +1361,10 @@ public without sharing class GuestSchedulerController {
         sa.City = cfg.city;
         sa.State = cfg.state;
         if (String.isNotBlank(clientTimezone)) sa.TimeZone = normalizeTimezone(clientTimezone);
-        if (bType == 'PD') {
+        if (bType == 'PD' || bType == 'PD-FU') {
             tryPut(sa, 'Program_Director__c', assignment.userId);
         }
-        if (bType == 'FSS') {
+        if (bType == 'FSS' || bType == 'FSS-FU') {
             tryPut(sa, 'Family_Success_Specialist__c', assignment.userId);
         }
         if (String.isBlank(opportunityId) && conId != null) {
@@ -1438,7 +1452,7 @@ public without sharing class GuestSchedulerController {
             stampStudentContact((Id) opportunityId, 'Stage__c', 'SOM Scheduled');
         }
 
-        if (bType == 'FSS' && String.isNotBlank(opportunityId)) {
+        if ((bType == 'FSS' || bType == 'FSS-FU') && String.isNotBlank(opportunityId)) {
             try {
                 Opportunity opp = [SELECT Id, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
                 if (opp.Family_Success_Specialist__c == null) { opp.Family_Success_Specialist__c = assignment.userId; update opp; }
@@ -1449,10 +1463,28 @@ public without sharing class GuestSchedulerController {
         if (isOneTimeUseType(bType) && String.isNotBlank(opportunityId)) {
             try {
                 Opportunity stamp = new Opportunity(Id = (Id) opportunityId);
-                if (bType == 'PD')  stamp.PD_Link_Used_At__c  = System.now();
-                if (bType == 'FSS') stamp.FSS_Link_Used_At__c = System.now();
+                if (bType == 'PD' || bType == 'PD-FU') {
+                    stamp.PD_Link_Used_At__c     = System.now();
+                    stamp.PD_Scheduling_Link__c  = null;
+                }
+                if (bType == 'FSS' || bType == 'FSS-FU') {
+                    stamp.FSS_Link_Used_At__c    = System.now();
+                    stamp.FSS_Scheduling_Link__c = null;
+                }
                 update stamp;
             } catch (Exception stampEx) { }
+            try {
+                for (Lead l : [
+                    SELECT Id FROM Lead
+                    WHERE ConvertedOpportunityId = :opportunityId
+                    LIMIT 1
+                ]) {
+                    Lead leadClear = new Lead(Id = l.Id);
+                    try { leadClear.put('IC_Schedule_Link__c', null); } catch (Exception ignored) { }
+                    try { leadClear.put('IC_Schedule_Token__c', null); } catch (Exception ignored) { }
+                    update leadClear;
+                }
+            } catch (Exception leadEx) { }
         }
 
         User assignedUser = [SELECT Name FROM User WHERE Id = :assignment.userId LIMIT 1];
@@ -1463,9 +1495,10 @@ public without sharing class GuestSchedulerController {
         stampActionUrls(res, sa.Reschedule_Token__c);
     }
 
-    // PD/FSS bookings are single-use; IC is not.
+    // PD/FSS bookings are single-use; IC is not. PD-FU and FSS-FU share their parent
+    // type's *_Scheduling_Link__c field, so they also run the link-clearing cleanup.
     private static Boolean isOneTimeUseType(String bType) {
-        return bType == 'PD' || bType == 'FSS';
+        return bType == 'PD' || bType == 'PD-FU' || bType == 'FSS' || bType == 'FSS-FU';
     }
 
     // Resolved at class-load time from the org's My Domain URL.
@@ -1482,7 +1515,9 @@ public without sharing class GuestSchedulerController {
     // Returns true when the PD/FSS one-time-use link has already been consumed for this Opp.
     private static Boolean isLinkAlreadyUsed(String opportunityId, String bType) {
         try {
-            String fld = (bType == 'PD') ? 'PD_Link_Used_At__c' : 'FSS_Link_Used_At__c';
+            String fld = (bType == 'PD' || bType == 'PD-FU') ? 'PD_Link_Used_At__c'
+                       : (bType == 'FSS' || bType == 'FSS-FU') ? 'FSS_Link_Used_At__c'
+                       : 'FSS_Link_Used_At__c';
             List<Opportunity> opps = Database.query(
                 'SELECT ' + fld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1');
             return !opps.isEmpty() && opps[0].get(fld) != null;
@@ -1494,7 +1529,9 @@ public without sharing class GuestSchedulerController {
     // Same as isLinkAlreadyUsed but acquires a row lock for the booking transaction.
     private static Boolean isLinkAlreadyUsedForUpdate(String opportunityId, String bType) {
         try {
-            String fld = (bType == 'PD') ? 'PD_Link_Used_At__c' : 'FSS_Link_Used_At__c';
+            String fld = (bType == 'PD' || bType == 'PD-FU') ? 'PD_Link_Used_At__c'
+                       : (bType == 'FSS' || bType == 'FSS-FU') ? 'FSS_Link_Used_At__c'
+                       : 'FSS_Link_Used_At__c';
             List<Opportunity> opps = Database.query(
                 'SELECT Id, ' + fld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1 FOR UPDATE');
             return !opps.isEmpty() && opps[0].get(fld) != null;
@@ -1536,8 +1573,9 @@ public without sharing class GuestSchedulerController {
         // sticky counselor stamped (Program_Director__c for PD, Family_Success_Specialist__c for
         // FSS), follow-up bookings must always assign that same counselor and never reassign via
         // round-robin. A time conflict is the booker's concern, not a re-assignment trigger.
-        if ((bType == 'PD' || bType == 'FSS') && String.isNotBlank(opportunityId)) {
-            String stickyFld = (bType == 'PD') ? 'Program_Director__c' : 'Family_Success_Specialist__c';
+        if ((bType == 'PD' || bType == 'PD-FU' || bType == 'FSS' || bType == 'FSS-FU')
+            && String.isNotBlank(opportunityId)) {
+            String stickyFld = (bType == 'PD' || bType == 'PD-FU') ? 'Program_Director__c' : 'Family_Success_Specialist__c';
             List<Opportunity> opps = Database.query(
                 'SELECT ' + stickyFld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1');
             Id stickyUserId = (opps.isEmpty()) ? null : (Id) opps[0].get(stickyFld);
@@ -2027,10 +2065,11 @@ public without sharing class GuestSchedulerController {
 
     // Expected appointment length in minutes for a given booking type, or null if unknown.
     private static Integer expectedDurationMinutes(String bType) {
-        if (bType == 'IC')    return 60;
-        if (bType == 'PD')    return 60;
-        if (bType == 'PD-FU') return 30;
-        if (bType == 'FSS')   return 30;
+        if (bType == 'IC')     return 60;
+        if (bType == 'PD')     return 60;
+        if (bType == 'PD-FU')  return 30;
+        if (bType == 'FSS')    return 30;
+        if (bType == 'FSS-FU') return 30;
         return null;
     }
 

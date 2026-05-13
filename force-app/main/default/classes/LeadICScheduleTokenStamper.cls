@@ -1,12 +1,17 @@
 // Generates a fresh IC schedule token + booking URL for a Lead; called from Lead_Generate_IC_Schedule_Token flow.
 public without sharing class LeadICScheduleTokenStamper {
 
-    // Resolved at class-load time from the org's My Domain URL.
+    // Public booking site base URL — must match the host the GuestScheduler LWC is served from.
+    // Using URL.getOrgDomainUrl() would point to the Salesforce internal domain and 404.
     private static final String BOOKING_BASE_URL =
-        URL.getOrgDomainUrl().toExternalForm() + '/s/booking';
+        System.Label.Booking_Site_Base_URL.removeEnd('/') + '/booking';
 
     public class Request {
         @InvocableVariable(label='Lead Id') public Id leadId;
+        // When true, regenerate the token+link even if one is already stamped on the Lead.
+        // Used by the user-triggered "Generate IC Scheduling Link" button. The Lead-create
+        // auto-flow leaves this null (default false) so its no-churn behavior is preserved.
+        @InvocableVariable(label='Force Regenerate') public Boolean forceRegenerate;
     }
 
     public class Result {
@@ -46,11 +51,14 @@ public without sharing class LeadICScheduleTokenStamper {
                 ? leadMap.get(req.leadId) : null;
 
             // Skip Leads already booked via the site so existing tokens are not churned.
+            // forceRegenerate=true bypasses ONLY the token-already-set guard; actually-booked
+            // Leads (status / meeting status / SA) still short-circuit.
+            Boolean force = (req.forceRegenerate != null && req.forceRegenerate);
             Boolean isSiteBooked = ld != null && (
                 'IC Scheduled'.equals(ld.Status)
                 || 'Scheduled'.equals(ld.Meeting_Status__c)
                 || ld.Service_Appointment__c != null
-                || String.isNotBlank(ld.IC_Schedule_Token__c)
+                || (!force && String.isNotBlank(ld.IC_Schedule_Token__c))
             );
             if (isSiteBooked) {
                 out.add(r);
