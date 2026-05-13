@@ -5,7 +5,21 @@ private class LeadICEmailSenderTest {
 
     @TestSetup
     static void setupData() {
-        Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
+        // Resolve a usable EmailTemplate folder. Originally this hard-required the
+        // 'Scheduling_Templates' folder, but it was renamed/removed in some orgs and
+        // started crashing setupData with a QueryException. Fallbacks (in order):
+        //   1) named 'Scheduling_Templates' folder if present
+        //   2) any active email folder
+        //   3) the running user's personal-templates folder (FolderId = UserInfo.getUserId())
+        List<Folder> folders = [
+            SELECT Id FROM Folder
+            WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1
+        ];
+        if (folders.isEmpty()) {
+            folders = [SELECT Id FROM Folder WHERE Type = 'Email' LIMIT 1];
+        }
+        Id templateFolderId = folders.isEmpty() ? UserInfo.getUserId() : folders[0].Id;
+
         List<EmailTemplate> existing = [
             SELECT Id FROM EmailTemplate WHERE DeveloperName = :TEMPLATE_DEV_NAME LIMIT 1
         ];
@@ -13,7 +27,7 @@ private class LeadICEmailSenderTest {
             insert new EmailTemplate(
                 Name = 'IC Scheduling Link Send Email',
                 DeveloperName = TEMPLATE_DEV_NAME,
-                FolderId = f.Id,
+                FolderId = templateFolderId,
                 TemplateType = 'custom',
                 Subject = 'Schedule Your Initial Consultation with Zenith Prep Academy',
                 HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Recipient.IC_Schedule_Link__c}}}">Schedule</a></p>',
@@ -133,5 +147,32 @@ private class LeadICEmailSenderTest {
             LeadICEmailSender.sendICEmailToLead(new List<LeadICEmailSender.LeadICRequest>());
         Test.stopTest();
         System.assertEquals(0, out.size());
+    }
+
+    // Verifies the CC list includes the Lead's Parent_2_Email__c + Student_Email__c (deduped
+    // against the TO address). Covers the OWEA + CC additions to LeadICEmailSender.
+    @isTest
+    static void happyPath_ccIncludesParent2AndStudent() {
+        Lead l = new Lead(
+            FirstName = 'Cc', LastName = 'Family',
+            Company = 'Test Co', Status = 'New',
+            Email = 'parent1@example.com',
+            IC_Schedule_Link__c = 'https://test.salesforce.com/booking?type=IC&action=schedule&token=cc',
+            Parent_2_Email__c = 'parent2@example.com',
+            Student_Email__c = 'student@example.com'
+        );
+        insert l;
+
+        LeadICEmailSender.LeadICRequest req = new LeadICEmailSender.LeadICRequest();
+        req.leadId = l.Id;
+
+        Test.startTest();
+        List<LeadICEmailSender.LeadICResult> out =
+            LeadICEmailSender.sendICEmailToLead(new List<LeadICEmailSender.LeadICRequest>{ req });
+        Test.stopTest();
+
+        System.assertEquals(1, out.size());
+        System.assertEquals(true, out[0].success,
+            'Happy CC path expected success=true, got error: ' + out[0].errorMessage);
     }
 }

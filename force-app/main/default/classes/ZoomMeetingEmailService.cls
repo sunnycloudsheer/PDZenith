@@ -25,6 +25,11 @@ public class ZoomMeetingEmailService {
         // (typically the Opportunity) so the email lands on the Opportunity's activity timeline.
         // relatedWhatId stays as the SA so the Lightning template's SA merge fields still resolve.
         public Id activityRelatedToId;
+        // Optional override for the .ics Content-Type method parameter ('PUBLISH', 'REQUEST',
+        // 'CANCEL'). Used for the host-side email where the ICS body is METHOD:PUBLISH so Gmail
+        // accepts it even though host == ORGANIZER == recipient. When null, the method is derived
+        // from inviteType (REQUEST for NEW_BOOKING/RESCHEDULE, CANCEL for CANCELLATION).
+        public String icsMethod;
     }
 
     // Sends a batch of calendar-invite emails in a single Messaging.sendEmail invocation.
@@ -133,12 +138,12 @@ public class ZoomMeetingEmailService {
     }
 
     // Builds (but does not send) a Messaging.SingleEmailMessage from a SendInput.
+    // icsContent is optional — when blank, no .ics attachment is added. This supports the
+    // host-notification path where the host receives the same template but no calendar invite
+    // (their calendar is populated via the Salesforce Event → EAC sync, with the host as organizer).
     private static Messaging.SingleEmailMessage buildMessage(SendInput inp) {
         if (String.isBlank(inp.toEmail)) {
             throw new ZoomEmailException('Primary recipient email is required.');
-        }
-        if (String.isBlank(inp.icsContent)) {
-            throw new ZoomEmailException('ICS content is required.');
         }
 
         Messaging.SingleEmailMessage msg = new Messaging.SingleEmailMessage();
@@ -190,17 +195,25 @@ public class ZoomMeetingEmailService {
         }
         msg.setUseSignature(false);
 
-        String icsMethod = (inp.inviteType == InviteType.CANCELLATION) ? 'CANCEL' : 'REQUEST';
+        // Skip the .ics attachment when icsContent is blank — host-notification path can pass
+        // null when EAC is the only desired calendar source. When set, icsMethod overrides the
+        // default Content-Type method (used for METHOD:PUBLISH on the host's own .ics so Gmail
+        // doesn't trip the "Unable to load event" check for recipient==ORGANIZER).
+        if (String.isNotBlank(inp.icsContent)) {
+            String icsMethod = String.isNotBlank(inp.icsMethod)
+                ? inp.icsMethod.toUpperCase()
+                : ((inp.inviteType == InviteType.CANCELLATION) ? 'CANCEL' : 'REQUEST');
 
-        Messaging.EmailFileAttachment ics = new Messaging.EmailFileAttachment();
-        ics.setFileName('invite.ics');
-        ics.setBody(Blob.valueOf(inp.icsContent));
-        ics.setContentType(
-            'text/calendar; charset=UTF-8; method=' + icsMethod + '; name="invite.ics"'
-        );
-        ics.setInline(false);
+            Messaging.EmailFileAttachment ics = new Messaging.EmailFileAttachment();
+            ics.setFileName('invite.ics');
+            ics.setBody(Blob.valueOf(inp.icsContent));
+            ics.setContentType(
+                'text/calendar; charset=UTF-8; method=' + icsMethod + '; name="invite.ics"'
+            );
+            ics.setInline(false);
 
-        msg.setFileAttachments(new List<Messaging.EmailFileAttachment>{ ics });
+            msg.setFileAttachments(new List<Messaging.EmailFileAttachment>{ ics });
+        }
         return msg;
     }
 

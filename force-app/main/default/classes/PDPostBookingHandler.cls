@@ -352,7 +352,12 @@ public without sharing class PDPostBookingHandler {
         return null;
     }
 
-    // Returns the sticky resource if available, otherwise round-robins by load and conflict.
+    // Sticky-first PD picker. Once an Opportunity has Program_Director__c set, that PD owns the
+    // family relationship and is ALWAYS honored on follow-up bookings — we do NOT round-robin
+    // to a different PD even if the sticky one is double-booked at the requested time. A time
+    // conflict is a scheduling concern (the booker should pick another slot) and is not a reason
+    // to reassign the family to a new PD. Round-robin only kicks in for the very first booking
+    // (no sticky yet) or when the sticky resource is gone (deactivated / profile changed).
     private static Id selectPD(Id stickyResourceId, DateTime startDT, DateTime endDT) {
         if (stickyResourceId != null) {
             List<ServiceResource> stickyCheck = [
@@ -368,9 +373,7 @@ public without sharing class PDPostBookingHandler {
                     AND IsActive = true LIMIT 1
                 ];
                 if (!pdUser.isEmpty()) {
-                    if (isResourceAvailable(stickyResourceId, stickyCheck[0].RelatedRecordId, startDT, endDT)) {
-                        return stickyResourceId;
-                    }
+                    return stickyResourceId;
                 }
             }
         }

@@ -273,9 +273,11 @@ private class PDSchedulerHandlersTest {
         System.assertEquals('Program Director Follow Up', updSA.Meeting_Type__c);
     }
 
-    // Verifies post-booking falls back to round-robin when the sticky PD is busy at the requested time.
+    // Verifies the sticky PD is honored even when busy at the requested time. Once an Opportunity
+    // has Program_Director__c set, follow-up bookings must NEVER reassign to a different PD via
+    // round-robin — a time conflict is a scheduling concern, not a re-assignment trigger.
     @isTest
-    static void testPostBooking_StickyPDBusy_FallsBackToRoundRobin() {
+    static void testPostBooking_StickyPDBusy_KeepsStickyAssignment() {
         Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
         ServiceResource pd1 = [SELECT Id, RelatedRecordId FROM ServiceResource WHERE Name='PD Test1' LIMIT 1];
         ServiceTerritory st = [SELECT Id FROM ServiceTerritory WHERE Name='PD Territory 1' LIMIT 1];
@@ -316,8 +318,8 @@ private class PDSchedulerHandlersTest {
         Test.stopTest();
 
         System.assertEquals(true, results[0].success);
-        System.assertNotEquals(pd1.Id, results[0].serviceResourceId,
-            'Sticky PD is busy, should fall back to round-robin');
+        System.assertEquals(pd1.Id, results[0].serviceResourceId,
+            'Sticky PD must remain assigned even when busy at the booked time — never reassign');
     }
 
     // Verifies getAssignedPD returns success=false with an error when the Opportunity Id is unknown.

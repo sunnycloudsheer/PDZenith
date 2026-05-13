@@ -6,6 +6,9 @@ public without sharing class SchedulingEmailSender {
     // FSS shared inbox CC'd on every FSS scheduling email.
     private static final String FSS_CC_ADDRESS = 'fss@zenithprepacademy.com';
 
+    // Branded sender address — must match an OrgWideEmailAddress in Setup.
+    private static final String ORG_SENDER_ADDRESS = 'info@zenithprepacademy.com';
+
     private static final Map<String, String> TEMPLATE_MAP = new Map<String, String>{
         'PD'  => 'PD_Scheduling_Link_Send_Email',
         'FSS' => 'FSS_Scheduling_Link_Send_Email'
@@ -53,7 +56,7 @@ public without sharing class SchedulingEmailSender {
         }
 
         Map<Id, Contact> contactMap = new Map<Id, Contact>([
-            SELECT Id, Email
+            SELECT Id, Email, AccountId
             FROM Contact WHERE Id IN :contactIds
         ]);
         Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([
@@ -68,6 +71,43 @@ public without sharing class SchedulingEmailSender {
             WHERE DeveloperName IN :templateDevNames
         ]) {
             templateCache.put(et.DeveloperName, et);
+        }
+
+        // Build a per-primary-contact CC list = other parents on the same Account + the student
+        // contact's email (if present). One bulk SOQL covers every primary contact in the batch.
+        Set<Id> ccAccountIds = new Set<Id>();
+        for (Contact c : contactMap.values()) {
+            if (c.AccountId != null) ccAccountIds.add(c.AccountId);
+        }
+        Map<Id, List<String>> ccByPrimaryContactId = new Map<Id, List<String>>();
+        if (!ccAccountIds.isEmpty()) {
+            for (Contact c : [
+                SELECT Id, AccountId, Email, Record_Type__c
+                FROM Contact
+                WHERE AccountId IN :ccAccountIds
+                  AND Email != null
+                  AND Record_Type__c IN ('Parent', 'Student')
+            ]) {
+                for (Contact primary : contactMap.values()) {
+                    if (primary.AccountId == null || c.AccountId != primary.AccountId) continue;
+                    if (c.Id == primary.Id) continue;
+                    List<String> bucket = ccByPrimaryContactId.get(primary.Id);
+                    if (bucket == null) {
+                        bucket = new List<String>();
+                        ccByPrimaryContactId.put(primary.Id, bucket);
+                    }
+                    bucket.add(c.Email);
+                }
+            }
+        }
+
+        // Resolve OWEA once for the whole batch — null means the org-wide address isn't
+        // configured or accessible; we fall back to the running user's address in that case.
+        Id orgWideId = null;
+        for (OrgWideEmailAddress o : [
+            SELECT Id FROM OrgWideEmailAddress WHERE Address = :ORG_SENDER_ADDRESS LIMIT 1
+        ]) {
+            orgWideId = o.Id;
         }
 
         List<Messaging.SingleEmailMessage> emailsToSend = new List<Messaging.SingleEmailMessage>();
@@ -120,9 +160,34 @@ public without sharing class SchedulingEmailSender {
                     mail.setWhatId(req.opportunityId);
                     mail.setSaveAsActivity(true);
                     mail.setUseSignature(false);
+                    if (orgWideId != null) {
+                        mail.setOrgWideEmailAddressId(orgWideId);
+                    }
 
+                    // CC = second parent(s) + student on the family Account, plus the FSS
+                    // shared inbox for FSS bookings. Dedup + skip the primary recipient.
+                    List<String> ccList = new List<String>();
+                    Set<String> ccSeen = new Set<String>();
+                    String toLower = '';
+                    Contact primaryContact = contactMap.get(req.contactId);
+                    if (primaryContact != null && String.isNotBlank(primaryContact.Email)) {
+                        toLower = primaryContact.Email.toLowerCase().trim();
+                    }
+                    List<String> familyCc = ccByPrimaryContactId.get(req.contactId);
+                    if (familyCc != null) {
+                        for (String addr : familyCc) {
+                            if (String.isBlank(addr)) continue;
+                            String norm = addr.toLowerCase().trim();
+                            if (norm == toLower) continue;
+                            if (ccSeen.add(norm)) ccList.add(addr.trim());
+                        }
+                    }
                     if (bType == 'FSS' && String.isNotBlank(FSS_CC_ADDRESS)) {
-                        mail.setCcAddresses(new List<String>{ FSS_CC_ADDRESS });
+                        String norm = FSS_CC_ADDRESS.toLowerCase().trim();
+                        if (norm != toLower && ccSeen.add(norm)) ccList.add(FSS_CC_ADDRESS);
+                    }
+                    if (!ccList.isEmpty()) {
+                        mail.setCcAddresses(ccList);
                     }
 
                     emailsToSend.add(mail);

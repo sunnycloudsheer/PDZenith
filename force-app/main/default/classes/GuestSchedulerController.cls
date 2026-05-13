@@ -478,33 +478,52 @@ public without sharing class GuestSchedulerController {
     }
 
     // Restrict a ResourceBundle to a single resource (used to lock reschedules to the original AC).
+    // Must carry over resourceToOperatingHoursId so resourceCoversSlot can find this resource's
+    // personal working hours — otherwise countFreeResources sees ohId=null and every slot reports
+    // free=0, which made the reschedule calendar show no time slots at all.
     private static ResourceBundle restrictBundleToResource(ResourceBundle rb, Id resourceId) {
         ResourceBundle stickyRb = new ResourceBundle();
         stickyRb.resourceIds.add(resourceId);
         stickyRb.orderedResourceIds.add(resourceId);
         stickyRb.resourceToUserId.put(resourceId, rb.resourceToUserId.get(resourceId));
         stickyRb.resourceToTerritoryId.put(resourceId, rb.resourceToTerritoryId.get(resourceId));
+        Id ohId = rb.resourceToOperatingHoursId.get(resourceId);
+        if (ohId != null) stickyRb.resourceToOperatingHoursId.put(resourceId, ohId);
         return stickyRb;
     }
 
     // For PD: find the sticky resource based on the Opportunity / Contact's assigned PD.
-    private static Id findStickyResourceForContact(String contactId, String opportunityId) {
+    // Resolves the sticky ServiceResource for a Contact/Opportunity per booking type. Reads
+    //   PD  → Program_Director__c
+    //   FSS → Family_Success_Specialist__c
+    // and resolves it to the resource's RelatedRecordId User -> ServiceResource. Returns null if
+    // the bookingType is neither (e.g. IC) or no sticky owner has been recorded yet.
+    private static Id findStickyResourceForContact(String bType, String contactId, String opportunityId) {
+        String fld;
+        if (bType == 'PD')       fld = 'Program_Director__c';
+        else if (bType == 'FSS') fld = 'Family_Success_Specialist__c';
+        else                     return null;
+
         if (String.isNotBlank(opportunityId)) {
             try {
-                List<Opportunity> opps = [SELECT Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-                if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
+                List<Opportunity> opps = Database.query(
+                    'SELECT ' + fld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1');
+                if (!opps.isEmpty() && opps[0].get(fld) != null) {
+                    Id stickyUserId = (Id) opps[0].get(fld);
                     List<ServiceResource> srs = [SELECT Id FROM ServiceResource
-                        WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1];
+                        WHERE RelatedRecordId = :stickyUserId AND IsActive = true LIMIT 1];
                     if (!srs.isEmpty()) return srs[0].Id;
                 }
             } catch (Exception e) { }
         }
         if (String.isNotBlank(contactId)) {
             try {
-                List<Contact> cons = [SELECT Program_Director__c FROM Contact WHERE Id = :contactId LIMIT 1];
-                if (!cons.isEmpty() && cons[0].Program_Director__c != null) {
+                List<Contact> cons = Database.query(
+                    'SELECT ' + fld + ' FROM Contact WHERE Id = :contactId LIMIT 1');
+                if (!cons.isEmpty() && cons[0].get(fld) != null) {
+                    Id stickyUserId = (Id) cons[0].get(fld);
                     List<ServiceResource> srs = [SELECT Id FROM ServiceResource
-                        WHERE RelatedRecordId = :cons[0].Program_Director__c AND IsActive = true LIMIT 1];
+                        WHERE RelatedRecordId = :stickyUserId AND IsActive = true LIMIT 1];
                     if (!srs.isEmpty()) return srs[0].Id;
                 }
             } catch (Exception e) { }
@@ -663,8 +682,10 @@ public without sharing class GuestSchedulerController {
 
             Boolean isSticky = false;
             Id stickyResourceId = null;
-            if (cfg.bookingType == 'PD') {
-                stickyResourceId = findStickyResourceForContact(contactId, opportunityId);
+            // Both PD and FSS are "owned" relationships — once a counselor is assigned to the
+            // family, follow-up bookings stay sticky to that counselor.
+            if (cfg.bookingType == 'PD' || cfg.bookingType == 'FSS') {
+                stickyResourceId = findStickyResourceForContact(cfg.bookingType, contactId, opportunityId);
                 isSticky = (stickyResourceId != null);
             }
 
@@ -743,8 +764,10 @@ public without sharing class GuestSchedulerController {
             Id stickyResourceId = findStickyResourceForReschedule(rescheduleToken);
             if (stickyResourceId != null && rb.resourceIds.contains(stickyResourceId)) {
                 rb = restrictBundleToResource(rb, stickyResourceId);
-            } else if (cfg.bookingType == 'PD') {
-                Id stickyId = findStickyResourceForContact(contactId, opportunityId);
+            } else if (cfg.bookingType == 'PD' || cfg.bookingType == 'FSS') {
+                // Sticky lookup honors both PD and FSS — Family_Success_Specialist__c is the
+                // FSS-side equivalent of Program_Director__c and is read the same way.
+                Id stickyId = findStickyResourceForContact(cfg.bookingType, contactId, opportunityId);
                 if (stickyId != null && rb.resourceIds.contains(stickyId)) {
                     rb = restrictBundleToResource(rb, stickyId);
                 }
@@ -1246,10 +1269,13 @@ public without sharing class GuestSchedulerController {
             update upd;
         } catch (Exception ex) { }
 
-        try {
-            sendGuestInvitations(guestList, startDT, endDT, cleanFirst, cleanLast,
-                                 cleanEmail, clientTimezone);
-        } catch (Exception emailEx) { }
+        // Guest invitations are handled downstream by the Meeting_After_RTF flow, which fires
+        // sendInvitesForSavedAppointments after the Zoom URL is hydrated. Guests are read off
+        // Lead.Guest_Emails__c by buildFamilyCcList and CC'd on the family Lightning-template
+        // email with the .ics attached — so they get the same booking confirmation the customer
+        // does, with the calendar invite. The previous sendGuestInvitations send was a plain-text
+        // duplicate that arrived first without the .ics, which is why guests appeared to be
+        // missing the calendar attachment.
     }
 
     // PD / FSS booking against an Opportunity / Contact (sticky resource + stage flips).
@@ -1506,17 +1532,24 @@ public without sharing class GuestSchedulerController {
             }
         }
 
-        if (bType == 'PD' && String.isNotBlank(opportunityId)) {
-            List<Opportunity> opps = [SELECT Program_Director__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-            if (!opps.isEmpty() && opps[0].Program_Director__c != null) {
+        // Sticky-owner short-circuit for BOTH PD and FSS bookings — once an Opportunity has a
+        // sticky counselor stamped (Program_Director__c for PD, Family_Success_Specialist__c for
+        // FSS), follow-up bookings must always assign that same counselor and never reassign via
+        // round-robin. A time conflict is the booker's concern, not a re-assignment trigger.
+        if ((bType == 'PD' || bType == 'FSS') && String.isNotBlank(opportunityId)) {
+            String stickyFld = (bType == 'PD') ? 'Program_Director__c' : 'Family_Success_Specialist__c';
+            List<Opportunity> opps = Database.query(
+                'SELECT ' + stickyFld + ' FROM Opportunity WHERE Id = :opportunityId LIMIT 1');
+            Id stickyUserId = (opps.isEmpty()) ? null : (Id) opps[0].get(stickyFld);
+            if (stickyUserId != null) {
                 List<ServiceResource> srs = [
                     SELECT Id FROM ServiceResource
-                    WHERE RelatedRecordId = :opps[0].Program_Director__c AND IsActive = true LIMIT 1
+                    WHERE RelatedRecordId = :stickyUserId AND IsActive = true LIMIT 1
                 ];
                 if (!srs.isEmpty()) {
                     ResourceAssignment stickyRA = new ResourceAssignment();
                     stickyRA.resourceId = srs[0].Id;
-                    stickyRA.userId = opps[0].Program_Director__c;
+                    stickyRA.userId = stickyUserId;
                     for (ServiceTerritoryMember stm : [
                         SELECT ServiceTerritoryId FROM ServiceTerritoryMember
                         WHERE ServiceResourceId = :srs[0].Id AND ServiceTerritory.IsActive = true
@@ -2096,39 +2129,6 @@ public without sharing class GuestSchedulerController {
             parts.add('Guests invited: ' + String.join(guestList, ', '));
         }
         return String.join(parts, '\n');
-    }
-
-    // Send a simple invitation email to each guest of an IC booking.
-    private static void sendGuestInvitations(
-        List<String> guests, DateTime startDT, DateTime endDT,
-        String firstName, String lastName, String primaryEmail, String tz
-    ) {
-        if (guests == null || guests.isEmpty()) return;
-        String tzDisplay = String.isNotBlank(tz) ? tz : 'America/Chicago';
-        String meetingTime = startDT.format('EEEE, MMMM d, yyyy h:mm a', tzDisplay)
-            + ' (' + tzDisplay + ')';
-        String subject = 'You\'re invited: Initial Consultation with Zenith Prep Academy';
-        String body =
-            'Hello,\n\n'
-            + (firstName + ' ' + lastName).trim()
-            + ' has invited you to attend an Initial Consultation with Zenith Prep Academy.\n\n'
-            + 'When: ' + meetingTime + '\n'
-            + 'Where: Zoom (the join link will arrive in a follow-up email)\n\n'
-            + 'If you have questions, please reply to ' + primaryEmail + '.\n\n'
-            + 'Thank you,\nZenith Prep Academy';
-
-        List<Messaging.SingleEmailMessage> msgs = new List<Messaging.SingleEmailMessage>();
-        for (String guestAddr : guests) {
-            Messaging.SingleEmailMessage m = new Messaging.SingleEmailMessage();
-            m.setToAddresses(new List<String>{ guestAddr });
-            m.setSubject(subject);
-            m.setPlainTextBody(body);
-            m.setSaveAsActivity(false);
-            msgs.add(m);
-        }
-        if (!msgs.isEmpty()) {
-            Messaging.sendEmail(msgs, false);
-        }
     }
 
     // Build the Event/SA Description text (notes + invited guests). Returns null when empty.

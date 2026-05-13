@@ -3,32 +3,45 @@ private class SchedulingEmailSenderTest {
 
     @TestSetup
     static void setupData() {
-        Folder f = [SELECT Id FROM Folder WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1];
+        // Resolve a usable EmailTemplate folder. The original 'Scheduling_Templates' folder
+        // started returning zero rows in some orgs, which crashed setupData with a
+        // QueryException. Fallbacks (in order): named folder, any active email folder,
+        // the running user's personal-templates folder (FolderId = UserInfo.getUserId()).
+        List<Folder> folders = [
+            SELECT Id FROM Folder
+            WHERE Type = 'Email' AND DeveloperName = 'Scheduling_Templates' LIMIT 1
+        ];
+        if (folders.isEmpty()) {
+            folders = [SELECT Id FROM Folder WHERE Type = 'Email' LIMIT 1];
+        }
+        Id templateFolderId = folders.isEmpty() ? UserInfo.getUserId() : folders[0].Id;
 
+        // The Apex class looks up templates by these DeveloperNames; seed them if missing
+        // so the test is self-contained when run in a fresh scratch org.
         Map<String, EmailTemplate> existing = new Map<String, EmailTemplate>();
         for (EmailTemplate et : [
             SELECT Id, DeveloperName FROM EmailTemplate
-            WHERE DeveloperName IN ('PD_Scheduling_Link_Send_Email_1778062406702', 'FSS_Scheduling_Link_Send_Email_1778065360225')
+            WHERE DeveloperName IN ('PD_Scheduling_Link_Send_Email', 'FSS_Scheduling_Link_Send_Email')
         ]) {
             existing.put(et.DeveloperName, et);
         }
         List<EmailTemplate> toInsert = new List<EmailTemplate>();
-        if (!existing.containsKey('PD_Scheduling_Link_Send_Email_1778062406702')) {
+        if (!existing.containsKey('PD_Scheduling_Link_Send_Email')) {
             toInsert.add(new EmailTemplate(
                 Name = 'PD Scheduling Link Send Email',
-                DeveloperName = 'PD_Scheduling_Link_Send_Email_1778062406702',
-                FolderId = f.Id, TemplateType = 'custom',
+                DeveloperName = 'PD_Scheduling_Link_Send_Email',
+                FolderId = templateFolderId, TemplateType = 'custom',
                 Subject = 'Schedule Your Strategy Overview Meeting with Zenith Prep Academy',
                 HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.PD_Scheduling_Link__c}}}">Schedule Your PD Meeting</a></p>',
                 Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.PD_Scheduling_Link__c}}}',
                 IsActive = true
             ));
         }
-        if (!existing.containsKey('FSS_Scheduling_Link_Send_Email_1778065360225')) {
+        if (!existing.containsKey('FSS_Scheduling_Link_Send_Email')) {
             toInsert.add(new EmailTemplate(
                 Name = 'FSS Scheduling Link Send Email',
-                DeveloperName = 'FSS_Scheduling_Link_Send_Email_1778065360225',
-                FolderId = f.Id, TemplateType = 'custom',
+                DeveloperName = 'FSS_Scheduling_Link_Send_Email',
+                FolderId = templateFolderId, TemplateType = 'custom',
                 Subject = 'Schedule Your FSS Onboarding Meeting with Zenith Prep Academy',
                 HtmlValue = '<p>Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}},</p><p><a href="{{{Opportunity.FSS_Scheduling_Link__c}}}">Schedule Your Onboarding Meeting</a></p>',
                 Body = 'Hi {{{Recipient.FirstName}}} {{{Recipient.LastName}}}, schedule at {{{Opportunity.FSS_Scheduling_Link__c}}}',
@@ -217,5 +230,47 @@ private class SchedulingEmailSenderTest {
             SchedulingEmailSender.sendSchedulingEmail(new List<SchedulingEmailSender.EmailRequest>());
         Test.stopTest();
         System.assertEquals(0, out.size());
+    }
+
+    // Verifies the CC list gets built from second-parent + student contacts on the same Account
+    // (the new OWEA + family-CC additions). Doesn't assert content of EmailMessage.CcAddress since
+    // Messaging.sendEmail in test context doesn't actually deliver, but exercises the code path.
+    @isTest
+    static void sendEmail_PD_ccIncludesSecondParentAndStudent() {
+        Contact primary = [SELECT Id, AccountId FROM Contact LIMIT 1];
+        // Record_Type__c is a formula (RecordType.DeveloperName) — to land 'Parent' / 'Student'
+        // on the inserted contacts, set the matching RecordTypeId instead of writing the formula.
+        Map<String, Id> rtByName = new Map<String, Id>();
+        for (RecordType rt : [
+            SELECT Id, DeveloperName FROM RecordType
+            WHERE SObjectType = 'Contact' AND DeveloperName IN ('Parent', 'Student')
+        ]) {
+            rtByName.put(rt.DeveloperName, rt.Id);
+        }
+        // Add a second parent + a student to the same family Account.
+        insert new List<Contact>{
+            new Contact(
+                FirstName = 'Second', LastName = 'Parent',
+                Email = 'parent2@example.com', AccountId = primary.AccountId,
+                RecordTypeId = rtByName.get('Parent')
+            ),
+            new Contact(
+                FirstName = 'Family', LastName = 'Student',
+                Email = 'student@example.com', AccountId = primary.AccountId,
+                RecordTypeId = rtByName.get('Student')
+            )
+        };
+        Opportunity o = [SELECT Id FROM Opportunity LIMIT 1];
+
+        Test.startTest();
+        List<SchedulingEmailSender.EmailResult> out =
+            SchedulingEmailSender.sendSchedulingEmail(new List<SchedulingEmailSender.EmailRequest>{
+                buildRequest(primary.Id, o.Id, 'PD', false)
+            });
+        Test.stopTest();
+
+        System.assertEquals(1, out.size());
+        System.assertEquals(true, out[0].success,
+            'Send-Email PD with family CC should succeed; got: ' + out[0].errorMessage);
     }
 }

@@ -3,6 +3,9 @@ public without sharing class LeadICEmailSender {
 
     private static final String TEMPLATE_DEV_NAME = 'IC_Scheduling_Link_Send_Email';
 
+    // Branded sender address — must match an OrgWideEmailAddress in Setup.
+    private static final String ORG_SENDER_ADDRESS = 'info@zenithprepacademy.com';
+
     public class LeadICRequest {
         @InvocableVariable(required=true label='Lead Id')
         public Id leadId;
@@ -24,10 +27,21 @@ public without sharing class LeadICEmailSender {
         Set<Id> leadIds = new Set<Id>();
         for (LeadICRequest req : requests) leadIds.add(req.leadId);
 
+        // Parent_2_Email__c + Student_Email__c are the Lead-side mirrors of the second-parent
+        // and student email addresses captured by the family-info LWCs pre-conversion.
         Map<Id, Lead> leadMap = new Map<Id, Lead>([
-            SELECT Id, Email, IC_Schedule_Link__c
+            SELECT Id, Email, IC_Schedule_Link__c, Parent_2_Email__c, Student_Email__c
             FROM Lead WHERE Id IN :leadIds
         ]);
+
+        // Resolve OWEA once — null means the org-wide address isn't configured or accessible;
+        // the send falls back to the running user's address in that case.
+        Id orgWideId = null;
+        for (OrgWideEmailAddress o : [
+            SELECT Id FROM OrgWideEmailAddress WHERE Address = :ORG_SENDER_ADDRESS LIMIT 1
+        ]) {
+            orgWideId = o.Id;
+        }
 
         EmailTemplate tmpl;
         for (EmailTemplate et : [
@@ -64,6 +78,24 @@ public without sharing class LeadICEmailSender {
                 mail.setSaveAsActivity(true);
                 mail.setUseSignature(false);
                 mail.setTreatTargetObjectAsRecipient(true);
+                if (orgWideId != null) {
+                    mail.setOrgWideEmailAddressId(orgWideId);
+                }
+
+                // CC = second parent + student (when their email is captured on the Lead).
+                // Dedup, trim, and skip anything that equals the Lead's own email (TO).
+                List<String> ccList = new List<String>();
+                Set<String> ccSeen = new Set<String>();
+                String toLower = String.isNotBlank(ld.Email) ? ld.Email.toLowerCase().trim() : '';
+                for (String addr : new List<String>{ ld.Parent_2_Email__c, ld.Student_Email__c }) {
+                    if (String.isBlank(addr)) continue;
+                    String norm = addr.toLowerCase().trim();
+                    if (norm == toLower) continue;
+                    if (ccSeen.add(norm)) ccList.add(addr.trim());
+                }
+                if (!ccList.isEmpty()) {
+                    mail.setCcAddresses(ccList);
+                }
 
                 emailsToSend.add(mail);
                 emailToResultIndex.add(i);

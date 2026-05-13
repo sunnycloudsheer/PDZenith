@@ -299,22 +299,22 @@ public without sharing class ZoomMeetingManager {
             owner.action = ACTION_CREATE;
             owner.status = STATUS_SUCCESS;
 
+            // Single family Lightning-template email — TO=customer, CC=verified parents +
+            // booking guests + resolved host (lead owner). All recipients receive the same
+            // template and the .ics. The host's Google Calendar is also populated by EAC syncing
+            // the Salesforce Event built by ensureHostEvent — that path is independent of this .ics.
+            //
+            // ORGANIZER mailto is forced to ORG_SENDER_ADDRESS (info@zenithprepacademy.com) so
+            // Gmail loads the calendar widget for every recipient including the host on CC. If
+            // ORGANIZER matched the host's email, Gmail rejects the .ics with "Unable to load
+            // event" for the host (their own email == ORGANIZER == recipient on CC). The host's
+            // display name still rides in CN= via ctx.host, so calendar widgets show the host's
+            // real name as the organizer regardless of the mailto value.
             String familyIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
-                                        joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct);
+                                        joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
+                                        ORG_SENDER_ADDRESS);
             emailBatch.add(buildFamilySendInput(sa, ctx, parentsByAcct, orgWideId, familyIcs));
             emailOwners.add(owner);
-
-            if (ctx.host != null && String.isNotBlank(ctx.host.Email)) {
-                // Host's dedicated copy. METHOD:PUBLISH so Gmail/Outlook accept the event
-                // when the recipient equals the organizer (METHOD:REQUEST fails this check
-                // with "Unable to load event"). ORGANIZER stays as the host's real email
-                // so their calendar shows them as the organizer, not the org-wide mailbox.
-                String hostIcs = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_PUBLISH,
-                                          joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
-                                          null);
-                emailBatch.add(buildHostSendInput(sa, ctx, orgWideId, hostIcs));
-                emailOwners.add(owner);
-            }
         }
 
         deliverEmailBatch(emailBatch, emailOwners);
@@ -353,31 +353,7 @@ public without sharing class ZoomMeetingManager {
         return sin;
     }
 
-    // Builds the host-side SendInput (TO=host, ORGANIZER mailto overridden so Gmail auto-adds the event).
-    private static ZoomMeetingEmailService.SendInput buildHostSendInput(
-        ServiceAppointment sa, MeetingContext ctx, Id orgWideId, String ics
-    ) {
-        ZoomMeetingEmailService.SendInput sin = new ZoomMeetingEmailService.SendInput();
-        sin.inviteType    = ZoomMeetingEmailService.InviteType.NEW_BOOKING;
-        sin.icsContent    = ics;
-        sin.toEmail       = ctx.host.Email;
-        sin.ccEmails      = new List<String>();
-        sin.orgWideEmailId = orgWideId;
-        sin.relatedWhatId  = sa.Id;
-        sin.activityRelatedToId = sa.Opportunity__c;
-        sin.targetObjectId = sa.ContactId;
-        sin.logEmailOnSend = false;
-        // Apex-built fallback for the renderStoredEmailTemplate catch path — keeps ICS attached.
-        sin.subject   = buildSubject(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx);
-        sin.htmlBody  = buildHtmlBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-        sin.plainBody = buildPlainBody(ZoomMeetingEmailService.InviteType.NEW_BOOKING, sa, ctx, null);
-        if (sa.ContactId != null) {
-            sin.templateId = getScheduledEmailTemplateId();
-        }
-        return sin;
-    }
-
-    // CC list with only verified parents (host excluded — they get a dedicated email).
+    // CC list with only verified parents (host is added separately in buildFamilyCcList).
     private static List<String> parentsOnlyCcList(
         MeetingContext ctx, Map<Id, List<Contact>> parentsByAcct
     ) {
@@ -391,7 +367,10 @@ public without sharing class ZoomMeetingManager {
         return out;
     }
 
-    // Family CC list = verified parents + booking guests (+ Lead Owner for Lead-based SAs).
+    // Family CC list = verified parents + booking guests + resolved host (lead owner).
+    // Single Lightning-template email goes out to all of them. The host's Gmail calendar
+    // widget may show "Unable to load event" since they're a recipient and the ORGANIZER,
+    // but EAC syncs the Salesforce Event to the host's Google Calendar independently.
     private static List<String> buildFamilyCcList(
         ServiceAppointment sa, MeetingContext ctx, Map<Id, List<Contact>> parentsByAcct
     ) {
@@ -405,9 +384,7 @@ public without sharing class ZoomMeetingManager {
                 if (String.isNotBlank(trimmed)) out.add(trimmed);
             }
         }
-        Boolean isLeadBased = sa.ContactId == null && sa.ParentRecordType == 'Lead';
-        if (isLeadBased && ctx != null && ctx.host != null
-            && String.isNotBlank(ctx.host.Email)) {
+        if (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Email)) {
             out.add(ctx.host.Email);
         }
         return out;
@@ -467,8 +444,11 @@ public without sharing class ZoomMeetingManager {
             String uid = computeIcsUid(sa);
             Integer seq = deriveSequence(sa);
 
+            // ORG_SENDER_ADDRESS override on ORGANIZER — host is on CC of buildCcList, so the
+            // cancellation widget would otherwise show "Unable to load event" for them.
             String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_CANCEL,
-                                  joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct);
+                                  joinUrl, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
+                                  ORG_SENDER_ADDRESS);
 
             OutputWrapper owner = new OutputWrapper();
             owner.action = ACTION_CANCEL;
@@ -618,14 +598,24 @@ public without sharing class ZoomMeetingManager {
         if (calledFromUpdate
             && ctx != null && String.isNotBlank(ctx.attendeeEmail)) {
             String zoomInvitationText = fetchZoomInvitation(http, out.meetingId);
+            // ORG_SENDER_ADDRESS override — see sendInvitesForSavedAppointments; host is on CC.
             String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
-                                  out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct);
+                                  out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct,
+                                  ORG_SENDER_ADDRESS);
             queueInvite(ZoomMeetingEmailService.InviteType.RESCHEDULE,
                         sa, ctx, parentsByAcct, orgWideId, ics, zoomInvitationText,
                         out, emailBatch, emailOwners, overrideTemplateId);
+            // Single email — host (lead owner) is included on CC via buildCcList inside
+            // queueInvite, so they receive the same Lightning RESCHEDULE template the customer
+            // gets. EAC syncs the updated SF Event to the host's Google Calendar separately.
             // Surface the fact that we had to recreate, so admins can see it in the OutputWrapper.
             out.action = ACTION_UPDATE;
         }
+
+        // Host calendar coverage — guarantees an Event exists for the resolved host (creates if
+        // missing, updates Owner / time / Zoom Location otherwise). Runs on both the pure-CREATE
+        // path and the CREATE-via-UPDATE fallback so the organizer's calendar is always in sync.
+        ensureHostEvent(sa, ctx);
 
         out.status = STATUS_SUCCESS;
     }
@@ -685,13 +675,89 @@ public without sharing class ZoomMeetingManager {
 
         String zoomInvitationText = fetchZoomInvitation(http, out.meetingId);
 
+        // ORG_SENDER_ADDRESS override — see sendInvitesForSavedAppointments; host is on CC of
+        // buildCcList, so without this override the RESCHEDULE widget shows "Unable to load event".
         String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_REQUEST,
-                              out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct);
+                              out.joinUrl, out.meetingId, zoomInvitationText, parentsByAcct,
+                              ORG_SENDER_ADDRESS);
         queueInvite(ZoomMeetingEmailService.InviteType.RESCHEDULE,
                     sa, ctx, parentsByAcct, orgWideId, ics, zoomInvitationText,
                     out, emailBatch, emailOwners, overrideTemplateId);
 
+        // Keep the host's calendar Event in sync with the new SA times — and create one if no
+        // Event exists yet (Sync_service_appointment_to_calendar only fires on insert with
+        // ContactId, so Lead-based or older SAs without an Event would otherwise miss this push).
+        // EAC syncs the updated SF Event to the host's Google Calendar. Host email is delivered
+        // via buildCcList (CC) on the customer's Lightning RESCHEDULE email.
+        ensureHostEvent(sa, ctx);
+
         out.status = STATUS_SUCCESS;
+    }
+
+    // Idempotent: creates the host's Salesforce Event if no Event is linked to this SA yet,
+    // otherwise updates the existing Event(s) so OwnerId / time / Zoom Location stay in sync
+    // with the latest SA + resolved host. Best-effort — never bubbles up to fail the Zoom action.
+    //
+    // Why this exists: the family-side .ics in the customer email triggers Gmail's "Unable to
+    // load event" when the recipient also equals the ORGANIZER (the host is on CC of that email).
+    // Rather than splitting the send into two messages again, we make sure the host has a
+    // Salesforce Event on their own calendar so they can see the meeting independent of the
+    // .ics. Picks up the same Event for downstream Einstein Activity Capture / Lightning Sync.
+    private static void ensureHostEvent(ServiceAppointment sa, MeetingContext ctx) {
+        if (sa == null || sa.Id == null || ctx == null || ctx.host == null || ctx.host.Id == null) return;
+        if (sa.SchedStartTime == null || sa.SchedEndTime == null) return;
+
+        String joinUrl = String.isNotBlank(sa.Zoom_Join_URL__c) ? sa.Zoom_Join_URL__c : sa.Zoom_Link__c;
+        Long durMs    = sa.SchedEndTime.getTime() - sa.SchedStartTime.getTime();
+        Integer durMin = (Integer)(durMs / (1000L * 60L));
+
+        try {
+            List<Event> linked = [
+                SELECT Id, OwnerId, StartDateTime, EndDateTime, Location, DurationInMinutes
+                FROM Event WHERE Service_Appointment__c = :sa.Id
+            ];
+
+            if (linked.isEmpty()) {
+                Event e = new Event();
+                e.OwnerId        = ctx.host.Id;
+                e.Subject        = String.isNotBlank(sa.Subject) ? sa.Subject : 'Zenith Meeting';
+                e.StartDateTime  = sa.SchedStartTime;
+                e.EndDateTime    = sa.SchedEndTime;
+                if (durMin > 0)  e.DurationInMinutes = durMin;
+                e.IsAllDayEvent  = false;
+                e.ShowAs         = 'Busy';
+                e.Type           = 'Meeting';
+                if (String.isNotBlank(joinUrl)) e.Location = joinUrl;
+                if (sa.ContactId != null) {
+                    e.WhoId = sa.ContactId;
+                } else if (sa.ParentRecordType == 'Lead' && sa.ParentRecordId != null) {
+                    e.WhoId = sa.ParentRecordId;
+                }
+                if (sa.Opportunity__c != null) {
+                    e.WhatId = sa.Opportunity__c;
+                } else if (sa.ParentRecordType == 'Account' && sa.ParentRecordId != null) {
+                    e.WhatId = sa.ParentRecordId;
+                }
+                try { e.put('Service_Appointment__c', sa.Id); } catch (Exception ignored) { }
+                insert e;
+                return;
+            }
+
+            List<Event> toUpdate = new List<Event>();
+            for (Event e : linked) {
+                Boolean dirty = false;
+                if (e.OwnerId != ctx.host.Id)                { e.OwnerId = ctx.host.Id; dirty = true; }
+                if (e.StartDateTime != sa.SchedStartTime)    { e.StartDateTime = sa.SchedStartTime; dirty = true; }
+                if (e.EndDateTime != sa.SchedEndTime)        { e.EndDateTime   = sa.SchedEndTime;   dirty = true; }
+                if (durMin > 0 && e.DurationInMinutes != durMin) { e.DurationInMinutes = durMin;   dirty = true; }
+                if (String.isNotBlank(joinUrl) && joinUrl != e.Location) { e.Location = joinUrl; dirty = true; }
+                if (dirty) toUpdate.add(e);
+            }
+            if (!toUpdate.isEmpty()) update toUpdate;
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.WARN,
+                'ensureHostEvent: failed for SA ' + sa.Id + ' — ' + ex.getMessage());
+        }
     }
 
     // CANCEL handler:
@@ -774,11 +840,17 @@ public without sharing class ZoomMeetingManager {
             ' zoomDeleted=' + zoomDeleted +
             ' zoomDeleteFailed=' + zoomDeleteFailed);
 
+        // ORG_SENDER_ADDRESS override — see sendInvitesForSavedAppointments; host is on CC of
+        // buildCcList, so without this override the cancel widget shows "Unable to load event".
         String ics = buildIcs(sa, ctx, uid, seq, ZoomIcsBuilder.METHOD_CANCEL,
-                              joinUrlForIcs, sa.Zoom_Meeting_ID__c, null, parentsByAcct);
+                              joinUrlForIcs, sa.Zoom_Meeting_ID__c, null, parentsByAcct,
+                              ORG_SENDER_ADDRESS);
         queueInvite(ZoomMeetingEmailService.InviteType.CANCELLATION,
                     sa, ctx, parentsByAcct, orgWideId, ics, null,
                     out, emailBatch, emailOwners, overrideTemplateId);
+
+        // Host (lead owner) is on CC via buildCcList, so they receive the same Lightning
+        // CANCELLATION template the customer gets, with the METHOD:CANCEL .ics attached.
 
         // Final status: SUCCESS if Zoom delete went OK or wasn't needed; otherwise still SUCCESS
         // for the email path but surface the Zoom failure in errorMessage for visibility.
@@ -1384,6 +1456,7 @@ public without sharing class ZoomMeetingManager {
     }
 
     // CC list for create / reschedule / cancellation = verified parents + resolved host.
+    // Single Lightning-template email goes to everyone, including the lead owner / host on CC.
     private static List<String> buildCcList(
         ServiceAppointment sa, MeetingContext ctx,
         Map<Id, List<Contact>> parentsByAcct
@@ -1400,6 +1473,7 @@ public without sharing class ZoomMeetingManager {
         if (ctx != null && ctx.host != null && String.isNotBlank(ctx.host.Email)) {
             cc.add(ctx.host.Email);
         }
+
         return cc;
     }
 
