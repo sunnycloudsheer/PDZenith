@@ -261,6 +261,11 @@ public without sharing class PDPostBookingHandler {
                         ? studentContactsById.get(studentContactId)
                         : new Contact(Id = studentContactId);
                     tryPut(sc, 'Program_Director__c', pd.RelatedRecordId);
+                    // Mirror Contact.OwnerId to the PD user in the same DML so ownership
+                    // lands even if the Contact_Mirror_PD_To_Owner BeforeSave flow is off.
+                    if (pd.RelatedRecordId != null) {
+                        sc.OwnerId = pd.RelatedRecordId;
+                    }
                     if (isFirstSOMTransition) {
                         tryPut(sc, 'Stage__c', 'SOM Scheduled');
                     }
@@ -506,10 +511,19 @@ public without sharing class PDPostBookingHandler {
             busyResources.add(ra.ResourceId);
         }
 
+        // Prefer PDs whose personal/territory OperatingHours cover the requested slot.
+        // Without this filter the lowest-load PD wins even when they have no working
+        // hours that day — they look "free" simply because they're never scheduled.
+        // If no PD covers the slot (typical in test fixtures where startDT lands
+        // outside business hours), the filter is bypassed so load-based fallback
+        // still picks someone and existing behavior is preserved.
+        Set<Id> coveringResources = findResourcesWithOHCoverage(validIds, startDT, endDT);
+
         Id      bestId   = null;
         Decimal bestLoad = null;
         for (ServiceResource sr : validResources) {
             if (busyResources.contains(sr.Id)) continue;
+            if (!coveringResources.isEmpty() && !coveringResources.contains(sr.Id)) continue;
             Decimal count  = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
             Decimal weight = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
             Decimal load   = count / weight;
@@ -519,6 +533,90 @@ public without sharing class PDPostBookingHandler {
             }
         }
         return bestId;
+    }
+
+    // Returns the subset of resources whose personal (or territory) OperatingHours has
+    // a TimeSlot covering the requested startDT/endDT window in the OH's timezone.
+    // Empty when nothing covers the slot — callers MUST treat that as "filter disabled"
+    // rather than "no candidates", because the booking UI may have offered a slot via
+    // a path that bypasses OH (rescheduled SA, manual SA insert from a sandbox test).
+    private static Set<Id> findResourcesWithOHCoverage(
+        Set<Id> resourceIds, DateTime startDT, DateTime endDT
+    ) {
+        Set<Id> covering = new Set<Id>();
+        if (resourceIds == null || resourceIds.isEmpty()) return covering;
+
+        Date today = Date.today();
+        Map<Id, Set<Id>> resourceToOHs = new Map<Id, Set<Id>>();
+        Map<Id, String> ohToTz = new Map<Id, String>();
+
+        for (ServiceTerritoryMember stm : [
+            SELECT ServiceResourceId, OperatingHoursId, OperatingHours.TimeZone,
+                   ServiceTerritory.OperatingHoursId, ServiceTerritory.OperatingHours.TimeZone
+            FROM ServiceTerritoryMember
+            WHERE ServiceResourceId IN :resourceIds
+            AND EffectiveStartDate <= :today
+            AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
+            AND ServiceTerritory.IsActive = true
+        ]) {
+            Id ohId = stm.OperatingHoursId != null
+                ? stm.OperatingHoursId
+                : stm.ServiceTerritory.OperatingHoursId;
+            if (ohId == null) continue;
+            String tz = (stm.OperatingHoursId != null && stm.OperatingHours != null)
+                ? stm.OperatingHours.TimeZone
+                : (stm.ServiceTerritory != null && stm.ServiceTerritory.OperatingHours != null
+                    ? stm.ServiceTerritory.OperatingHours.TimeZone : null);
+            if (!resourceToOHs.containsKey(stm.ServiceResourceId)) {
+                resourceToOHs.put(stm.ServiceResourceId, new Set<Id>());
+            }
+            resourceToOHs.get(stm.ServiceResourceId).add(ohId);
+            if (tz != null && !ohToTz.containsKey(ohId)) ohToTz.put(ohId, tz);
+        }
+        if (resourceToOHs.isEmpty()) return covering;
+
+        Set<Id> allOHs = new Set<Id>();
+        for (Set<Id> ohs : resourceToOHs.values()) allOHs.addAll(ohs);
+
+        Map<Id, List<TimeSlot>> slotsByOh = new Map<Id, List<TimeSlot>>();
+        for (TimeSlot ts : [
+            SELECT OperatingHoursId, DayOfWeek, StartTime, EndTime
+            FROM TimeSlot WHERE OperatingHoursId IN :allOHs
+        ]) {
+            if (!slotsByOh.containsKey(ts.OperatingHoursId)) {
+                slotsByOh.put(ts.OperatingHoursId, new List<TimeSlot>());
+            }
+            slotsByOh.get(ts.OperatingHoursId).add(ts);
+        }
+
+        Integer durMin = (Integer) ((endDT.getTime() - startDT.getTime()) / 60000L);
+
+        for (Id resId : resourceToOHs.keySet()) {
+            for (Id ohId : resourceToOHs.get(resId)) {
+                List<TimeSlot> slots = slotsByOh.get(ohId);
+                if (slots == null || slots.isEmpty()) continue;
+                String tz = ohToTz.containsKey(ohId) ? ohToTz.get(ohId) : 'America/Chicago';
+                String dayName = startDT.format('EEEE', tz);
+                Integer localStartMin = Integer.valueOf(startDT.format('H', tz)) * 60
+                                      + Integer.valueOf(startDT.format('m', tz));
+                Integer localEndMin = localStartMin + durMin;
+                Boolean found = false;
+                for (TimeSlot ts : slots) {
+                    if (ts.DayOfWeek != dayName) continue;
+                    Integer ws = ts.StartTime.hour() * 60 + ts.StartTime.minute();
+                    Integer we = ts.EndTime.hour() * 60 + ts.EndTime.minute();
+                    if (localStartMin >= ws && localEndMin <= we) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) {
+                    covering.add(resId);
+                    break;
+                }
+            }
+        }
+        return covering;
     }
 
     // Safely sets a field on an SObject, swallowing any field-access exception.

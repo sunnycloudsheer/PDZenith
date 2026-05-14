@@ -1454,10 +1454,30 @@ public without sharing class GuestSchedulerController {
 
         if ((bType == 'FSS' || bType == 'FSS-FU') && String.isNotBlank(opportunityId)) {
             try {
-                Opportunity opp = [SELECT Id, Family_Success_Specialist__c FROM Opportunity WHERE Id = :opportunityId LIMIT 1];
-                if (opp.Family_Success_Specialist__c == null) { opp.Family_Success_Specialist__c = assignment.userId; update opp; }
+                Opportunity opp = [
+                    SELECT Id, Family_Success_Specialist__c, StageName
+                    FROM Opportunity WHERE Id = :opportunityId LIMIT 1
+                ];
+                Boolean dirty = false;
+                if (opp.Family_Success_Specialist__c == null) {
+                    opp.Family_Success_Specialist__c = assignment.userId;
+                    dirty = true;
+                }
+                // FSS Onboarding booking advances the pipeline to "FSS Scheduled". FSS-FU is
+                // a follow-up and the Opp is already past this stage, so skip.
+                if (bType == 'FSS'
+                    && opp.StageName != 'FSS Scheduled'
+                    && opp.StageName != 'Closed Won'
+                    && opp.StageName != 'Closed Lost') {
+                    opp.StageName = 'FSS Scheduled';
+                    dirty = true;
+                }
+                if (dirty) update opp;
             } catch (Exception ex) { }
             stampStudentContact((Id) opportunityId, 'Family_Success_Specialist__c', assignment.userId);
+            if (bType == 'FSS') {
+                stampStudentContact((Id) opportunityId, 'Stage__c', 'FSS Scheduled');
+            }
         }
 
         if (isOneTimeUseType(bType) && String.isNotBlank(opportunityId)) {
@@ -2046,6 +2066,12 @@ public without sharing class GuestSchedulerController {
             if (ocrs.isEmpty()) return;
             Contact sc = new Contact(Id = ocrs[0].ContactId);
             tryPut(sc, contactFieldName, newValue);
+            // Mirror Contact.OwnerId to the Program Director user when we stamp the PD field.
+            // Belt-and-suspenders alongside the Contact_Mirror_PD_To_Owner BeforeSave flow —
+            // guarantees the owner lands even if the flow is inactive or filtered out.
+            if (contactFieldName == 'Program_Director__c' && newValue instanceof Id) {
+                sc.OwnerId = (Id) newValue;
+            }
             update sc;
         } catch (Exception ex) {
             System.debug(LoggingLevel.WARN,

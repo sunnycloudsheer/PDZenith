@@ -45,12 +45,15 @@ public without sharing class SchedulingEmailSender {
         Set<Id> contactIds = new Set<Id>();
         Set<Id> oppIds     = new Set<Id>();
         Set<String> templateDevNames = new Set<String>();
+        Boolean anyNeedsEmail = false;
         for (EmailRequest req : requests) {
             contactIds.add(req.contactId);
             oppIds.add(req.opportunityId);
+            Boolean reqSkipEmail = (req.skipEmail != null && req.skipEmail);
+            if (!reqSkipEmail) anyNeedsEmail = true;
             String bType = (req.emailType != null) ? req.emailType.toUpperCase() : 'PD';
             String devName = TEMPLATE_MAP.get(bType);
-            if (devName != null) {
+            if (devName != null && !reqSkipEmail) {
                 templateDevNames.add(devName);
             }
         }
@@ -64,50 +67,55 @@ public without sharing class SchedulingEmailSender {
             FROM Opportunity WHERE Id IN :oppIds
         ]);
 
+        // Generate-Link-only batches (every request has skipEmail=true) don't need the
+        // EmailTemplate, family-CC, or OrgWideEmailAddress lookups — skipping them saves
+        // three SOQL on every "Generate Link" button click.
         Map<String, EmailTemplate> templateCache = new Map<String, EmailTemplate>();
-        for (EmailTemplate et : [
-            SELECT Id, DeveloperName
-            FROM EmailTemplate
-            WHERE DeveloperName IN :templateDevNames
-        ]) {
-            templateCache.put(et.DeveloperName, et);
-        }
-
-        // Build a per-primary-contact CC list = other parents on the same Account + the student
-        // contact's email (if present). One bulk SOQL covers every primary contact in the batch.
-        Set<Id> ccAccountIds = new Set<Id>();
-        for (Contact c : contactMap.values()) {
-            if (c.AccountId != null) ccAccountIds.add(c.AccountId);
-        }
         Map<Id, List<String>> ccByPrimaryContactId = new Map<Id, List<String>>();
-        if (!ccAccountIds.isEmpty()) {
-            for (Contact c : [
-                SELECT Id, AccountId, Email, Record_Type__c
-                FROM Contact
-                WHERE AccountId IN :ccAccountIds
-                  AND Email != null
-                  AND Record_Type__c IN ('Parent', 'Student')
+        Id orgWideId = null;
+        if (anyNeedsEmail) {
+            for (EmailTemplate et : [
+                SELECT Id, DeveloperName
+                FROM EmailTemplate
+                WHERE DeveloperName IN :templateDevNames
             ]) {
-                for (Contact primary : contactMap.values()) {
-                    if (primary.AccountId == null || c.AccountId != primary.AccountId) continue;
-                    if (c.Id == primary.Id) continue;
-                    List<String> bucket = ccByPrimaryContactId.get(primary.Id);
-                    if (bucket == null) {
-                        bucket = new List<String>();
-                        ccByPrimaryContactId.put(primary.Id, bucket);
+                templateCache.put(et.DeveloperName, et);
+            }
+
+            // Build a per-primary-contact CC list = other parents on the same Account + the student
+            // contact's email (if present). One bulk SOQL covers every primary contact in the batch.
+            Set<Id> ccAccountIds = new Set<Id>();
+            for (Contact c : contactMap.values()) {
+                if (c.AccountId != null) ccAccountIds.add(c.AccountId);
+            }
+            if (!ccAccountIds.isEmpty()) {
+                for (Contact c : [
+                    SELECT Id, AccountId, Email, Record_Type__c
+                    FROM Contact
+                    WHERE AccountId IN :ccAccountIds
+                      AND Email != null
+                      AND Record_Type__c IN ('Parent', 'Student')
+                ]) {
+                    for (Contact primary : contactMap.values()) {
+                        if (primary.AccountId == null || c.AccountId != primary.AccountId) continue;
+                        if (c.Id == primary.Id) continue;
+                        List<String> bucket = ccByPrimaryContactId.get(primary.Id);
+                        if (bucket == null) {
+                            bucket = new List<String>();
+                            ccByPrimaryContactId.put(primary.Id, bucket);
+                        }
+                        bucket.add(c.Email);
                     }
-                    bucket.add(c.Email);
                 }
             }
-        }
 
-        // Resolve OWEA once for the whole batch — null means the org-wide address isn't
-        // configured or accessible; we fall back to the running user's address in that case.
-        Id orgWideId = null;
-        for (OrgWideEmailAddress o : [
-            SELECT Id FROM OrgWideEmailAddress WHERE Address = :ORG_SENDER_ADDRESS LIMIT 1
-        ]) {
-            orgWideId = o.Id;
+            // Resolve OWEA once for the whole batch — null means the org-wide address isn't
+            // configured or accessible; we fall back to the running user's address in that case.
+            for (OrgWideEmailAddress o : [
+                SELECT Id FROM OrgWideEmailAddress WHERE Address = :ORG_SENDER_ADDRESS LIMIT 1
+            ]) {
+                orgWideId = o.Id;
+            }
         }
 
         List<Messaging.SingleEmailMessage> emailsToSend = new List<Messaging.SingleEmailMessage>();
@@ -215,6 +223,14 @@ public without sharing class SchedulingEmailSender {
                 } else if (bType == 'FSS' || bType == 'FSS-FU') {
                     oppUpd.FSS_Scheduling_Link__c = bookingLink;
                     oppUpd.FSS_Link_Used_At__c    = null;
+                    // Onboarding link generation/send advances the pipeline to "FSS Scheduled".
+                    // FSS-FU is a follow-up — the Opp is already past this stage, so skip.
+                    if (bType == 'FSS' && oppRead != null
+                        && oppRead.StageName != 'FSS Scheduled'
+                        && oppRead.StageName != 'Closed Won'
+                        && oppRead.StageName != 'Closed Lost') {
+                        oppUpd.StageName = 'FSS Scheduled';
+                    }
                 }
                 oppsByRequestIndex.put(i, oppUpd);
 

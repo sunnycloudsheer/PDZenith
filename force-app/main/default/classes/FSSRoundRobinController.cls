@@ -57,14 +57,54 @@ public without sharing class FSSRoundRobinController {
 
             Date today = Date.today();
             Set<Id> resourcesWithTerritory = new Set<Id>();
+            // Capture the OperatingHoursId associated with each resource so we can verify
+            // working hours are configured. Without this filter, an FSS user whose territory
+            // OH has no TimeSlot rows still wins round-robin on load and ends up assigned
+            // even though the family will see zero bookable slots on the link.
+            Map<Id, Set<Id>> resourceToOHs = new Map<Id, Set<Id>>();
             for (ServiceTerritoryMember stm : [
-                SELECT ServiceResourceId FROM ServiceTerritoryMember
+                SELECT ServiceResourceId, OperatingHoursId, ServiceTerritory.OperatingHoursId
+                FROM ServiceTerritoryMember
                 WHERE ServiceResourceId IN :allSrIds
                 AND EffectiveStartDate <= :today
                 AND (EffectiveEndDate = NULL OR EffectiveEndDate >= :today)
                 AND ServiceTerritory.IsActive = true
             ]) {
                 resourcesWithTerritory.add(stm.ServiceResourceId);
+                Id ohId = stm.OperatingHoursId != null
+                    ? stm.OperatingHoursId
+                    : stm.ServiceTerritory.OperatingHoursId;
+                if (ohId != null) {
+                    if (!resourceToOHs.containsKey(stm.ServiceResourceId)) {
+                        resourceToOHs.put(stm.ServiceResourceId, new Set<Id>());
+                    }
+                    resourceToOHs.get(stm.ServiceResourceId).add(ohId);
+                }
+            }
+
+            Set<Id> ohsWithSlots = new Set<Id>();
+            Set<Id> allOHIds = new Set<Id>();
+            for (Set<Id> ohs : resourceToOHs.values()) allOHIds.addAll(ohs);
+            if (!allOHIds.isEmpty()) {
+                for (AggregateResult ar : [
+                    SELECT OperatingHoursId, COUNT(Id) cnt
+                    FROM TimeSlot WHERE OperatingHoursId IN :allOHIds
+                    GROUP BY OperatingHoursId
+                ]) {
+                    Integer cnt = (Integer) ar.get('cnt');
+                    if (cnt != null && cnt > 0) {
+                        ohsWithSlots.add((Id) ar.get('OperatingHoursId'));
+                    }
+                }
+            }
+            Set<Id> resourcesWithWorkingHours = new Set<Id>();
+            for (Id resId : resourceToOHs.keySet()) {
+                for (Id ohId : resourceToOHs.get(resId)) {
+                    if (ohsWithSlots.contains(ohId)) {
+                        resourcesWithWorkingHours.add(resId);
+                        break;
+                    }
+                }
             }
 
             Id bestId = null;
@@ -73,6 +113,10 @@ public without sharing class FSSRoundRobinController {
 
             for (ServiceResource sr : fssResources) {
                 if (!resourcesWithTerritory.contains(sr.Id)) continue;
+                // Prefer FSS users with working hours configured. Soft filter — if none
+                // qualify, fall back to existing behavior so we never fail to pick.
+                if (!resourcesWithWorkingHours.isEmpty()
+                    && !resourcesWithWorkingHours.contains(sr.Id)) continue;
                 Decimal count  = (sr.Appointment_Count__c != null) ? sr.Appointment_Count__c : 0;
                 Decimal weight = (sr.Weight__c != null && sr.Weight__c > 0) ? sr.Weight__c : 1.0;
                 Decimal load   = count / weight;
